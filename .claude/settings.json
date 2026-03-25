@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install*)",
+      "Bash(npm ci)",
+      "Bash(npx expo *)",
+      "Bash(npx tsc *)",
+      "Bash(node backend/server.js)",
+      "Bash(node *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(rm -rf node_modules)",
+      "Bash(rm -rf .expo)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(npm publish*)",
+      "Bash(expo publish*)",
+      "Bash(eas build*)",
+      "Bash(eas submit*)"
+    ]
+  }
+}

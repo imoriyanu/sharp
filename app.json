@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Sharp",
+    "slug": "sharp-ai",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "sharp",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#FAF6F0",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.sharp.ai",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Sharp needs microphone access to record and analyse your spoken answers."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FAF6F0"
+      },
+      "package": "com.sharp.ai",
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Sharp needs microphone access to record and analyse your spoken answers."
+        }
+      ],
+      "expo-asset",
+      "expo-font",
+      "expo-audio"
+    ]
+  }
+}
