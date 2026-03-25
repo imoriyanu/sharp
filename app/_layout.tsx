@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { colors } from '../src/constants/theme';
 import { stopAudio } from '../src/services/tts';
 import { hasOnboarded } from '../src/services/storage';
+import { AuthProvider } from '../src/context/AuthContext';
 
 function AudioGuard() {
   const pathname = usePathname();
@@ -37,6 +38,7 @@ export default function RootLayout() {
     <>
       <StatusBar style="dark" />
       <AudioGuard />
+      <AuthProvider>
       <OnboardingGate>
         <Stack
           screenOptions={{
@@ -48,6 +50,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="onboarding/index" options={{ animation: 'fade' }} />
           <Stack.Screen name="onboarding/name" />
+          <Stack.Screen name="onboarding/signin" />
           <Stack.Screen name="onboarding/challenge-intro" />
           <Stack.Screen name="onboarding/recording" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="onboarding/result" options={{ animation: 'fade' }} />
@@ -74,9 +77,11 @@ export default function RootLayout() {
           <Stack.Screen name="analytics/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="premium/index" options={{ presentation: 'modal' }} />
           <Stack.Screen name="streak/index" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="auth/signin" options={{ presentation: 'modal' }} />
           <Stack.Screen name="session/[id]" />
         </Stack>
       </OnboardingGate>
+      </AuthProvider>
     </>
   );
 }

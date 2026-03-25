@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { getContext, saveContext, trackFeatureInterest } from '../../src/services/storage';
+import { isPremium } from '../../src/services/premium';
 import type { UserContext } from '../../src/types';
 
 const DOC_TYPE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
@@ -20,6 +21,8 @@ export default function ContextSetupScreen() {
   });
 
   useEffect(() => {
+    // Gate: redirect free users
+    if (!isPremium()) { router.replace('/premium'); return; }
     getContext().then(c => { if (c) setCtx(c); });
   }, []);
 

@@ -196,27 +196,32 @@ app.post('/api/transcribe', async (req, res) => {
 
     fs.writeFileSync(rawPath, buffer);
 
-    // Two-step conversion: afconvert (M4A→WAV) then ffmpeg (WAV→MP3)
-    // afconvert handles expo-audio's chnl box that ffmpeg can't parse
-    // ffmpeg compresses WAV to small MP3 that Groq accepts
+    // Audio conversion pipeline — works on macOS AND Linux
+    // Strategy: try multiple approaches, use first that succeeds
     const wavPath = rawPath.replace('_raw.m4a', '.wav');
     files.push(wavPath);
     let convertedPath = null;
 
+    // Approach 1: afconvert → ffmpeg (macOS only, handles chnl box)
     try {
-      // Step 1: afconvert (macOS native) — M4A to WAV
-      execSync(`afconvert "${rawPath}" "${wavPath}" -d LEI16 -f WAVE`, { timeout: 15000 });
-      // Step 2: ffmpeg — WAV to compressed MP3
+      execSync(`afconvert "${rawPath}" "${wavPath}" -d LEI16 -f WAVE 2>/dev/null`, { timeout: 15000 });
       execSync(`ffmpeg -i "${wavPath}" -acodec libmp3lame -ar 16000 -ac 1 -b:a 64k "${mp3Path}" -y 2>/dev/null`, { timeout: 15000 });
       convertedPath = mp3Path;
-      console.log('Conversion success:', fs.statSync(rawPath).size, '→', fs.statSync(mp3Path).size, 'bytes');
-    } catch (err) {
-      console.error('Conversion failed:', err.message);
-      // Last resort: try sending the WAV directly (if afconvert succeeded but ffmpeg failed)
-      if (fs.existsSync(wavPath) && fs.statSync(wavPath).size > 0) {
-        convertedPath = wavPath;
-      } else {
-        convertedPath = rawPath; // Will likely fail at Groq but at least we try
+      console.log('afconvert+ffmpeg success:', fs.statSync(rawPath).size, '→', fs.statSync(mp3Path).size);
+    } catch (_) {
+      // Approach 2: ffmpeg directly with -err_detect ignore_err (Linux, newer ffmpeg)
+      try {
+        execSync(`ffmpeg -err_detect ignore_err -i "${rawPath}" -acodec libmp3lame -ar 16000 -ac 1 -b:a 64k "${mp3Path}" -y 2>/dev/null`, { timeout: 15000 });
+        if (fs.existsSync(mp3Path) && fs.statSync(mp3Path).size > 1000) {
+          convertedPath = mp3Path;
+          console.log('ffmpeg direct success:', fs.statSync(mp3Path).size);
+        }
+      } catch (__) {}
+
+      // Approach 3: send raw M4A to Groq (some versions accept it)
+      if (!convertedPath) {
+        convertedPath = rawPath;
+        console.log('Using raw M4A as fallback');
       }
     }
 

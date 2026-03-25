@@ -16,7 +16,7 @@ export default function OnboardingName() {
     if (!trimmed) return;
     await saveUserProfile({ displayName: trimmed, isPremium: false, createdAt: new Date().toISOString() });
     await setOnboardingStep(2);
-    router.push('/onboarding/challenge-intro');
+    router.push('/onboarding/signin');
   }
 
   return (

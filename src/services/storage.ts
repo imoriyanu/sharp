@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature } from '../types';
 import { STREAK_BADGES } from '../constants/badges';
+import { syncProfileToCloud, syncContextToCloud, syncSessionToCloud, syncStreakToCloud, syncBadgeToCloud, syncDailyResultToCloud, migrateLocalToCloud } from './sync';
 
 const KEYS = {
   CONTEXT: 'sharp:context',
@@ -17,6 +18,30 @@ const KEYS = {
   FEATURE_INTEREST: 'sharp:feature_interest',
   USER_PROFILE: 'sharp:user_profile',
 };
+
+// ===== Cloud Migration =====
+
+export async function runMigrationIfNeeded(): Promise<void> {
+  const migrated = await AsyncStorage.getItem('sharp:cloud_migrated');
+  if (migrated === 'true') return;
+
+  const profile = await getUserProfile();
+  const context = await getContext();
+  const streak = await getStreak();
+  const unlockedBadges = await getUnlockedBadges();
+  const dailyResults = await getDailyHistory();
+
+  // Load full sessions
+  const summaries = await getSessions();
+  const sessions: any[] = [];
+  for (const s of summaries.slice(0, 50)) {
+    const full = await getSessionById(s.id);
+    if (full) sessions.push(full);
+  }
+
+  await migrateLocalToCloud({ profile, context, sessions, streak, unlockedBadges, dailyResults });
+  await AsyncStorage.setItem('sharp:cloud_migrated', 'true');
+}
 
 // ===== Onboarding =====
 
@@ -49,6 +74,7 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
   await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(profile));
+  syncProfileToCloud(profile).catch(() => {});
 }
 
 // ===== Context =====
@@ -60,6 +86,7 @@ export async function getContext(): Promise<UserContext | null> {
 
 export async function saveContext(context: UserContext): Promise<void> {
   await AsyncStorage.setItem(KEYS.CONTEXT, JSON.stringify(context));
+  syncContextToCloud(context).catch(() => {});
 }
 
 // ===== Sessions =====
@@ -84,6 +111,7 @@ export async function saveSession(session: Session): Promise<void> {
     AsyncStorage.setItem(KEYS.SESSIONS, JSON.stringify(sessions.slice(0, 100))),
     AsyncStorage.setItem(KEYS.SESSION_DETAIL + session.id, JSON.stringify(session)),
   ]);
+  syncSessionToCloud(session).catch(() => {});
 }
 
 export async function getSessionById(id: string): Promise<Session | null> {
@@ -179,6 +207,10 @@ export async function updateStreak(): Promise<StreakUpdateResult> {
     AsyncStorage.setItem(KEYS.STREAK_BADGES, JSON.stringify(unlocked)),
   ]);
 
+  // Sync to cloud
+  syncStreakToCloud(streak).catch(() => {});
+  if (newBadge) syncBadgeToCloud(newBadge.day).catch(() => {});
+
   return { ...streak, newBadge };
 }
 
@@ -199,6 +231,7 @@ export async function saveDailyResult(result: DailyResult): Promise<void> {
   history.unshift(result);
   await AsyncStorage.setItem(KEYS.DAILY_HISTORY, JSON.stringify(history.slice(0, 90)));
   await AsyncStorage.setItem(KEYS.DAILY_LAST_DATE, result.date);
+  syncDailyResultToCloud(result).catch(() => {});
 }
 
 export async function getDailyHistory(): Promise<DailyResult[]> {
@@ -415,6 +448,33 @@ export async function cacheDailyQuestion(question: any): Promise<void> {
 
 export async function clearDailyQuestionCache(): Promise<void> {
   await AsyncStorage.removeItem(KEYS.DAILY_QUESTION_CACHE);
+}
+
+// One Shot / Threaded question cache
+export async function getCachedOneShotQuestion(): Promise<any | null> {
+  const raw = await AsyncStorage.getItem('sharp:oneshot_question_cache');
+  return raw ? JSON.parse(raw) : null;
+}
+
+export async function cacheOneShotQuestion(question: any): Promise<void> {
+  await AsyncStorage.setItem('sharp:oneshot_question_cache', JSON.stringify(question));
+}
+
+export async function clearOneShotQuestionCache(): Promise<void> {
+  await AsyncStorage.removeItem('sharp:oneshot_question_cache');
+}
+
+export async function getCachedThreadedQuestion(): Promise<any | null> {
+  const raw = await AsyncStorage.getItem('sharp:threaded_question_cache');
+  return raw ? JSON.parse(raw) : null;
+}
+
+export async function cacheThreadedQuestion(question: any): Promise<void> {
+  await AsyncStorage.setItem('sharp:threaded_question_cache', JSON.stringify(question));
+}
+
+export async function clearThreadedQuestionCache(): Promise<void> {
+  await AsyncStorage.removeItem('sharp:threaded_question_cache');
 }
 
 export async function getRecentQuestions(): Promise<string[]> {

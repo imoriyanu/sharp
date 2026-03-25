@@ -9,7 +9,7 @@ import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/compon
 import { stopAudio } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
-import { getContext, saveSession, generateId, getAverageScores, getRecentInsights } from '../../src/services/storage';
+import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache } from '../../src/services/storage';
 import { trackOneShotUsage, trackThreadedUsage } from '../../src/services/premium';
 
 const DEFAULT_TIMER = 90;
@@ -102,6 +102,10 @@ export default function RecordingScreen() {
       });
 
       if (!mountedRef.current) return;
+
+      // Clear question cache (completed — next time get a new one)
+      if (params.mode === 'threaded') await clearThreadedQuestionCache();
+      else await clearOneShotQuestionCache();
 
       // Track usage
       if (params.mode === 'threaded') await trackThreadedUsage();

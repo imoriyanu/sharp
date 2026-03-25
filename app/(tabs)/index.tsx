@@ -24,8 +24,17 @@ export default function HomeScreen() {
   const [dailyDone, setDailyDone] = useState(false);
   const [context, setContext] = useState<UserContext | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [oneShotLeft, setOneShotLeft] = useState<number | null>(null);
+  const [threadedLeft, setThreadedLeft] = useState<number | null>(null);
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  useFocusEffect(useCallback(() => { loadData(); loadUsage(); }, []));
+
+  async function loadUsage() {
+    const os = await canDoOneShot();
+    const th = await canDoThreaded();
+    setOneShotLeft(os.limit - os.used);
+    setThreadedLeft(th.limit - th.used);
+  }
 
   async function loadData() {
     const [s, sess, dd, ctx, prof] = await Promise.all([
@@ -110,7 +119,7 @@ export default function HomeScreen() {
         <Text style={st.section}>Practice</Text>
         <FadeIn delay={300}>
           <View style={st.modeRow}>
-            <TouchableOpacity style={st.modeCard} onPress={async () => {
+            <TouchableOpacity style={[st.modeCard, oneShotLeft === 0 && st.modeCardDimmed]} onPress={async () => {
               const check = await canDoOneShot();
               if (check.allowed) router.push('/one-shot/question');
               else router.push('/premium');
@@ -118,9 +127,11 @@ export default function HomeScreen() {
               <View style={st.modeIconWrap}><Text style={st.modeIcon}>⚡</Text></View>
               <Text style={st.modeTitle}>One Shot</Text>
               <Text style={st.modeDesc}>Full scored session</Text>
-              <View style={st.modeDurBadge}><Text style={st.modeDur}>2-3 min</Text></View>
+              <View style={st.modeDurBadge}>
+                <Text style={st.modeDur}>{oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left today` : oneShotLeft === 0 ? 'Limit reached' : '2-3 min'}</Text>
+              </View>
             </TouchableOpacity>
-            <TouchableOpacity style={st.modeCard} onPress={async () => {
+            <TouchableOpacity style={[st.modeCard, threadedLeft === 0 && st.modeCardDimmed]} onPress={async () => {
               const check = await canDoThreaded();
               if (check.allowed) router.push('/one-shot/question?mode=threaded');
               else router.push('/premium');
@@ -128,7 +139,9 @@ export default function HomeScreen() {
               <View style={[st.modeIconWrap, st.modeIconThreaded]}><Text style={st.modeIcon}>⚓</Text></View>
               <Text style={st.modeTitle}>Threaded</Text>
               <Text style={st.modeDesc}>3 follow-ups</Text>
-              <View style={st.modeDurBadge}><Text style={st.modeDur}>5-8 min</Text></View>
+              <View style={st.modeDurBadge}>
+                <Text style={st.modeDur}>{threadedLeft !== null && threadedLeft > 0 ? `${threadedLeft} left` : threadedLeft === 0 ? 'Limit reached' : '5-8 min'}</Text>
+              </View>
             </TouchableOpacity>
           </View>
         </FadeIn>
@@ -267,6 +280,7 @@ const st = StyleSheet.create({
   // Mode cards
   modeRow: { flexDirection: 'row', gap: spacing.md },
   modeCard: { flex: 1, backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, paddingVertical: spacing.xxl, alignItems: 'center', ...shadows.md },
+  modeCardDimmed: { opacity: 0.45 },
   modeIconWrap: { width: wp(48), height: wp(48), borderRadius: wp(14), backgroundColor: colors.accent.light, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   modeIconThreaded: { backgroundColor: colors.feedback.positiveBg },
   modeIcon: { fontSize: fp(22) },

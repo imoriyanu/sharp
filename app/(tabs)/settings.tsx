@@ -6,6 +6,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { getUserProfile, saveUserProfile, trackFeatureInterest } from '../../src/services/storage';
 import { isPremium, getPlanName } from '../../src/services/premium';
+import { useAuth } from '../../src/context/AuthContext';
+import { signOut } from '../../src/services/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { UserProfile } from '../../src/types';
 
@@ -14,6 +16,7 @@ export default function SettingsScreen() {
   const [audioQuestions, setAudioQuestions] = useState(true);
   const [haptics, setHaptics] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { user, isAuthenticated } = useAuth();
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
 
@@ -109,6 +112,30 @@ export default function SettingsScreen() {
             <Text style={[s.label, { color: colors.error }]}>Clear all data</Text>
             <Text style={[s.value, { color: colors.error }]}>→</Text>
           </TouchableOpacity>
+        </View>
+
+        <Text style={s.section}>Account</Text>
+        <View style={s.card}>
+          <View style={s.row}>
+            <Text style={s.label}>Email</Text>
+            <Text style={s.value}>{isAuthenticated ? user?.email : 'Not signed in'}</Text>
+          </View>
+          {isAuthenticated ? (
+            <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => {
+              Alert.alert('Sign out', 'Are you sure?', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Sign out', style: 'destructive', onPress: async () => { await signOut(); } },
+              ]);
+            }}>
+              <Text style={[s.label, { color: colors.error }]}>Sign out</Text>
+              <Text style={[s.value, { color: colors.error }]}>→</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => router.push('/auth/signin')}>
+              <Text style={[s.label, { color: colors.accent.primary }]}>Sign in</Text>
+              <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <Text style={s.section}>Plan</Text>

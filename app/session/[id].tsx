@@ -63,19 +63,24 @@ export default function SessionDetailScreen() {
           <TurnCard key={turn.id} turn={turn} index={i} totalTurns={session.turns.length} playing={playing} play={play} />
         ))}
 
-        {oneShotStatus?.allowed ? (
+        {oneShotStatus?.allowed && isPremium() ? (
           <TouchableOpacity style={s.retryBtn} onPress={async () => {
             stopAudio();
             await trackOneShotUsage();
             router.replace('/one-shot/question');
           }} activeOpacity={0.8}>
             <Text style={s.retryBtnText}>Practice again</Text>
-            {isPremium() && <Text style={s.retryBtnSub}>{oneShotStatus.limit - oneShotStatus.used} remaining today</Text>}
+            <Text style={s.retryBtnSub}>{oneShotStatus.limit - oneShotStatus.used} remaining today</Text>
           </TouchableOpacity>
+        ) : isPremium() && oneShotStatus && !oneShotStatus.allowed ? (
+          <View style={[s.retryBtn, s.retryBtnLocked]}>
+            <Text style={s.retryBtnText}>Daily limit reached</Text>
+            <Text style={s.retryBtnSub}>Resets tomorrow</Text>
+          </View>
         ) : (
           <TouchableOpacity style={[s.retryBtn, s.retryBtnLocked]} onPress={() => router.push('/premium')} activeOpacity={0.7}>
-            <Text style={s.retryBtnText}>{isPremium() ? 'Daily limit reached' : '🔒 Practice again'}</Text>
-            <Text style={s.retryBtnSub}>{isPremium() ? 'Resets tomorrow' : 'Upgrade to Pro'}</Text>
+            <Text style={s.retryBtnText}>🔒 Practice again</Text>
+            <Text style={s.retryBtnSub}>Upgrade to Pro</Text>
           </TouchableOpacity>
         )}
 

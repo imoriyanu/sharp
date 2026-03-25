@@ -1,17 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabase';
 import type { PlanId, PremiumPlan, UsageLimits } from '../types';
 
 // ===== DEVELOPMENT FLAG — change this to toggle premium =====
 // Set to true to simulate premium, false for free tier
-const DEV_PREMIUM_FLAG = false;
+const DEV_PREMIUM_FLAG = true;
 // =============================================================
 
 const USAGE_KEY = 'sharp:daily_usage';
 
 export const PLANS: PremiumPlan[] = [
   { id: 'pass_30', name: '30-Day Pass', price: '€19.99', period: 'one-time', perMonth: '€19.99/mo', badge: 'No commitment' },
-  { id: 'monthly', name: 'Monthly', price: '€12.99', period: '/month', perMonth: '€12.99/mo' },
-  { id: 'annual', name: 'Annual', price: '€95.88', period: '/year', perMonth: '€7.99/mo', savings: 'Save 38%', recommended: true },
+  { id: 'monthly', name: 'Monthly', price: '€14.99', period: '/month', perMonth: '€14.99/mo' },
+  { id: 'annual', name: 'Annual', price: '€119.88', period: '/year', perMonth: '€9.99/mo', savings: 'Save 33%', recommended: true },
   { id: 'three_year', name: '3-Year', price: '€215.64', period: '/3 years', perMonth: '€5.99/mo', savings: 'Save 54%', badge: 'Best value' },
 ];
 
@@ -87,6 +88,24 @@ function getWeekStart(): string {
 
 async function saveUsage(usage: DailyUsage): Promise<void> {
   await AsyncStorage.setItem(USAGE_KEY, JSON.stringify(usage));
+  // Sync to cloud
+  syncUsageToCloud(usage).catch(() => {});
+}
+
+async function syncUsageToCloud(usage: DailyUsage): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  try {
+    await supabase.from('usage').upsert({
+      user_id: user.id,
+      usage_date: usage.date,
+      one_shots: usage.oneShots,
+      threaded: usage.threaded,
+      practice_again: usage.practiceAgain,
+      threaded_this_week: usage.threadedThisWeek,
+      week_start: usage.weekStart,
+    });
+  } catch (e) { /* silent fail */ }
 }
 
 export async function canDoOneShot(): Promise<{ allowed: boolean; used: number; limit: number }> {

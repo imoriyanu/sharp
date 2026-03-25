@@ -7,11 +7,18 @@ import { LoadingScreen, FadeIn, AudioWaveBars } from '../../src/components/Anima
 import { playQuestionAudio, stopAudio } from '../../src/services/tts';
 import { getProgressData, getContext, type ProgressData } from '../../src/services/storage';
 import { generateProgressSummary } from '../../src/services/scoring';
+import { isPremium } from '../../src/services/premium';
 
 const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words', awareness: 'Awareness' };
 
 export default function AnalyticsScreen() {
   const router = useRouter();
+
+  // Gate: redirect free users to paywall
+  useEffect(() => {
+    if (!isPremium()) { router.replace('/premium'); }
+  }, []);
+
   const [data, setData] = useState<ProgressData | null>(null);
   const [summary, setSummary] = useState<{ spokenSummary: string; highlights: string[]; focusArea: string; encouragement: string } | null>(null);
   const [loading, setLoading] = useState(true);

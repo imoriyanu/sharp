@@ -1,12 +1,13 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, FadeIn } from '../../src/components/Animations';
 import { generateQuestion } from '../../src/services/scoring';
 import { playQuestionAudio, stopAudio, buildNaturalScript } from '../../src/services/tts';
-import { getContext, getRecentQuestions, addRecentQuestion } from '../../src/services/storage';
+import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion } from '../../src/services/storage';
+import { isPremium } from '../../src/services/premium';
 import type { GeneratedQuestion } from '../../src/types';
 
 export default function QuestionScreen() {
@@ -16,14 +17,33 @@ export default function QuestionScreen() {
   const [question, setQuestion] = useState<GeneratedQuestion | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    loadQuestion();
-    return () => { stopAudio(); };
+    mountedRef.current = true;
+    loadQuestion(false);
+    return () => { mountedRef.current = false; stopAudio(); };
   }, []);
 
-  async function loadQuestion() {
+  async function loadQuestion(forceNew: boolean) {
     try {
+      // Check cache first (unless forcing new)
+      if (!forceNew) {
+        const cached = isThreaded ? await getCachedThreadedQuestion() : await getCachedOneShotQuestion();
+        if (cached) {
+          setQuestion(cached);
+          setLoading(false);
+          setRegenerating(false);
+          if (mountedRef.current) {
+            setPlaying(true);
+            await playQuestionAudio(buildNaturalScript(cached));
+            if (mountedRef.current) setPlaying(false);
+          }
+          return;
+        }
+      }
+
       const [ctx, recentQuestions] = await Promise.all([getContext(), getRecentQuestions()]);
       const q = await generateQuestion({
         roleText: ctx?.roleText || '',
@@ -34,33 +54,51 @@ export default function QuestionScreen() {
         recentQuestions,
       });
       await addRecentQuestion(q.question);
+
+      // Cache it
+      if (isThreaded) await cacheThreadedQuestion(q);
+      else await cacheOneShotQuestion(q);
+
+      if (!mountedRef.current) return;
       setQuestion(q);
       setLoading(false);
+      setRegenerating(false);
       setPlaying(true);
       await playQuestionAudio(buildNaturalScript(q));
-      setPlaying(false);
+      if (mountedRef.current) setPlaying(false);
     } catch (e) {
       console.error('Question load error:', e);
       const fallback: GeneratedQuestion = { question: "Tell me about a project you're most proud of and why.", reasoning: '', targets: 'substance', difficulty: 5, contextUsed: [] };
+      if (isThreaded) await cacheThreadedQuestion(fallback);
+      else await cacheOneShotQuestion(fallback);
+      if (!mountedRef.current) return;
       setQuestion(fallback);
       setLoading(false);
+      setRegenerating(false);
       setPlaying(true);
       await playQuestionAudio(buildNaturalScript(fallback));
-      setPlaying(false);
+      if (mountedRef.current) setPlaying(false);
     }
+  }
+
+  async function regenerate() {
+    if (!isPremium()) { router.push('/premium'); return; }
+    await stopAudio();
+    setRegenerating(true);
+    await loadQuestion(true);
   }
 
   async function replay() {
     if (!question) return;
     setPlaying(true);
     await playQuestionAudio(buildNaturalScript(question));
-    setPlaying(false);
+    if (mountedRef.current) setPlaying(false);
   }
 
-  if (loading) {
+  if (loading || regenerating) {
     return (
       <SafeAreaView style={s.safe}>
-        <LoadingScreen message="Generating your question..." submessage="Sharp is thinking..." />
+        <LoadingScreen message={regenerating ? "Generating a new question..." : "Generating your question..."} submessage="Sharp is thinking..." />
       </SafeAreaView>
     );
   }
@@ -68,7 +106,13 @@ export default function QuestionScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.container}>
-        <Text style={s.tag}>Sharp asks</Text>
+        <View style={s.topRow}>
+          <Text style={s.tag}>{isThreaded ? 'Threaded Challenge' : 'Sharp asks'}</Text>
+          {/* Regenerate button — premium only */}
+          <TouchableOpacity onPress={regenerate} activeOpacity={0.7} style={s.regenBtn}>
+            <Text style={s.regenText}>{isPremium() ? '↻ New question' : '🔒 New question'}</Text>
+          </TouchableOpacity>
+        </View>
 
         {playing && (
           <View style={s.audioPill}>
@@ -99,13 +143,12 @@ export default function QuestionScreen() {
         <View style={s.spacer} />
 
         <TouchableOpacity style={s.ghostBtn} onPress={replay} activeOpacity={0.7}>
-          <Text style={s.ghostText}>↻ Replay question</Text>
+          <Text style={s.ghostText}>🔊 Replay question</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={s.mainBtn}
           onPress={() => router.push({ pathname: '/one-shot/recording', params: { question: question?.question || '', mode: isThreaded ? 'threaded' : 'one_shot', reasoning: question?.reasoning || '', timerSeconds: String(question?.timerSeconds || 90) } })}
           activeOpacity={0.8}
-          disabled={loading}
         >
           <Text style={s.mainText}>🎤 Record my answer</Text>
         </TouchableOpacity>
@@ -117,12 +160,13 @@ export default function QuestionScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.primary },
   container: { flex: 1, padding: layout.screenPadding, justifyContent: 'center' },
-  tag: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 2, marginBottom: spacing.lg },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
+  tag: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 2 },
+  regenBtn: { paddingVertical: wp(4), paddingHorizontal: wp(10) },
+  regenText: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.accent.primary },
   audioPill: { flexDirection: 'row', alignItems: 'center', gap: wp(6), backgroundColor: colors.daily.bg, borderWidth: 1.5, borderColor: colors.daily.border, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(5), alignSelf: 'flex-start', marginBottom: spacing.lg },
-  bars: { flexDirection: 'row', alignItems: 'center', gap: 2, height: wp(14) },
-  bar: { width: 2.5, borderRadius: 2, backgroundColor: colors.accent.primary },
   audioText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.accent.primary },
-  questionText: { fontSize: fp(16), color: colors.text.primary, lineHeight: fp(26), fontWeight: typography.weight.semibold, marginBottom: spacing.xl },
+  questionText: { fontSize: fp(18), color: colors.text.primary, lineHeight: fp(28), fontWeight: typography.weight.bold, marginBottom: spacing.xl },
   diffRow: { flexDirection: 'row', alignItems: 'center', gap: wp(8) },
   diffLabel: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const },
   dots: { flexDirection: 'row', gap: wp(3) },
