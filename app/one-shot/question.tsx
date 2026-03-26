@@ -6,7 +6,7 @@ import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '..
 import { LoadingScreen, AudioWaveBars, FadeIn } from '../../src/components/Animations';
 import { generateQuestion } from '../../src/services/scoring';
 import { playQuestionAudio, stopAudio, buildNaturalScript } from '../../src/services/tts';
-import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion, getRecentSessionHistory, getAverageScores } from '../../src/services/storage';
+import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion, getRecentSessionHistory, getAverageScores, saveActiveThread, generateId } from '../../src/services/storage';
 import { isPremium } from '../../src/services/premium';
 import type { GeneratedQuestion } from '../../src/types';
 
@@ -160,7 +160,18 @@ export default function QuestionScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={s.mainBtn}
-          onPress={() => router.push({ pathname: '/one-shot/recording', params: { question: question?.question || '', mode: isThreaded ? 'threaded' : 'one_shot', reasoning: question?.reasoning || '', timerSeconds: String(question?.timerSeconds || 90) } })}
+          onPress={async () => {
+            if (isThreaded && question) {
+              await saveActiveThread({
+                id: generateId(),
+                originalQuestion: question.question,
+                scenario: question.question.slice(0, 50),
+                turns: [],
+                createdAt: new Date().toISOString(),
+              });
+            }
+            router.push({ pathname: '/one-shot/recording', params: { question: question?.question || '', mode: isThreaded ? 'threaded' : 'one_shot', reasoning: question?.reasoning || '', timerSeconds: String(question?.timerSeconds || 90), turnNumber: '1' } });
+          }}
           activeOpacity={0.8}
         >
           <Text style={s.mainText}>🎤 Record my answer</Text>

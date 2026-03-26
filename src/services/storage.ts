@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature } from '../types';
+import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature, ActiveThread } from '../types';
 import { STREAK_BADGES } from '../constants/badges';
 import { syncProfileToCloud, syncContextToCloud, syncSessionToCloud, syncStreakToCloud, syncBadgeToCloud, syncDailyResultToCloud, migrateLocalToCloud } from './sync';
 
@@ -17,6 +17,7 @@ const KEYS = {
   DUELS: 'sharp:duels',
   FEATURE_INTEREST: 'sharp:feature_interest',
   USER_PROFILE: 'sharp:user_profile',
+  ACTIVE_THREAD: 'sharp:active_thread',
 };
 
 // ===== Cloud Migration =====
@@ -427,6 +428,21 @@ export async function getProgressData(): Promise<ProgressData> {
     fillerTrend: { early: Math.round(earlyFillers * 10) / 10, recent: Math.round(recentFillers * 10) / 10 },
     recentInsights: fullSessions.slice(0, 3).map(s => s.insight).filter(Boolean),
   };
+}
+
+// ===== Active Thread (threaded challenge state) =====
+
+export async function saveActiveThread(thread: ActiveThread): Promise<void> {
+  await AsyncStorage.setItem(KEYS.ACTIVE_THREAD, JSON.stringify(thread));
+}
+
+export async function getActiveThread(): Promise<ActiveThread | null> {
+  const raw = await AsyncStorage.getItem(KEYS.ACTIVE_THREAD);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export async function clearActiveThread(): Promise<void> {
+  await AsyncStorage.removeItem(KEYS.ACTIVE_THREAD);
 }
 
 // ===== Recent Session History (for question engine) =====

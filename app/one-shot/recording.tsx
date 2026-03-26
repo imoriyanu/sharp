@@ -8,19 +8,20 @@ import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '..
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
 import { stopAudio } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
-import { scoreAnswer } from '../../src/services/scoring';
-import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache } from '../../src/services/storage';
+import { scoreAnswer, generateFollowUp, generateDebrief } from '../../src/services/scoring';
+import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache, getActiveThread, saveActiveThread, clearActiveThread } from '../../src/services/storage';
 import { trackOneShotUsage, trackThreadedUsage } from '../../src/services/premium';
 
 const DEFAULT_TIMER = 90;
 
 export default function RecordingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ question: string; mode: string; reasoning: string; timerSeconds: string }>();
+  const params = useLocalSearchParams<{ question: string; mode: string; reasoning: string; timerSeconds: string; turnNumber: string }>();
   const TIMER_SECONDS = parseInt(params.timerSeconds || String(DEFAULT_TIMER)) || DEFAULT_TIMER;
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('Scoring your answer...');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [retryReason, setRetryReason] = useState('');
   const recorderRef = useRef<InstanceType<typeof AudioModule.AudioRecorder> | null>(null);
@@ -89,6 +90,86 @@ export default function RecordingScreen() {
         return;
       }
 
+      const isThreaded = params.mode === 'threaded';
+      const turnNumber = parseInt(params.turnNumber || '1');
+
+      // === THREADED MODE: skip results, go to follow-up or debrief ===
+      if (isThreaded) {
+        // Save turn to active thread
+        const thread = await getActiveThread();
+        if (thread) {
+          thread.turns.push({ turnNumber, question: params.question || '', transcript });
+          await saveActiveThread(thread);
+
+          if (turnNumber < 4) {
+            // Generate follow-up
+            if (mountedRef.current) setProcessingMessage('Sharp is thinking...');
+            const ctx = await getContext();
+            const followUp = await generateFollowUp({
+              roleText: ctx?.roleText || '',
+              currentCompany: ctx?.currentCompany || '',
+              situationText: ctx?.situationText || '',
+              dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+              originalQuestion: thread.originalQuestion,
+              previousTranscripts: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
+              turnNumber: turnNumber,
+            });
+
+            if (!mountedRef.current) return;
+
+            // Clear cache on first turn
+            if (turnNumber === 1) await clearThreadedQuestionCache();
+            if (turnNumber === 1) await trackThreadedUsage();
+
+            router.replace({
+              pathname: '/threaded/follow-up',
+              params: {
+                question: followUp.followUp,
+                reaction: followUp.reaction || '',
+                turnNumber: String(turnNumber + 1),
+                targeting: followUp.targeting || '',
+                pressureLevel: followUp.pressureLevel || 'probing',
+              },
+            });
+          } else {
+            // Turn 4 complete — generate debrief + save session
+            if (mountedRef.current) setProcessingMessage('Analysing the full conversation...');
+            const ctx = await getContext();
+            const debrief = await generateDebrief({
+              roleText: ctx?.roleText || '',
+              currentCompany: ctx?.currentCompany || '',
+              situationText: ctx?.situationText || '',
+              dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+              turns: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
+            });
+
+            // Save complete session
+            await saveSession({
+              id: thread.id,
+              type: 'threaded',
+              scenario: thread.scenario,
+              turns: thread.turns.map(t => ({
+                id: generateId(), turnNumber: t.turnNumber, question: t.question,
+                questionReasoning: '', questionTargets: 'substance' as const, questionDifficulty: 5,
+                transcript: t.transcript, scores: { structure: 0, concision: 0, substance: 0, fillerWords: 0, awareness: 0 },
+                overall: 0, summary: '', coachingInsight: '', awarenessNote: null,
+                snippet: { original: '', problems: [], rewrite: '', explanation: '' },
+              })),
+              createdAt: thread.createdAt,
+            });
+            await clearActiveThread();
+
+            if (!mountedRef.current) return;
+            router.replace({
+              pathname: '/threaded/debrief',
+              params: { debrief: JSON.stringify(debrief) },
+            });
+          }
+        }
+        return;
+      }
+
+      // === ONE-SHOT MODE: score and show results ===
       const [ctx, prevScores, insights] = await Promise.all([getContext(), getAverageScores(), getRecentInsights()]);
       const result = await scoreAnswer({
         roleText: ctx?.roleText || '',
@@ -103,13 +184,8 @@ export default function RecordingScreen() {
 
       if (!mountedRef.current) return;
 
-      // Clear question cache (completed — next time get a new one)
-      if (params.mode === 'threaded') await clearThreadedQuestionCache();
-      else await clearOneShotQuestionCache();
-
-      // Track usage
-      if (params.mode === 'threaded') await trackThreadedUsage();
-      else await trackOneShotUsage();
+      await clearOneShotQuestionCache();
+      await trackOneShotUsage();
 
       router.replace({
         pathname: '/one-shot/results',
@@ -134,7 +210,7 @@ export default function RecordingScreen() {
           reasoning: params.reasoning || '',
           transcript,
           recordingUri: uri,
-          mode: params.mode || 'one_shot',
+          mode: 'one_shot',
         },
       });
     } catch (e) {
@@ -150,7 +226,7 @@ export default function RecordingScreen() {
   if (processing) {
     return (
       <SafeAreaView style={s.safe}>
-        <LoadingScreen message="Scoring your answer..." submessage="Analysing structure, substance, concision..." />
+        <LoadingScreen message={processingMessage} submessage={params.mode === 'threaded' ? 'Preparing the next question...' : 'Analysing structure, substance, concision...'} />
       </SafeAreaView>
     );
   }

@@ -193,8 +193,20 @@ export interface ThreadDebrief {
 }
 
 export interface FollowUp {
+  reaction: string;
   followUp: string;
   targeting: string;
+  pressureLevel: 'probing' | 'pressing' | 'pressure';
+}
+
+// ===== Active Thread (threaded challenge state) =====
+
+export interface ActiveThread {
+  id: string;
+  originalQuestion: string;
+  scenario: string;
+  turns: { turnNumber: number; question: string; transcript: string }[];
+  createdAt: string;
 }
 
 // ===== Daily 30 Types =====
