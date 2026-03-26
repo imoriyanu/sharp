@@ -56,17 +56,24 @@ export default function CoachingScreen() {
     try {
       await stopAudio();
       await requestRecordingPermissionsAsync();
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      // Try configuring audio session with fallback modes
+      let sessionReady = false;
+      for (const mode of ['duckOthers', 'mixWithOthers'] as const) {
+        try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, interruptionMode: mode }); sessionReady = true; break; } catch { /* try next */ }
+      }
+      if (!sessionReady) await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+
       const recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
       await recorder.prepareToRecordAsync();
       recorder.record();
       recorderRef.current = recorder;
       setPracticeState('recording');
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Recording error:', e);
       setPracticeState('ready');
     }
+    // Note: if on a call, interruptionMode 'duckOthers' allows recording to coexist
   }
 
   async function stopRecording() {

@@ -2,15 +2,12 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 // ===== PRODUCTION URL — update this after deploying backend =====
-const PRODUCTION_API_URL = 'https://sharp-ai-backend-production.up.railway.app';
+const PRODUCTION_API_URL = 'https://sharp-production-2d7c.up.railway.app';
 // ================================================================
 
 function getApiBase(): string {
-  if (!__DEV__) return PRODUCTION_API_URL;
-  // Dev: simulator uses localhost, physical device uses LAN IP
-  const debuggerHost = Constants.expoConfig?.hostUri?.split(':')[0];
-  if (debuggerHost) return `http://${debuggerHost}:3001`;
-  return Platform.OS === 'ios' ? 'http://127.0.0.1:3001' : 'http://10.0.2.2:3001';
+  // Always use production backend
+  return PRODUCTION_API_URL;
 }
 
 const API_BASE = getApiBase();

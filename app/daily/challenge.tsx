@@ -94,7 +94,13 @@ export default function DailyChallengeScreen() {
     try {
       await stopAudio();
       await requestRecordingPermissionsAsync();
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      // Try configuring audio session with fallback modes
+      let sessionReady = false;
+      for (const mode of ['duckOthers', 'mixWithOthers'] as const) {
+        try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, interruptionMode: mode }); sessionReady = true; break; } catch { /* try next */ }
+      }
+      if (!sessionReady) await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+
       const recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
       await recorder.prepareToRecordAsync();
       recorder.record();
@@ -109,8 +115,10 @@ export default function DailyChallengeScreen() {
           return prev - 1;
         });
       }, 1000);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to start recording:', e);
+      setRetryReason('Could not start recording. If you\'re on a call, end it first and try again.');
+      setState('ready');
     }
   }
 

@@ -41,7 +41,21 @@ export default function RecordingScreen() {
     try {
       await stopAudio();
       await requestRecordingPermissionsAsync();
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+
+      // Try configuring audio session — fallback through modes if one fails
+      let sessionReady = false;
+      for (const mode of ['duckOthers', 'mixWithOthers'] as const) {
+        try {
+          await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, interruptionMode: mode });
+          sessionReady = true;
+          break;
+        } catch { /* try next mode */ }
+      }
+      if (!sessionReady) {
+        // Last resort — basic config
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      }
+
       const recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
       await recorder.prepareToRecordAsync();
       recorder.record();
@@ -55,8 +69,14 @@ export default function RecordingScreen() {
           return prev - 1;
         });
       }, 1000);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Recording error:', e);
+      const msg = e?.message || '';
+      if (msg.includes('call') || msg.includes('interruption') || msg.includes('session')) {
+        setRetryReason('Microphone is being used by another app (call or FaceTime). End the call and try again.');
+      } else {
+        setRetryReason('Could not start recording. Please check your microphone permissions and try again.');
+      }
     }
   }
 
