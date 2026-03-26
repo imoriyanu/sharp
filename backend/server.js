@@ -67,7 +67,7 @@ app.get('/api/health', (req, res) => {
 app.post('/api/question/generate', async (req, res) => {
   try {
     const prompt = prompts.questionEnginePrompt(req.body);
-    const result = await callClaude(prompt, 800);
+    const result = await callClaude(prompt, 1000);
     res.json(result);
   } catch (error) {
     console.error('Question generation error:', error);
@@ -81,7 +81,7 @@ app.post('/api/score', async (req, res) => {
   try {
     const promptFn = req.body.isOnboarding ? prompts.onboardingScoringPrompt : prompts.scoringPrompt;
     const prompt = promptFn(req.body);
-    const result = await callClaude(prompt, 1500);
+    const result = await callClaude(prompt, 2000);
     res.json(result);
   } catch (error) {
     console.error('Scoring error:', error);

@@ -10,7 +10,7 @@ import { stopAudio, playQuestionAudio, buildNaturalScript } from '../../src/serv
 import { generateQuestion } from '../../src/services/scoring';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
-import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, getRecentQuestions, addRecentQuestion, getAverageScores, getRecentInsights } from '../../src/services/storage';
+import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, getRecentQuestions, addRecentQuestion, getAverageScores, getRecentInsights, getRecentSessionHistory } from '../../src/services/storage';
 import type { RecordingState, GeneratedQuestion } from '../../src/types';
 
 const DEFAULT_TIMER = 60;
@@ -55,8 +55,9 @@ export default function DailyChallengeScreen() {
         return;
       }
 
-      const ctx = await getContext();
-      const recentQuestions = await getRecentQuestions();
+      const [ctx, recentQuestions, sessionHistory, averageScores] = await Promise.all([
+        getContext(), getRecentQuestions(), getRecentSessionHistory(10), getAverageScores(),
+      ]);
       const result = await generateQuestion({
         roleText: ctx?.roleText || '',
         currentCompany: ctx?.currentCompany || '',
@@ -64,6 +65,8 @@ export default function DailyChallengeScreen() {
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
         documents: ctx?.documents || [],
         recentQuestions,
+        sessionHistory,
+        averageScores,
       });
 
       // Cache for the day and track for variety
@@ -187,7 +190,7 @@ export default function DailyChallengeScreen() {
   const secs = timeLeft % 60;
   const timerStr = `${mins}:${secs.toString().padStart(2, '0')}`;
   const format = q?.format || 'prompt';
-  const formatLabel = format === 'roleplay' ? 'Role Play' : format === 'briefing' ? 'Briefing' : format === 'pressure' ? 'Pressure' : format === 'context' ? 'Your Context' : 'Quick Prompt';
+  const formatLabel = format === 'roleplay' ? 'Role Play' : format === 'briefing' ? 'Briefing' : format === 'pressure' ? 'Pressure' : format === 'context' ? 'Your Context' : format === 'industry' ? 'Industry Insight' : 'Quick Prompt';
 
   if (state === 'idle') {
     return (
@@ -221,6 +224,15 @@ export default function DailyChallengeScreen() {
               <View style={st.contextCard}>
                 <Text style={st.contextLabel}>Background</Text>
                 <Text style={st.contextText}>{q.background}</Text>
+              </View>
+            </FadeIn>
+          )}
+
+          {format === 'industry' && q?.newsContext && (
+            <FadeIn delay={200}>
+              <View style={st.contextCard}>
+                <Text style={st.contextLabel}>What's happening</Text>
+                <Text style={st.contextText}>{q.newsContext}</Text>
               </View>
             </FadeIn>
           )}

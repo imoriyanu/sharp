@@ -6,7 +6,7 @@ import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '..
 import { LoadingScreen, AudioWaveBars, FadeIn } from '../../src/components/Animations';
 import { generateQuestion } from '../../src/services/scoring';
 import { playQuestionAudio, stopAudio, buildNaturalScript } from '../../src/services/tts';
-import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion } from '../../src/services/storage';
+import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion, getRecentSessionHistory, getAverageScores } from '../../src/services/storage';
 import { isPremium } from '../../src/services/premium';
 import type { GeneratedQuestion } from '../../src/types';
 
@@ -44,7 +44,9 @@ export default function QuestionScreen() {
         }
       }
 
-      const [ctx, recentQuestions] = await Promise.all([getContext(), getRecentQuestions()]);
+      const [ctx, recentQuestions, sessionHistory, averageScores] = await Promise.all([
+        getContext(), getRecentQuestions(), getRecentSessionHistory(10), getAverageScores(),
+      ]);
       const q = await generateQuestion({
         roleText: ctx?.roleText || '',
         currentCompany: ctx?.currentCompany || '',
@@ -52,6 +54,8 @@ export default function QuestionScreen() {
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
         documents: ctx?.documents || [],
         recentQuestions,
+        sessionHistory,
+        averageScores,
       });
       await addRecentQuestion(q.question);
 
@@ -121,6 +125,15 @@ export default function QuestionScreen() {
           </View>
         )}
 
+        {question?.format === 'industry' && question?.newsContext && (
+          <FadeIn delay={50}>
+            <View style={s.newsCard}>
+              <Text style={s.newsLabel}>What's happening</Text>
+              <Text style={s.newsText}>{question.newsContext}</Text>
+            </View>
+          </FadeIn>
+        )}
+
         <FadeIn delay={100}>
           <Text style={s.questionText}>
             {`"${question?.question}"`}
@@ -172,6 +185,9 @@ const s = StyleSheet.create({
   dots: { flexDirection: 'row', gap: wp(3) },
   dot: { width: wp(6), height: wp(6), borderRadius: wp(3), backgroundColor: colors.border },
   dotOn: { backgroundColor: colors.accent.primary },
+  newsCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.lg, borderWidth: 1.5, borderColor: colors.border },
+  newsLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },
+  newsText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20) },
   spacer: { flex: 1 },
   ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(13), alignItems: 'center', marginBottom: spacing.sm },
   ghostText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.tertiary },

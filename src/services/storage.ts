@@ -429,6 +429,44 @@ export async function getProgressData(): Promise<ProgressData> {
   };
 }
 
+// ===== Recent Session History (for question engine) =====
+
+export async function getRecentSessionHistory(count: number = 10): Promise<{
+  question: string;
+  format: string;
+  transcript: string;
+  scores: { structure: number; concision: number; substance: number; fillerWords: number; awareness: number };
+  overall: number;
+  coachingInsight: string;
+  weakestArea: string;
+  date: string;
+  type: string;
+}[]> {
+  const sessions = await getSessions();
+  const history: any[] = [];
+  for (const s of sessions.slice(0, count)) {
+    const full = await getSessionById(s.id);
+    if (full && full.turns.length > 0) {
+      const lastTurn = full.turns[full.turns.length - 1];
+      const scores = lastTurn.scores;
+      const dims = Object.entries(scores) as [string, number][];
+      const weakest = dims.reduce((a, b) => a[1] < b[1] ? a : b);
+      history.push({
+        question: lastTurn.question,
+        format: full.type,
+        transcript: lastTurn.transcript.slice(0, 150),
+        scores: lastTurn.scores,
+        overall: lastTurn.overall,
+        coachingInsight: lastTurn.coachingInsight,
+        weakestArea: weakest[0],
+        date: full.createdAt.split('T')[0],
+        type: full.type,
+      });
+    }
+  }
+  return history;
+}
+
 // ===== Question Caching =====
 
 export async function getCachedDailyQuestion(): Promise<{ date: string; question: any } | null> {

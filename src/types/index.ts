@@ -75,13 +75,19 @@ export interface DocumentExtraction {
 
 // ===== Question Engine Types =====
 
-export type QuestionFormat = 'roleplay' | 'prompt' | 'briefing' | 'pressure' | 'context';
+export type QuestionFormat = 'roleplay' | 'prompt' | 'briefing' | 'pressure' | 'context' | 'industry';
 
 export interface GeneratedQuestion {
   format?: QuestionFormat;
   question: string;
   situation?: string;
   background?: string;
+  newsContext?: string;
+  learnMore?: {
+    topic: string;
+    searchTerms: string[];
+    why: string;
+  };
   timerSeconds?: number;
   reasoning: string;
   targets: QuestionTarget;
@@ -129,6 +135,11 @@ export interface ScoringResult {
   communicationTip?: string;
   suggestedAngles?: string[];
   modelAnswer?: string;
+  suggestedReading?: {
+    topic: string;
+    searchTerms: string[];
+    why: string;
+  };
 }
 
 // ===== Session Types =====
