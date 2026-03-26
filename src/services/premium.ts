@@ -10,10 +10,9 @@ const DEV_PREMIUM_FLAG = true;
 const USAGE_KEY = 'sharp:daily_usage';
 
 export const PLANS: PremiumPlan[] = [
-  { id: 'pass_30', name: '30-Day Pass', price: '€19.99', period: 'one-time', perMonth: '€19.99/mo', badge: 'No commitment' },
-  { id: 'monthly', name: 'Monthly', price: '€14.99', period: '/month', perMonth: '€14.99/mo' },
-  { id: 'annual', name: 'Annual', price: '€119.88', period: '/year', perMonth: '€9.99/mo', savings: 'Save 33%', recommended: true },
-  { id: 'three_year', name: '3-Year', price: '€215.64', period: '/3 years', perMonth: '€5.99/mo', savings: 'Save 54%', badge: 'Best value' },
+  { id: 'annual', name: 'Annual', price: '£119.99', period: '/year', perMonth: '£10/mo', savings: 'Save 50%', recommended: true },
+  { id: 'monthly', name: 'Monthly', price: '£20', period: '/month', perMonth: '£20/mo' },
+  { id: 'pass_30', name: 'Sprint Pass', price: '£30', period: 'one-time', perMonth: '£30', badge: '30 days · no renewal' },
 ];
 
 export const FREE_LIMITS: UsageLimits = {
