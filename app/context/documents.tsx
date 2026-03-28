@@ -20,7 +20,7 @@ export default function DocumentsScreen() {
         // TODO: Upload file, parse with Claude, save to context
       }
     } catch (e) {
-      console.error('Document picker error:', e);
+      __DEV__ && console.error('Document picker error:', e);
     }
   }
 

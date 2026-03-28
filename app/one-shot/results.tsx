@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
@@ -12,17 +12,27 @@ import { isPremium, canPracticeAgain, trackPracticeAgainUsage } from '../../src/
 const DIMS = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
 const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words', awareness: 'Awareness' };
 
+function safeParse<T>(json: string | undefined, fallback: T): T {
+  if (!json) return fallback;
+  try { return JSON.parse(json); } catch { return fallback; }
+}
+
 export default function ResultsScreen() {
   const router = useRouter();
   const p = useLocalSearchParams();
-  const scores = JSON.parse((p.scores as string) || '{}');
+  const scores = safeParse(p.scores as string, { structure: 0, concision: 0, substance: 0, fillerWords: 0, awareness: 0 });
   const overall = parseFloat((p.overall as string) || '0');
+  const progressScore = parseFloat((p.progressScore as string) || '0');
+  const progressDelta = parseFloat((p.progressDelta as string) || '0');
+  const progressTrend = (p.progressTrend as string) || 'new';
+  const progressMessage = (p.progressMessage as string) || '';
+  const hasProgress = progressTrend !== 'new' && progressScore > 0;
   const summary = (p.summary as string) || '';
   const positives = (p.positives as string) || '';
   const improvements = (p.improvements as string) || '';
   const insight = (p.coachingInsight as string) || '';
   const awarenessNote = (p.awarenessNote as string) || '';
-  const fillers = JSON.parse((p.fillerWordsFound as string) || '[]');
+  const fillers = safeParse<string[]>(p.fillerWordsFound as string, []);
   const fillerCount = parseInt((p.fillerCount as string) || '0');
   const question = (p.question as string) || '';
   const reasoning = (p.reasoning as string) || '';
@@ -30,7 +40,8 @@ export default function ResultsScreen() {
   const recordingUri = (p.recordingUri as string) || '';
   const modelAnswer = (p.modelAnswer as string) || '';
   const communicationTip = (p.communicationTip as string) || '';
-  const suggestedAngles: string[] = p.suggestedAngles ? JSON.parse(p.suggestedAngles as string) : [];
+  const suggestedAngles = safeParse<string[]>(p.suggestedAngles as string, []);
+  const suggestedReading = safeParse<{ topic: string; searchTerms: string[]; reason: string } | null>(p.suggestedReading as string, null);
   const rewrite = (p.snippetRewrite as string) || '';
 
   const [playing, setPlaying] = React.useState<string | null>(null);
@@ -65,7 +76,7 @@ export default function ResultsScreen() {
         transcript, recordingUri, modelAnswer,
         scores, overall, summary, coachingInsight: insight,
         awarenessNote, snippet: {
-          original: (p.snippetOriginal as string) || '', problems: JSON.parse((p.snippetProblems as string) || '[]'),
+          original: (p.snippetOriginal as string) || '', problems: safeParse<string[]>(p.snippetProblems as string, []),
           rewrite, explanation: (p.snippetExplanation as string) || '',
         },
       }],
@@ -108,10 +119,27 @@ export default function ResultsScreen() {
         {/* Score */}
         <FadeIn delay={0}>
           <View style={s.scoreSection}>
-            <View style={[s.ring, { borderColor: getScoreColor(overall) }]}>
-              <ScoreReveal score={overall} color={getScoreColor(overall)} />
+            <View style={[s.ring, { borderColor: getScoreColor(hasProgress ? progressScore : overall) }]}>
+              <ScoreReveal score={hasProgress ? progressScore : overall} color={getScoreColor(hasProgress ? progressScore : overall)} />
             </View>
-            <Text style={s.scoreLbl}>Overall Score</Text>
+            {hasProgress ? (
+              <View style={s.progressRow}>
+                <Text style={s.scoreLbl}>Your Score</Text>
+                <View style={[s.deltaBadge, progressDelta >= 0 ? s.deltaUp : s.deltaDown]}>
+                  <Text style={[s.deltaText, progressDelta >= 0 ? s.deltaUpText : s.deltaDownText]}>
+                    {progressDelta >= 0 ? '↑' : '↓'} {Math.abs(progressDelta).toFixed(1)} vs avg
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={s.scoreLbl}>Overall Score</Text>
+            )}
+            {hasProgress && progressMessage ? (
+              <Text style={s.progressMsg}>{progressMessage}</Text>
+            ) : null}
+            {hasProgress && progressScore !== overall ? (
+              <Text style={s.rawScore}>Raw: {overall.toFixed(1)}</Text>
+            ) : null}
           </View>
         </FadeIn>
 
@@ -226,6 +254,33 @@ export default function ResultsScreen() {
           </View>
         )}
 
+        {/* Suggested reading */}
+        {suggestedReading && (
+          <FadeIn delay={850}>
+            <View style={s.readingCard}>
+              <View style={s.readingHeader}>
+                <Text style={s.readingEmoji}>📖</Text>
+                <Text style={s.readingLabel}>Go deeper</Text>
+              </View>
+              <Text style={s.readingReason}>{suggestedReading.reason}</Text>
+              <View style={s.readingLinks}>
+                {suggestedReading.searchTerms.map((term, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={s.readingLink}
+                    onPress={() => Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(term)}`).catch(() => {})}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.readingLinkIcon}>🔗</Text>
+                    <Text style={s.readingLinkText}>{term}</Text>
+                    <Text style={s.readingArrow}>→</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </FadeIn>
+        )}
+
         {/* Awareness */}
         {awarenessNote ? (
           <View style={s.awareCard}><Text style={s.awareText}>⭐ {awarenessNote}</Text></View>
@@ -291,6 +346,15 @@ const s = StyleSheet.create({
   ring: { width: wp(100), height: wp(100), borderRadius: wp(50), borderWidth: wp(4), alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   scoreNum: { fontSize: fp(36), fontWeight: typography.weight.black, letterSpacing: -1.5 },
   scoreLbl: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  deltaBadge: { borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(2) },
+  deltaUp: { backgroundColor: colors.feedback.positiveBg },
+  deltaDown: { backgroundColor: colors.feedback.negativeBg },
+  deltaText: { fontSize: fp(9), fontWeight: typography.weight.bold },
+  deltaUpText: { color: colors.success },
+  deltaDownText: { color: colors.error },
+  progressMsg: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.text.tertiary, marginTop: wp(3) },
+  rawScore: { fontSize: fp(9), color: colors.text.muted, marginTop: wp(2) },
 
   card: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, ...shadows.md, marginBottom: spacing.lg },
   dim: { flexDirection: 'row', alignItems: 'center', paddingVertical: wp(6) },
@@ -336,18 +400,29 @@ const s = StyleSheet.create({
   awareCard: { backgroundColor: colors.daily.bg, borderWidth: 1.5, borderColor: colors.daily.border, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   awareText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.accent.primary },
 
+  readingCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.lg, borderWidth: 1.5, borderColor: colors.borderLight, ...shadows.md },
+  readingHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  readingEmoji: { fontSize: fp(16) },
+  readingLabel: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.text.primary, textTransform: 'uppercase' as const, letterSpacing: 1 },
+  readingReason: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20), marginBottom: spacing.md },
+  readingLinks: { gap: spacing.sm },
+  readingLink: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg.tertiary, borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.md, gap: spacing.sm },
+  readingLinkIcon: { fontSize: fp(12) },
+  readingLinkText: { fontSize: typography.size.sm, color: colors.accent.primary, fontWeight: typography.weight.semibold, flex: 1 },
+  readingArrow: { fontSize: fp(12), color: colors.text.muted },
+
   whyRow: { marginBottom: spacing.md },
   why: { fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.semibold },
   reasoningText: { fontSize: fp(10), color: colors.text.secondary, lineHeight: fp(16), marginTop: spacing.sm },
 
   divider: { height: 1.5, backgroundColor: colors.borderLight, marginVertical: spacing.lg },
 
-  mainBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(15), alignItems: 'center', marginBottom: spacing.sm, ...shadows.accent },
+  mainBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(16), alignItems: 'center', marginBottom: spacing.sm, ...shadows.accent },
   mainBtnDisabled: { opacity: 0.4 },
   mainBtnLocked: { backgroundColor: colors.text.muted },
   mainBtnText: { fontSize: fp(13), fontWeight: typography.weight.bold, color: colors.text.inverse },
   mainBtnSub: { fontSize: fp(9), color: 'rgba(255,255,255,0.7)', marginTop: wp(2) },
-  ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(13), alignItems: 'center' },
+  ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(15), alignItems: 'center' },
   ghostBtnText: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.text.tertiary },
 
   bottomSpacer: { height: wp(30) },

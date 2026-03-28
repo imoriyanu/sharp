@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { getUserProfile, saveUserProfile, trackFeatureInterest } from '../../src/services/storage';
-import { isPremium, getPlanName } from '../../src/services/premium';
+import { isPremium, isMax, getPlanName, setPremiumStatus, clearPremiumStatus } from '../../src/services/premium';
 import { useAuth } from '../../src/context/AuthContext';
 import { signOut } from '../../src/services/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,12 +19,17 @@ export default function SettingsScreen() {
   const { user, isAuthenticated } = useAuth();
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [premiumState, setPremiumState] = useState(isPremium());
+  const [maxState, setMaxState] = useState(isMax());
 
   useEffect(() => {
     getUserProfile().then(p => {
       setProfile(p);
       if (p) setNameInput(p.displayName);
     });
+    // Load persisted preferences
+    AsyncStorage.getItem('sharp:pref_audio').then(v => { if (v !== null) setAudioQuestions(v === 'true'); });
+    AsyncStorage.getItem('sharp:pref_haptics').then(v => { if (v !== null) setHaptics(v === 'true'); });
   }, []);
 
   async function saveName() {
@@ -89,11 +94,11 @@ export default function SettingsScreen() {
         <View style={s.card}>
           <View style={s.row}>
             <Text style={s.label}>Audio questions</Text>
-            <Switch value={audioQuestions} onValueChange={setAudioQuestions} trackColor={{ false: colors.border, true: colors.accent.primary }} />
+            <Switch value={audioQuestions} onValueChange={(v) => { setAudioQuestions(v); AsyncStorage.setItem('sharp:pref_audio', String(v)); }} trackColor={{ false: colors.border, true: colors.accent.primary }} />
           </View>
           <View style={s.row}>
             <Text style={s.label}>Haptic feedback</Text>
-            <Switch value={haptics} onValueChange={setHaptics} trackColor={{ false: colors.border, true: colors.accent.primary }} />
+            <Switch value={haptics} onValueChange={(v) => { setHaptics(v); AsyncStorage.setItem('sharp:pref_haptics', String(v)); }} trackColor={{ false: colors.border, true: colors.accent.primary }} />
           </View>
           <View style={[s.row, s.rowLast]}>
             <Text style={s.label}>Daily reminder</Text>
@@ -104,10 +109,6 @@ export default function SettingsScreen() {
         {/* Data */}
         <Text style={s.section}>Data</Text>
         <View style={s.card}>
-          <TouchableOpacity style={s.row}>
-            <Text style={s.label}>Export sessions</Text>
-            <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={[s.row, s.rowLast]} onPress={clearData}>
             <Text style={[s.label, { color: colors.error }]}>Clear all data</Text>
             <Text style={[s.value, { color: colors.error }]}>→</Text>
@@ -152,6 +153,65 @@ export default function SettingsScreen() {
             )}
           </View>
         </TouchableOpacity>
+
+        <Text style={s.section}>Legal</Text>
+        <View style={s.card}>
+          <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => router.push('/privacy')}>
+            <Text style={s.label}>Privacy Policy</Text>
+            <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Dev tools — remove before App Store release */}
+        {__DEV__ && (
+          <>
+            <Text style={s.section}>Dev Tools</Text>
+            <View style={s.card}>
+              <View style={s.row}>
+                <View style={s.planInfo}>
+                  <Text style={s.label}>Simulate Pro</Text>
+                  <Text style={s.planSub}>{premiumState && !maxState ? 'Active' : 'Off'}</Text>
+                </View>
+                <Switch
+                  value={premiumState && !maxState}
+                  onValueChange={async (val) => {
+                    if (val) {
+                      await setPremiumStatus('annual');
+                      setPremiumState(true);
+                      setMaxState(false);
+                    } else {
+                      await clearPremiumStatus();
+                      setPremiumState(false);
+                      setMaxState(false);
+                    }
+                  }}
+                  trackColor={{ false: colors.border, true: colors.accent.primary }}
+                />
+              </View>
+              <View style={[s.row, s.rowLast]}>
+                <View style={s.planInfo}>
+                  <Text style={s.label}>Simulate Pro Max</Text>
+                  <Text style={s.planSub}>{maxState ? 'Active — 20/day' : 'Off'}</Text>
+                </View>
+                <Switch
+                  value={maxState}
+                  onValueChange={async (val) => {
+                    if (val) {
+                      await setPremiumStatus('max_annual');
+                      setPremiumState(true);
+                      setMaxState(true);
+                    } else {
+                      await setPremiumStatus('annual');
+                      setPremiumState(true);
+                      setMaxState(false);
+                    }
+                  }}
+                  trackColor={{ false: colors.border, true: colors.duel.accent }}
+                />
+              </View>
+            </View>
+          </>
+        )}
 
         <View style={s.versionRow}><Text style={s.version}>Sharp v2.0</Text></View>
       </ScrollView>

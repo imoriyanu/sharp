@@ -51,7 +51,7 @@ export default function AnalyticsScreen() {
         await playQuestionAudio(result.spokenSummary);
         if (mounted) setSpeaking(false);
       } catch (e) {
-        console.error('Summary error:', e);
+        __DEV__ && console.error('Summary error:', e);
         if (mounted) setLoading(false);
       }
     } else {
@@ -151,7 +151,7 @@ export default function AnalyticsScreen() {
                   {data.overallTrend.slice(-15).map((point, i, arr) => (
                     <View key={i} style={s.chartBar}>
                       <View style={[s.chartFill, {
-                        height: `${(point.score / 10) * 100}%`,
+                        height: `${Math.min((point.score / 10) * 100, 100)}%`,
                         backgroundColor: getScoreColor(point.score),
                       }]} />
                       {i === arr.length - 1 && (

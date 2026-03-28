@@ -4,7 +4,10 @@ import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../src/constants/theme';
 import { stopAudio } from '../src/services/tts';
-import { hasOnboarded } from '../src/services/storage';
+import { hasOnboarded, clearStaleThread } from '../src/services/storage';
+import { initPremium } from '../src/services/premium';
+import { initErrorTracking } from '../src/services/errorTracking';
+import { initAnalytics } from '../src/services/analytics';
 import { AuthProvider } from '../src/context/AuthContext';
 
 function AudioGuard() {
@@ -19,13 +22,16 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   const [onboarded, setOnboarded] = useState(true); // default true to avoid flash
 
   useEffect(() => {
-    hasOnboarded().then(val => {
+    Promise.all([hasOnboarded(), initPremium(), clearStaleThread(), initErrorTracking(), initAnalytics()]).then(([val]) => {
       setOnboarded(val);
       setChecked(true);
       if (!val) {
-        // Small delay to let the layout mount
         setTimeout(() => router.replace('/onboarding'), 50);
       }
+    }).catch(() => {
+      // If storage fails, let the user through rather than freezing
+      setOnboarded(true);
+      setChecked(true);
     });
   }, []);
 
@@ -79,6 +85,7 @@ export default function RootLayout() {
           <Stack.Screen name="streak/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="auth/signin" options={{ presentation: 'modal' }} />
           <Stack.Screen name="session/[id]" />
+          <Stack.Screen name="privacy/index" options={{ presentation: 'modal' }} />
         </Stack>
       </OnboardingGate>
       </AuthProvider>

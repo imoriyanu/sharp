@@ -37,7 +37,7 @@ export default function DuelAcceptScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.primary },
-  container: { flex: 1, padding: layout.screenPadding, alignItems: 'center', paddingTop: wp(50) },
+  container: { flex: 1, padding: layout.screenPadding, alignItems: 'center', paddingTop: spacing.xxl },
   pill: { backgroundColor: colors.duel.bg, borderWidth: 1.5, borderColor: colors.duel.border, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(4), marginBottom: spacing.xl },
   pillText: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.duel.text },
   avi: { width: wp(44), height: wp(44), borderRadius: wp(22), backgroundColor: colors.duel.bg, borderWidth: 2, borderColor: colors.duel.border, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },

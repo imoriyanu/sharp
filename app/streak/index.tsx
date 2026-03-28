@@ -229,7 +229,7 @@ const s = StyleSheet.create({
   gridCell: { width: wp(38), height: wp(38), borderRadius: wp(19), backgroundColor: colors.bg.tertiary, alignItems: 'center', justifyContent: 'center' },
   gridCellBadge: { borderWidth: 2, borderColor: colors.streak.locked },
   gridCellDone: { backgroundColor: colors.accent.light },
-  gridCellFrozen: { backgroundColor: '#E8F4FF' },
+  gridCellFrozen: { backgroundColor: colors.duel.bg },
   gridCellToday: { borderWidth: 2, borderColor: colors.accent.primary },
   gridDay: { fontSize: fp(9), fontWeight: typography.weight.semibold, color: colors.text.muted },
   gridDayDone: { color: colors.accent.primary },

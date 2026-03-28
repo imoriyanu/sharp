@@ -8,8 +8,8 @@ import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '..
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
 import { stopAudio } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
-import { scoreAnswer } from '../../src/services/scoring';
-import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache } from '../../src/services/storage';
+import { scoreAnswer, generateFollowUp, generateDebrief, computeProgressScore } from '../../src/services/scoring';
+import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache, clearIndustryQuestionCache, getThreadState, saveThreadState, clearThreadState, getSessions, getSessionById } from '../../src/services/storage';
 import { trackOneShotUsage, trackThreadedUsage } from '../../src/services/premium';
 
 const DEFAULT_TIMER = 90;
@@ -21,6 +21,7 @@ export default function RecordingScreen() {
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [processingMsg, setProcessingMsg] = useState('Scoring your answer...');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [retryReason, setRetryReason] = useState('');
   const recorderRef = useRef<InstanceType<typeof AudioModule.AudioRecorder> | null>(null);
@@ -70,7 +71,7 @@ export default function RecordingScreen() {
         });
       }, 1000);
     } catch (e: any) {
-      console.error('Recording error:', e);
+      __DEV__ && console.error('Recording error:', e);
       const msg = e?.message || '';
       if (msg.includes('call') || msg.includes('interruption') || msg.includes('session')) {
         setRetryReason('Microphone is being used by another app (call or FaceTime). End the call and try again.');
@@ -109,7 +110,91 @@ export default function RecordingScreen() {
         return;
       }
 
-      const [ctx, prevScores, insights] = await Promise.all([getContext(), getAverageScores(), getRecentInsights()]);
+      const ctx = await getContext();
+
+      // ===== THREADED MODE: skip scoring, go directly to follow-up or debrief =====
+      if (params.mode === 'threaded') {
+        const thread = await getThreadState();
+        if (!thread) throw new Error('No active thread');
+
+        // Add this turn
+        const turnNumber = thread.turns.length + 1;
+        thread.turns.push({ turnNumber, question: params.question || '', transcript });
+        await saveThreadState(thread);
+
+        const MAX_TURNS = 4;
+
+        if (turnNumber >= MAX_TURNS) {
+          // Final turn — generate debrief
+          setProcessingMsg('Analysing the full exchange...');
+          await trackThreadedUsage();
+          await clearThreadedQuestionCache();
+
+          const debrief = await generateDebrief({
+            roleText: ctx?.roleText || '',
+            currentCompany: ctx?.currentCompany || '',
+            situationText: ctx?.situationText || '',
+            dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+            turns: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
+          });
+
+          if (!mountedRef.current) return;
+
+          // Save as session
+          await saveSession({
+            id: generateId(), type: 'threaded', scenario: thread.originalQuestion.slice(0, 50),
+            turns: thread.turns.map(t => ({
+              id: generateId(), turnNumber: t.turnNumber, question: t.question,
+              questionReasoning: '', questionTargets: 'substance' as const, questionDifficulty: 5,
+              transcript: t.transcript, scores: { structure: 0, concision: 0, substance: 0, fillerWords: 0, awareness: 0 },
+              overall: debrief.overall, summary: '', coachingInsight: debrief.summary,
+              awarenessNote: null, snippet: { original: '', problems: [], rewrite: '', explanation: '' },
+            })),
+            createdAt: thread.startedAt,
+          });
+
+          await clearThreadState();
+
+          router.replace({
+            pathname: '/threaded/debrief',
+            params: {
+              debrief: JSON.stringify(debrief),
+              turns: JSON.stringify(thread.turns),
+            },
+          });
+        } else {
+          // Not final — generate follow-up
+          setProcessingMsg('Sharp is thinking about your response...');
+
+          const followUp = await generateFollowUp({
+            roleText: ctx?.roleText || '',
+            currentCompany: ctx?.currentCompany || '',
+            situationText: ctx?.situationText || '',
+            dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+            originalQuestion: thread.originalQuestion,
+            previousTranscripts: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
+            turnNumber: turnNumber + 1,
+          });
+
+          if (!mountedRef.current) return;
+
+          router.replace({
+            pathname: '/threaded/follow-up',
+            params: {
+              reaction: followUp.reaction || '',
+              question: followUp.followUp,
+              targeting: followUp.targeting,
+              pressureLevel: followUp.pressureLevel || 'probing',
+              turnNumber: String(turnNumber + 1),
+              turns: JSON.stringify(thread.turns),
+            },
+          });
+        }
+        return;
+      }
+
+      // ===== ONE-SHOT MODE: score and show results =====
+      const [prevScores, insights, sessions] = await Promise.all([getAverageScores(), getRecentInsights(), getSessions()]);
       const result = await scoreAnswer({
         roleText: ctx?.roleText || '',
         currentCompany: ctx?.currentCompany || '',
@@ -123,19 +208,31 @@ export default function RecordingScreen() {
 
       if (!mountedRef.current) return;
 
-      // Clear question cache (completed — next time get a new one)
-      if (params.mode === 'threaded') await clearThreadedQuestionCache();
-      else await clearOneShotQuestionCache();
+      // Compute progress score from history
+      const recentScores: number[] = [];
+      for (const s of sessions.slice(0, 5)) {
+        const full = await getSessionById(s.id);
+        if (full?.turns.length) recentScores.push(full.turns[full.turns.length - 1].overall);
+      }
+      const progressScore = computeProgressScore({
+        rawOverall: result.overall,
+        historicalAverage: prevScores?.overall ?? null,
+        sessionCount: sessions.length,
+        recentScores,
+      });
 
-      // Track usage
-      if (params.mode === 'threaded') await trackThreadedUsage();
-      else await trackOneShotUsage();
+      await Promise.all([clearOneShotQuestionCache(), clearIndustryQuestionCache()]);
+      await trackOneShotUsage();
 
       router.replace({
         pathname: '/one-shot/results',
         params: {
           scores: JSON.stringify(result.scores),
           overall: String(result.overall),
+          progressScore: String(progressScore.progress),
+          progressDelta: String(progressScore.delta),
+          progressTrend: progressScore.trend,
+          progressMessage: progressScore.message,
           summary: result.summary,
           positives: result.positives || '',
           improvements: result.improvements || '',
@@ -150,16 +247,18 @@ export default function RecordingScreen() {
           modelAnswer: result.modelAnswer || '',
           communicationTip: result.communicationTip || '',
           suggestedAngles: JSON.stringify(result.suggestedAngles || []),
+          suggestedReading: result.suggestedReading ? JSON.stringify(result.suggestedReading) : '',
           question: params.question || '',
           reasoning: params.reasoning || '',
           transcript,
           recordingUri: uri,
-          mode: params.mode || 'one_shot',
+          mode: 'one_shot',
         },
       });
     } catch (e) {
-      console.error('Processing error:', e);
+      __DEV__ && console.error('Processing error:', e);
       setProcessing(false);
+      setRetryReason('Something went wrong while scoring your answer. Please try again.');
     }
   }
 
@@ -170,7 +269,7 @@ export default function RecordingScreen() {
   if (processing) {
     return (
       <SafeAreaView style={s.safe}>
-        <LoadingScreen message="Scoring your answer..." submessage="Analysing structure, substance, concision..." />
+        <LoadingScreen message={processingMsg} submessage={params.mode === 'threaded' ? 'Building the conversation...' : 'Analysing structure, substance, concision...'} />
       </SafeAreaView>
     );
   }

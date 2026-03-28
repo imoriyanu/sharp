@@ -51,7 +51,7 @@ export default function OnboardingRecording() {
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => { if (prev <= 1) { stopRecording(); return 0; } return prev - 1; });
       }, 1000);
-    } catch (e: any) { console.error('Recording error:', e); setRetryMsg('Could not start recording. If you\'re on a call, end it first.'); }
+    } catch (e: any) { __DEV__ && console.error('Recording error:', e); setRetryMsg('Could not start recording. If you\'re on a call, end it first.'); }
   }
 
   async function stopRecording() {
@@ -78,7 +78,7 @@ export default function OnboardingRecording() {
       await setOnboardingStep(3);
       router.replace({ pathname: '/onboarding/result', params: { scores: JSON.stringify(result.scores), overall: String(result.overall), positives: result.positives || '', improvements: result.improvements || '', coachingInsight: result.coachingInsight, communicationTip: result.communicationTip || '', modelAnswer: result.modelAnswer || '' } });
     } catch (e) {
-      console.error('Processing error:', e);
+      __DEV__ && console.error('Processing error:', e);
       if (mountedRef.current) { setState('ready'); setRetryMsg('Something went wrong — please try again.'); }
     }
   }

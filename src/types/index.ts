@@ -1,6 +1,6 @@
 // ===== Premium / Subscription =====
 
-export type PlanId = 'free' | 'pass_30' | 'monthly' | 'annual' | 'three_year';
+export type PlanId = 'free' | 'pass_30' | 'monthly' | 'annual' | 'max_monthly' | 'max_annual';
 
 export interface PremiumPlan {
   id: PlanId;
@@ -18,6 +18,8 @@ export interface UsageLimits {
   threadedPerDay: number;       // free: 0 (1 per week tracked separately)
   threadedPerWeek: number;      // free only
   practiceAgainPerDay: number;
+  industryPerDay: number;
+  regeneratesPerDay: number;
   canAddContext: boolean;
   canViewSummary: boolean;
   canPracticeSnippet: boolean;
@@ -75,13 +77,15 @@ export interface DocumentExtraction {
 
 // ===== Question Engine Types =====
 
-export type QuestionFormat = 'roleplay' | 'prompt' | 'briefing' | 'pressure' | 'context';
+export type QuestionFormat = 'roleplay' | 'prompt' | 'briefing' | 'pressure' | 'context' | 'industry';
 
 export interface GeneratedQuestion {
   format?: QuestionFormat;
   question: string;
   situation?: string;
   background?: string;
+  newsContext?: string;
+  learnMore?: { topic: string; searchTerms: string[]; suggestedReading: string; articles?: string[] };
   timerSeconds?: number;
   reasoning: string;
   targets: QuestionTarget;
@@ -129,6 +133,7 @@ export interface ScoringResult {
   communicationTip?: string;
   suggestedAngles?: string[];
   modelAnswer?: string;
+  suggestedReading?: { topic: string; searchTerms: string[]; reason: string };
 }
 
 // ===== Session Types =====
@@ -182,8 +187,22 @@ export interface ThreadDebrief {
 }
 
 export interface FollowUp {
+  reaction: string;
   followUp: string;
   targeting: string;
+  pressureLevel: 'depth' | 'clarity' | 'challenge' | 'perspective' | 'stakes' | 'accountability';
+}
+
+export interface ThreadTurn {
+  turnNumber: number;
+  question: string;
+  transcript: string;
+}
+
+export interface ThreadState {
+  originalQuestion: string;
+  turns: ThreadTurn[];
+  startedAt: string;
 }
 
 // ===== Daily 30 Types =====

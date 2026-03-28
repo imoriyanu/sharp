@@ -7,7 +7,7 @@ export async function transcribeAudio(uri: string): Promise<{ transcript: string
 
   // Read as base64 — avoids FormData issues on physical devices
   const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-  console.log('Transcription: sending', Math.round(base64.length / 1024), 'KB base64');
+  __DEV__ && console.log('Transcription: sending', Math.round(base64.length / 1024), 'KB base64');
 
   return apiPost('/transcribe', { audio: base64, filename: 'recording.m4a' });
 }

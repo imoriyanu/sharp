@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
 import { getStreak, getSessions, hasCompletedDailyToday, getContext, getUserProfile } from '../../src/services/storage';
-import { isPremium, canDoOneShot, canDoThreaded } from '../../src/services/premium';
+import { isPremium, canDoOneShot, canDoThreaded, canDoIndustry, checkPremiumStatus } from '../../src/services/premium';
 import { getCurrentBadge, getNextBadge } from '../../src/constants/badges';
 import type { Streak, SessionSummary, UserContext, UserProfile } from '../../src/types';
 
@@ -26,14 +26,15 @@ export default function HomeScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [oneShotLeft, setOneShotLeft] = useState<number | null>(null);
   const [threadedLeft, setThreadedLeft] = useState<number | null>(null);
+  const [industryLeft, setIndustryLeft] = useState<number | null>(null);
 
-  useFocusEffect(useCallback(() => { loadData(); loadUsage(); }, []));
+  useFocusEffect(useCallback(() => { checkPremiumStatus(); loadData(); loadUsage(); }, []));
 
   async function loadUsage() {
-    const os = await canDoOneShot();
-    const th = await canDoThreaded();
+    const [os, th, ind] = await Promise.all([canDoOneShot(), canDoThreaded(), canDoIndustry()]);
     setOneShotLeft(os.limit - os.used);
     setThreadedLeft(th.limit - th.used);
+    setIndustryLeft(ind.limit - ind.used);
   }
 
   async function loadData() {
@@ -58,7 +59,7 @@ export default function HomeScreen() {
           <View style={st.header}>
             <View style={st.headerLeft}>
               <Text style={st.greetLine}>{getGreeting()}</Text>
-              <Text style={st.greetName}>{profile?.displayName || 'Sharp'}</Text>
+              <Text style={st.greetName} numberOfLines={1}>{profile?.displayName || 'Sharp'}</Text>
             </View>
             <TouchableOpacity onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.7} style={st.avatarWrap}>
               {profile?.avatarUri ? (
@@ -118,47 +119,77 @@ export default function HomeScreen() {
         {/* Practice modes */}
         <Text style={st.section}>Practice</Text>
         <FadeIn delay={300}>
-          <View style={st.modeRow}>
-            <TouchableOpacity style={[st.modeCard, oneShotLeft === 0 && st.modeCardDimmed]} onPress={async () => {
-              const check = await canDoOneShot();
-              if (check.allowed) router.push('/one-shot/question');
-              else router.push('/premium');
-            }} activeOpacity={0.7}>
-              <View style={st.modeIconWrap}><Text style={st.modeIcon}>⚡</Text></View>
-              <Text style={st.modeTitle}>One Shot</Text>
-              <Text style={st.modeDesc}>Full scored session</Text>
-              <View style={st.modeDurBadge}>
-                <Text style={st.modeDur}>{oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left today` : oneShotLeft === 0 ? 'Limit reached' : '2-3 min'}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={[st.modeCard, threadedLeft === 0 && st.modeCardDimmed]} onPress={async () => {
-              const check = await canDoThreaded();
-              if (check.allowed) router.push('/one-shot/question?mode=threaded');
-              else router.push('/premium');
-            }} activeOpacity={0.7}>
-              <View style={[st.modeIconWrap, st.modeIconThreaded]}><Text style={st.modeIcon}>⚓</Text></View>
-              <Text style={st.modeTitle}>Threaded</Text>
-              <Text style={st.modeDesc}>3 follow-ups</Text>
-              <View style={st.modeDurBadge}>
-                <Text style={st.modeDur}>{threadedLeft !== null && threadedLeft > 0 ? `${threadedLeft} left` : threadedLeft === 0 ? 'Limit reached' : '5-8 min'}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </FadeIn>
+          <View style={st.practiceGrid}>
+            {/* Row 1: One Shot + Threaded */}
+            <View style={st.practiceRow}>
+              <TouchableOpacity style={[st.modeCard, oneShotLeft === 0 && st.modeCardDimmed]} onPress={async () => {
+                const check = await canDoOneShot();
+                if (check.allowed) router.push('/one-shot/question');
+                else if (!isPremium()) router.push('/premium');
+                // Pro users: card is dimmed, "Limit reached" shown — no action needed
+              }} activeOpacity={oneShotLeft === 0 && isPremium() ? 1 : 0.7}>
+                <View style={st.modeIconWrap}><Text style={st.modeIcon}>⚡</Text></View>
+                <Text style={st.modeTitle}>One Shot</Text>
+                <Text style={st.modeDesc}>Full scored session</Text>
+                <View style={st.modeDurBadge}>
+                  <Text style={st.modeDur}>{oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left today` : oneShotLeft === 0 ? 'Limit reached' : '2-3 min'}</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity style={[st.modeCard, threadedLeft === 0 && st.modeCardDimmed]} onPress={async () => {
+                const check = await canDoThreaded();
+                if (check.allowed) router.push('/one-shot/question?mode=threaded');
+                else if (!isPremium()) router.push('/premium');
+              }} activeOpacity={threadedLeft === 0 && isPremium() ? 1 : 0.7}>
+                <View style={[st.modeIconWrap, st.modeIconThreaded]}><Text style={st.modeIcon}>⚓</Text></View>
+                <Text style={st.modeTitle}>Threaded</Text>
+                <Text style={st.modeDesc}>3 follow-ups</Text>
+                <View style={st.modeDurBadge}>
+                  <Text style={st.modeDur}>{threadedLeft !== null && threadedLeft > 0 ? `${threadedLeft} left` : threadedLeft === 0 ? 'Limit reached' : '5-8 min'}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
 
-        {/* Coming soon */}
-        <FadeIn delay={400}>
-          <View style={st.lockedRow}>
-            <TouchableOpacity style={st.lockedCard} onPress={() => router.push('/coming-soon/conversation')} activeOpacity={0.7}>
-              <Text style={st.lockedEmoji}>💬</Text>
-              <Text style={st.lockedTitle}>Conversations</Text>
-              <View style={st.soonBadge}><Text style={st.soonText}>Soon</Text></View>
-            </TouchableOpacity>
-            <TouchableOpacity style={st.lockedCard} onPress={() => router.push('/coming-soon/duels')} activeOpacity={0.7}>
-              <Text style={st.lockedEmoji}>⚔️</Text>
-              <Text style={st.lockedTitle}>Duels</Text>
-              <View style={st.soonBadge}><Text style={st.soonText}>Soon</Text></View>
-            </TouchableOpacity>
+            {/* Row 2: Industry (Pro + context only) + Conversations */}
+            <View style={st.practiceRow}>
+              {isPremium() && (context?.currentCompany || context?.roleText) ? (
+                <TouchableOpacity style={[st.modeCard, industryLeft === 0 && st.modeCardDimmed]} onPress={async () => {
+                  const check = await canDoIndustry();
+                  if (check.allowed) router.push('/one-shot/question?mode=industry');
+                  // Pro users: card is dimmed — no paywall
+                }} activeOpacity={industryLeft === 0 ? 1 : 0.7}>
+                  <View style={[st.modeIconWrap, st.modeIconIndustry]}><Text style={st.modeIcon}>📰</Text></View>
+                  <Text style={st.modeTitle}>Industry</Text>
+                  <Text style={st.modeDesc}>Real-world topics</Text>
+                  <View style={st.modeDurBadge}>
+                    <Text style={st.modeDur}>{industryLeft !== null && industryLeft > 0 ? `${industryLeft} left today` : industryLeft === 0 ? 'Limit reached' : '1-2 min'}</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : isPremium() ? (
+                <TouchableOpacity style={[st.modeCard, st.modeCardDimmed]} onPress={() => router.push('/context/setup')} activeOpacity={0.7}>
+                  <View style={[st.modeIconWrap, st.modeIconIndustry]}><Text style={st.modeIcon}>📰</Text></View>
+                  <Text style={st.modeTitle}>Industry</Text>
+                  <Text style={st.modeDesc}>Real-world topics</Text>
+                  <View style={st.modeDurBadge}>
+                    <Text style={st.modeDur}>Set up context</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={[st.modeCard, st.modeCardLocked]} onPress={() => router.push('/premium')} activeOpacity={0.7}>
+                  <View style={[st.modeIconWrap, st.modeIconIndustry]}><Text style={st.modeIcon}>📰</Text></View>
+                  <Text style={st.modeTitle}>Industry</Text>
+                  <Text style={st.modeDesc}>Real-world topics</Text>
+                  <View style={st.proBadgeSm}><Text style={st.proBadgeSmText}>PRO</Text></View>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={[st.modeCard, st.modeCardLocked]} onPress={() => router.push('/coming-soon/conversation')} activeOpacity={0.7}>
+                <View style={[st.modeIconWrap, { backgroundColor: colors.bg.tertiary }]}><Text style={st.modeIcon}>💬</Text></View>
+                <Text style={st.modeTitle}>Convo</Text>
+                <Text style={st.modeDesc}>Live practice</Text>
+                <View style={st.modeDurBadge}>
+                  <Text style={st.modeDur}>Coming soon</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         </FadeIn>
 
@@ -277,25 +308,20 @@ const st = StyleSheet.create({
   dailyCtaText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse },
   dailyCtaArrow: { fontSize: typography.size.base, color: colors.text.inverse, opacity: 0.7 },
 
-  // Mode cards
-  modeRow: { flexDirection: 'row', gap: spacing.md },
-  modeCard: { flex: 1, backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, paddingVertical: spacing.xxl, alignItems: 'center', ...shadows.md },
+  // Practice grid
+  practiceGrid: { gap: spacing.md },
+  practiceRow: { flexDirection: 'row', gap: spacing.md },
+  modeCard: { flex: 1, backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, paddingVertical: spacing.xl, alignItems: 'center', ...shadows.md },
   modeCardDimmed: { opacity: 0.45 },
+  modeCardLocked: { opacity: 0.5 },
   modeIconWrap: { width: wp(48), height: wp(48), borderRadius: wp(14), backgroundColor: colors.accent.light, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   modeIconThreaded: { backgroundColor: colors.feedback.positiveBg },
+  modeIconIndustry: { backgroundColor: colors.industry.bg },
   modeIcon: { fontSize: fp(22) },
   modeTitle: { fontSize: typography.size.base, fontWeight: typography.weight.black, color: colors.text.primary },
   modeDesc: { fontSize: typography.size.xs, color: colors.text.tertiary, marginTop: wp(3) },
   modeDurBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3), marginTop: spacing.md },
   modeDur: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted },
-
-  // Locked cards
-  lockedRow: { flexDirection: 'row', gap: spacing.md },
-  lockedCard: { flex: 1, backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, alignItems: 'center', opacity: 0.4 },
-  lockedEmoji: { fontSize: fp(18), marginBottom: spacing.sm },
-  lockedTitle: { fontSize: typography.size.xs, fontWeight: typography.weight.heavy, color: colors.text.muted },
-  soonBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(2), marginTop: spacing.sm },
-  soonText: { fontSize: fp(8), fontWeight: typography.weight.bold, color: colors.text.muted },
 
   // Progress card
   progressCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginTop: spacing.lg, ...shadows.md },

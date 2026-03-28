@@ -19,9 +19,19 @@ export default function SessionDetailScreen() {
   const [oneShotStatus, setOneShotStatus] = useState<{ allowed: boolean; used: number; limit: number } | null>(null);
   const mountedRef = useRef(true);
 
+  const [notFound, setNotFound] = useState(false);
+
   useEffect(() => {
     mountedRef.current = true;
-    if (id) getSessionById(id).then(s => { if (mountedRef.current) setSession(s); });
+    if (id) {
+      getSessionById(id).then(s => {
+        if (!mountedRef.current) return;
+        if (s) setSession(s);
+        else setNotFound(true);
+      });
+    } else {
+      setNotFound(true);
+    }
     canDoOneShot().then(s => { if (mountedRef.current) setOneShotStatus(s); });
     return () => { mountedRef.current = false; stopAudio(); };
   }, [id]);
@@ -38,7 +48,16 @@ export default function SessionDetailScreen() {
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.centered}>
-          <Text style={s.loadingText}>Loading session...</Text>
+          {notFound ? (
+            <>
+              <Text style={s.loadingText}>Session not found</Text>
+              <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.back()}>
+                <Text style={{ color: colors.accent.primary, fontWeight: '600' as const }}>Go back</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={s.loadingText}>Loading session...</Text>
+          )}
         </View>
       </SafeAreaView>
     );

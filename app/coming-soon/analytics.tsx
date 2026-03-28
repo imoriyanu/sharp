@@ -47,11 +47,11 @@ export default function AnalyticsComingSoon() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.primary },
-  container: { flex: 1, padding: layout.screenPadding, alignItems: 'center', paddingTop: wp(60) },
+  container: { flex: 1, padding: layout.screenPadding, alignItems: 'center', paddingTop: spacing.xxl },
   icon: { width: wp(52), height: wp(52), borderRadius: wp(18), backgroundColor: colors.bg.tertiary, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   iconEmoji: { fontSize: fp(22) },
   spacer: { flex: 1 },
-  title: { fontSize: fp(20), fontWeight: typography.weight.black, color: colors.text.primary },
+  title: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary },
   badge: { fontSize: fp(9), fontWeight: typography.weight.heavy, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginTop: wp(3), marginBottom: spacing.xl },
   desc: { fontSize: fp(11), color: colors.text.secondary, textAlign: 'center', lineHeight: fp(18), marginBottom: spacing.xl },
   features: { width: '100%', marginBottom: spacing.xl },
@@ -60,6 +60,6 @@ const s = StyleSheet.create({
   featText: { fontSize: fp(11), color: colors.text.secondary },
   mainBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(15), width: '100%', alignItems: 'center', marginBottom: spacing.sm, ...shadows.accent },
   mainBtnText: { fontSize: fp(13), fontWeight: typography.weight.bold, color: colors.text.inverse },
-  ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(13), width: '100%', alignItems: 'center' },
+  ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(15), width: '100%', alignItems: 'center' },
   ghostText: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.text.tertiary },
 });

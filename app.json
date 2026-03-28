@@ -9,6 +9,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
+      "image": "./assets/icon.png",
       "backgroundColor": "#FAF6F0",
       "resizeMode": "contain"
     },
@@ -16,7 +17,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.sharp.ai",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Sharp needs microphone access to record and analyse your spoken answers."
+        "NSMicrophoneUsageDescription": "Sharp needs microphone access to record and analyse your spoken answers.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -25,7 +27,9 @@
       },
       "package": "com.sharp.ai",
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "plugins": [
@@ -39,6 +43,14 @@
       "expo-asset",
       "expo-font",
       "expo-audio"
-    ]
+    ],
+    "description": "Sharp trains you to speak clearly, concisely, and with substance. AI-powered scoring and coaching in 30 seconds a day.",
+    "githubUrl": "https://github.com/sharp-ai",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "12e05e54-293d-47be-8857-4ad2a55926ff"
+      }
+    }
   }
 }

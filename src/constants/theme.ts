@@ -39,9 +39,10 @@ export const colors = {
     border: '#F0DCC8',
   },
   score: {
-    high: '#5A9A5A',
-    mid: '#C07050',
-    low: '#C05050',
+    excellent: '#2563EB',  // 9-10: deep blue
+    great: '#3B82F6',      // 7-8.9: bright blue
+    good: '#5A9A5A',       // 5-6.9: green
+    low: '#E8A838',        // below 5: amber/yellow
   },
   recording: '#C05050',
   success: '#5A9A5A',
@@ -74,6 +75,11 @@ export const colors = {
     aspiration: { bg: '#F0E8FF', text: '#8B7EC8' },
     evidence: { bg: '#E0F5E0', text: '#5A9A5A' },
     preparation: { bg: '#FFF5EB', text: '#C07050' },
+  },
+  industry: {
+    bg: '#F0EEFF',
+    border: '#E0D8F0',
+    text: '#8B7EC8',
   },
   locked: '#F5F0E8',
   lockedText: '#C0B0A0',
@@ -140,7 +146,8 @@ export const shadows: Record<string, ViewStyle> = {
 };
 
 export function getScoreColor(score: number): string {
-  if (score >= 8) return colors.score.high;
-  if (score >= 5) return colors.score.mid;
+  if (score >= 9) return colors.score.excellent;
+  if (score >= 7) return colors.score.great;
+  if (score >= 5) return colors.score.good;
   return colors.score.low;
 }

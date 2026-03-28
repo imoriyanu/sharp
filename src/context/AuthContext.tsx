@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       // On sign-in, migrate local data to cloud
       if (event === 'SIGNED_IN' && session) {
-        runMigrationIfNeeded().catch(e => console.warn('Migration error:', e));
+        runMigrationIfNeeded().catch(e => __DEV__ && console.warn('Migration error:', e));
       }
     });
 

@@ -10,7 +10,7 @@ import { stopAudio, playQuestionAudio, buildNaturalScript } from '../../src/serv
 import { generateQuestion } from '../../src/services/scoring';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
-import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, getRecentQuestions, addRecentQuestion, getAverageScores, getRecentInsights } from '../../src/services/storage';
+import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, getRecentQuestions, addRecentQuestion, getAverageScores, getRecentInsights, getRecentSessionHistory } from '../../src/services/storage';
 import type { RecordingState, GeneratedQuestion } from '../../src/types';
 
 const DEFAULT_TIMER = 60;
@@ -55,8 +55,9 @@ export default function DailyChallengeScreen() {
         return;
       }
 
-      const ctx = await getContext();
-      const recentQuestions = await getRecentQuestions();
+      const [ctx, recentQuestions, sessionHistory, averageScores] = await Promise.all([
+        getContext(), getRecentQuestions(), getRecentSessionHistory(), getAverageScores(),
+      ]);
       const result = await generateQuestion({
         roleText: ctx?.roleText || '',
         currentCompany: ctx?.currentCompany || '',
@@ -64,6 +65,8 @@ export default function DailyChallengeScreen() {
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
         documents: ctx?.documents || [],
         recentQuestions,
+        sessionHistory,
+        averageScores: averageScores || undefined,
       });
 
       // Cache for the day and track for variety
@@ -116,7 +119,7 @@ export default function DailyChallengeScreen() {
         });
       }, 1000);
     } catch (e: any) {
-      console.error('Failed to start recording:', e);
+      __DEV__ && console.error('Failed to start recording:', e);
       setRetryReason('Could not start recording. If you\'re on a call, end it first and try again.');
       setState('ready');
     }
@@ -186,7 +189,8 @@ export default function DailyChallengeScreen() {
         },
       });
     } catch (e) {
-      console.error('Processing error:', e);
+      __DEV__ && console.error('Processing error:', e);
+      setRetryReason('Something went wrong while scoring your answer. Please try again.');
       setState('ready');
     }
   }

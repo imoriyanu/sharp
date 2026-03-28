@@ -52,7 +52,7 @@ export default function DuelCreateScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.primary },
-  container: { flex: 1, padding: layout.screenPadding, alignItems: 'center', paddingTop: wp(60) },
+  container: { flex: 1, padding: layout.screenPadding, alignItems: 'center', paddingTop: spacing.xxl },
   iconBox: { width: wp(56), height: wp(56), borderRadius: wp(20), backgroundColor: colors.duel.bg, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   iconEmoji: { fontSize: fp(24) },
   spacer: { flex: 1 },

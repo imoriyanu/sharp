@@ -70,7 +70,7 @@ export default function CoachingScreen() {
       setPracticeState('recording');
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch (e: any) {
-      console.error('Recording error:', e);
+      __DEV__ && console.error('Recording error:', e);
       setPracticeState('ready');
     }
     // Note: if on a call, interruptionMode 'duckOthers' allows recording to coexist
@@ -108,7 +108,7 @@ export default function CoachingScreen() {
       // Speak the feedback only if still on screen
       if (mountedRef.current) await playQuestionAudio(fb);
     } catch (e) {
-      console.error('Practice recording error:', e);
+      __DEV__ && console.error('Practice recording error:', e);
       if (mountedRef.current) setPracticeState('ready');
     }
   }

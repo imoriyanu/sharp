@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
@@ -14,12 +14,24 @@ const TYPE_EMOJI: Record<string, string> = { daily_30: '☀️', one_shot: '⚡'
 export default function HistoryScreen() {
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useFocusEffect(useCallback(() => { getSessions().then(setSessions); }, []));
+  const loadSessions = useCallback(async () => {
+    const data = await getSessions();
+    setSessions(data);
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadSessions(); }, []));
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await loadSessions();
+    setRefreshing(false);
+  }
 
   return (
     <SafeAreaView style={s.safe}>
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent.primary} />}>
         <Text style={s.title}>History</Text>
         {sessions.length > 0 && (
           <Text style={s.subtitle}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</Text>

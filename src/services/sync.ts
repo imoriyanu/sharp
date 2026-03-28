@@ -20,7 +20,7 @@ export async function syncProfileToCloud(profile: UserProfile): Promise<void> {
       is_premium: profile.isPremium,
       updated_at: new Date().toISOString(),
     });
-  } catch (e) { console.warn('Profile sync failed:', e); }
+  } catch (e) { __DEV__ && console.warn('Profile sync failed:', e); }
 }
 
 // ===== Context Sync =====
@@ -37,7 +37,7 @@ export async function syncContextToCloud(ctx: UserContext): Promise<void> {
       dream_role_and_company: ctx.dreamRoleAndCompany,
       updated_at: new Date().toISOString(),
     });
-  } catch (e) { console.warn('Context sync failed:', e); }
+  } catch (e) { __DEV__ && console.warn('Context sync failed:', e); }
 }
 
 // ===== Session Sync =====
@@ -78,7 +78,7 @@ export async function syncSessionToCloud(session: Session): Promise<void> {
         created_at: session.createdAt,
       });
     }
-  } catch (e) { console.warn('Session sync failed:', e); }
+  } catch (e) { __DEV__ && console.warn('Session sync failed:', e); }
 }
 
 // ===== Streak Sync =====
@@ -95,7 +95,7 @@ export async function syncStreakToCloud(streak: Streak): Promise<void> {
       freezes_available: streak.freezesAvailable,
       updated_at: new Date().toISOString(),
     });
-  } catch (e) { console.warn('Streak sync failed:', e); }
+  } catch (e) { __DEV__ && console.warn('Streak sync failed:', e); }
 }
 
 // ===== Badge Sync =====
@@ -109,7 +109,7 @@ export async function syncBadgeToCloud(badgeDay: number): Promise<void> {
       badge_day: badgeDay,
       unlocked_at: new Date().toISOString(),
     });
-  } catch (e) { console.warn('Badge sync failed:', e); }
+  } catch (e) { __DEV__ && console.warn('Badge sync failed:', e); }
 }
 
 // ===== Daily Result Sync =====
@@ -125,7 +125,7 @@ export async function syncDailyResultToCloud(result: DailyResult): Promise<void>
       practice_date: result.date,
       created_at: new Date().toISOString(),
     });
-  } catch (e) { console.warn('Daily result sync failed:', e); }
+  } catch (e) { __DEV__ && console.warn('Daily result sync failed:', e); }
 }
 
 // ===== Document Upload to Supabase Storage =====
@@ -135,7 +135,9 @@ export async function uploadDocumentToStorage(fileUri: string, filename: string)
   if (!userId) return null;
 
   try {
+    if (!fileUri) return null;
     const response = await fetch(fileUri);
+    if (!response.ok) return null;
     const blob = await response.blob();
     const path = `${userId}/${Date.now()}_${filename}`;
 
@@ -146,7 +148,7 @@ export async function uploadDocumentToStorage(fileUri: string, filename: string)
     if (error) throw error;
     return data.path;
   } catch (e) {
-    console.warn('Document upload failed:', e);
+    __DEV__ && console.warn('Document upload failed:', e);
     return null;
   }
 }
@@ -169,7 +171,7 @@ export async function migrateLocalToCloud(data: {
   const userId = await getUserId();
   if (!userId) return;
 
-  console.log('Starting cloud migration...');
+  __DEV__ && console.log('Starting cloud migration...');
 
   if (data.profile) await syncProfileToCloud(data.profile);
   if (data.context) await syncContextToCloud(data.context);
@@ -189,5 +191,5 @@ export async function migrateLocalToCloud(data: {
     await syncSessionToCloud(session);
   }
 
-  console.log('Cloud migration complete:', data.sessions.length, 'sessions synced');
+  __DEV__ && console.log('Cloud migration complete:', data.sessions.length, 'sessions synced');
 }

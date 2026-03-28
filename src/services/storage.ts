@@ -3,6 +3,11 @@ import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakD
 import { STREAK_BADGES } from '../constants/badges';
 import { syncProfileToCloud, syncContextToCloud, syncSessionToCloud, syncStreakToCloud, syncBadgeToCloud, syncDailyResultToCloud, migrateLocalToCloud } from './sync';
 
+function safeParse<T>(json: string | null, fallback: T): T {
+  if (!json) return fallback;
+  try { return JSON.parse(json); } catch { return fallback; }
+}
+
 const KEYS = {
   CONTEXT: 'sharp:context',
   SESSIONS: 'sharp:sessions',
@@ -68,8 +73,11 @@ export async function setOnboardingStep(step: number): Promise<void> {
 export async function getUserProfile(): Promise<UserProfile | null> {
   const raw = await AsyncStorage.getItem(KEYS.USER_PROFILE);
   if (!raw) return null;
-  const parsed = JSON.parse(raw);
-  return { isPremium: false, ...parsed }; // Migration: add isPremium if missing
+  const parsed = safeParse<UserProfile | null>(raw, null);
+  if (!parsed) return null;
+  // Migration: add isPremium if missing from older data
+  if (parsed.isPremium === undefined) parsed.isPremium = false;
+  return parsed;
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
@@ -81,7 +89,7 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
 
 export async function getContext(): Promise<UserContext | null> {
   const raw = await AsyncStorage.getItem(KEYS.CONTEXT);
-  return raw ? JSON.parse(raw) : null;
+  return safeParse<UserContext | null>(raw, null);
 }
 
 export async function saveContext(context: UserContext): Promise<void> {
@@ -93,7 +101,7 @@ export async function saveContext(context: UserContext): Promise<void> {
 
 export async function getSessions(): Promise<SessionSummary[]> {
   const raw = await AsyncStorage.getItem(KEYS.SESSIONS);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse<SessionSummary[]>(raw, []);
 }
 
 export async function saveSession(session: Session): Promise<void> {
@@ -116,7 +124,7 @@ export async function saveSession(session: Session): Promise<void> {
 
 export async function getSessionById(id: string): Promise<Session | null> {
   const raw = await AsyncStorage.getItem(KEYS.SESSION_DETAIL + id);
-  return raw ? JSON.parse(raw) : null;
+  return safeParse<Session | null>(raw, null);
 }
 
 // ===== Streak =====
@@ -125,19 +133,18 @@ export async function getStreak(): Promise<Streak> {
   const raw = await AsyncStorage.getItem(KEYS.STREAK);
   const defaults: Streak = { currentStreak: 0, longestStreak: 0, lastSessionDate: null, freezesUsed: [], freezesAvailable: 1 };
   if (!raw) return defaults;
-  const parsed = JSON.parse(raw);
-  // Migration: add freeze fields if missing
+  const parsed = safeParse<Partial<Streak>>(raw, {});
   return { ...defaults, ...parsed };
 }
 
 export async function getStreakHistory(): Promise<string[]> {
   const raw = await AsyncStorage.getItem(KEYS.STREAK_HISTORY);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse<string[]>(raw, []);
 }
 
 export async function getUnlockedBadges(): Promise<number[]> {
   const raw = await AsyncStorage.getItem(KEYS.STREAK_BADGES);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse<number[]>(raw, []);
 }
 
 export async function getStreakData(): Promise<StreakData> {
@@ -236,7 +243,7 @@ export async function saveDailyResult(result: DailyResult): Promise<void> {
 
 export async function getDailyHistory(): Promise<DailyResult[]> {
   const raw = await AsyncStorage.getItem(KEYS.DAILY_HISTORY);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse<DailyResult[]>(raw, []);
 }
 
 export async function getBestScoreThisWeek(): Promise<number> {
@@ -250,7 +257,7 @@ export async function getBestScoreThisWeek(): Promise<number> {
 
 export async function getDuels(): Promise<Duel[]> {
   const raw = await AsyncStorage.getItem(KEYS.DUELS);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse<Duel[]>(raw, []);
 }
 
 export async function saveDuel(duel: Duel): Promise<void> {
@@ -270,7 +277,7 @@ export async function getPendingDuels(): Promise<Duel[]> {
 
 export async function trackFeatureInterest(feature: ComingSoonFeature): Promise<void> {
   const raw = await AsyncStorage.getItem(KEYS.FEATURE_INTEREST);
-  const interest: Record<string, number> = raw ? JSON.parse(raw) : {};
+  const interest: Record<string, number> = safeParse<Record<string, number>>(raw, {});
   interest[feature] = (interest[feature] || 0) + 1;
   await AsyncStorage.setItem(KEYS.FEATURE_INTEREST, JSON.stringify(interest));
 }
@@ -288,6 +295,34 @@ export async function getRecentInsights(): Promise<string[]> {
     }
   }
   return insights;
+}
+
+// ===== Session History for Question Engine =====
+
+export async function getRecentSessionHistory(): Promise<{
+  question: string; transcript: string; scores: any; overall: number;
+  weakestArea: string; coachingInsight: string; date: string;
+}[]> {
+  const sessions = await getSessions();
+  const history: any[] = [];
+  for (const s of sessions.slice(0, 10)) {
+    const full = await getSessionById(s.id);
+    if (full?.turns.length) {
+      const last = full.turns[full.turns.length - 1];
+      const dims = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
+      const weakest = dims.reduce((a, b) => (last.scores[a] < last.scores[b] ? a : b));
+      history.push({
+        question: last.question.slice(0, 100),
+        transcript: last.transcript.slice(0, 150),
+        scores: last.scores,
+        overall: last.overall,
+        weakestArea: weakest,
+        coachingInsight: last.coachingInsight || '',
+        date: full.createdAt.split('T')[0],
+      });
+    }
+  }
+  return history;
 }
 
 // ===== Score History =====
@@ -434,9 +469,9 @@ export async function getProgressData(): Promise<ProgressData> {
 export async function getCachedDailyQuestion(): Promise<{ date: string; question: any } | null> {
   const raw = await AsyncStorage.getItem(KEYS.DAILY_QUESTION_CACHE);
   if (!raw) return null;
-  const cached = JSON.parse(raw);
+  const cached = safeParse<{ date: string; question: any } | null>(raw, null);
+  if (!cached) return null;
   const today = new Date().toISOString().split('T')[0];
-  // Only return if it's today's question and hasn't been completed
   if (cached.date === today) return cached;
   return null;
 }
@@ -453,7 +488,7 @@ export async function clearDailyQuestionCache(): Promise<void> {
 // One Shot / Threaded question cache
 export async function getCachedOneShotQuestion(): Promise<any | null> {
   const raw = await AsyncStorage.getItem('sharp:oneshot_question_cache');
-  return raw ? JSON.parse(raw) : null;
+  return safeParse(raw, null);
 }
 
 export async function cacheOneShotQuestion(question: any): Promise<void> {
@@ -466,7 +501,7 @@ export async function clearOneShotQuestionCache(): Promise<void> {
 
 export async function getCachedThreadedQuestion(): Promise<any | null> {
   const raw = await AsyncStorage.getItem('sharp:threaded_question_cache');
-  return raw ? JSON.parse(raw) : null;
+  return safeParse(raw, null);
 }
 
 export async function cacheThreadedQuestion(question: any): Promise<void> {
@@ -477,15 +512,55 @@ export async function clearThreadedQuestionCache(): Promise<void> {
   await AsyncStorage.removeItem('sharp:threaded_question_cache');
 }
 
+export async function getCachedIndustryQuestion(): Promise<any | null> {
+  const raw = await AsyncStorage.getItem('sharp:industry_question_cache');
+  return safeParse(raw, null);
+}
+
+export async function cacheIndustryQuestion(question: any): Promise<void> {
+  await AsyncStorage.setItem('sharp:industry_question_cache', JSON.stringify(question));
+}
+
+export async function clearIndustryQuestionCache(): Promise<void> {
+  await AsyncStorage.removeItem('sharp:industry_question_cache');
+}
+
 export async function getRecentQuestions(): Promise<string[]> {
   const raw = await AsyncStorage.getItem(KEYS.RECENT_QUESTIONS);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse<string[]>(raw, []);
 }
 
 export async function addRecentQuestion(question: string): Promise<void> {
   const recent = await getRecentQuestions();
   recent.unshift(question);
   await AsyncStorage.setItem(KEYS.RECENT_QUESTIONS, JSON.stringify(recent.slice(0, 20)));
+}
+
+// ===== Thread State (persisted across screens during a threaded session) =====
+
+const THREAD_KEY = 'sharp:active_thread';
+
+export async function getThreadState(): Promise<import('../types').ThreadState | null> {
+  const raw = await AsyncStorage.getItem(THREAD_KEY);
+  return safeParse(raw, null);
+}
+
+export async function saveThreadState(state: import('../types').ThreadState): Promise<void> {
+  await AsyncStorage.setItem(THREAD_KEY, JSON.stringify(state));
+}
+
+export async function clearThreadState(): Promise<void> {
+  await AsyncStorage.removeItem(THREAD_KEY);
+}
+
+export async function clearStaleThread(): Promise<void> {
+  const thread = await getThreadState();
+  if (!thread) return;
+  // Clear if older than 1 hour
+  const age = Date.now() - new Date(thread.startedAt).getTime();
+  if (age > 60 * 60 * 1000) {
+    await clearThreadState();
+  }
 }
 
 // ===== Utility =====
