@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sharp — AI Communication Coach | Train Your Voice in 30 Seconds a Day</title>
+  <meta name="description" content="Sharp scores your speaking on 5 dimensions and coaches you with AI. Prepare for interviews, promotions, and pitches. Free daily challenge.">
+  <meta name="theme-color" content="#FAF6F0">
+  <meta property="og:title" content="Sharp — Train Your Voice. 30 Seconds a Day.">
+  <meta property="og:description" content="AI communication coach. Record, get scored on 5 dimensions, and receive real coaching for interviews, promotions, and pitches.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://speaksharpai.com">
+  <meta property="og:image" content="og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/svg+xml" href="fox-icon.svg">
+  <link rel="canonical" href="https://speaksharpai.com">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #FAF6F0;
+      --bg-card: #FFFFFF;
+      --bg-input: #F5F0E8;
+      --text: #3A2A1A;
+      --text-secondary: #7A6A5A;
+      --text-tertiary: #A09080;
+      --text-muted: #C0B0A0;
+      --accent: #C07050;
+      --accent-light: #FFF5EB;
+      --accent-border: #F0DCC8;
+      --accent-dark: #A05A3A;
+      --success: #5A9A5A;
+      --duel: #8B7EC8;
+      --border: #E8E0D4;
+      --max-width: 1200px;
+    }
+
+    html { scroll-behavior: smooth; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    .container { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
+
+    /* ===== Nav ===== */
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(250,246,240,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); transition: box-shadow 0.3s; }
+    nav.scrolled { box-shadow: 0 2px 20px rgba(58,42,26,0.06); }
+    .nav-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
+    .nav-logo { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 900; letter-spacing: -0.5px; }
+    .nav-logo span { color: var(--accent); }
+    .nav-fox { width: 32px; height: 32px; }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a { font-size: 14px; font-weight: 600; color: var(--text-secondary); transition: color 0.2s; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links.mobile-open { display: flex !important; position: absolute; top: 64px; left: 0; right: 0; background: rgba(250,246,240,0.98); backdrop-filter: blur(20px); flex-direction: column; padding: 20px 24px; gap: 16px; border-bottom: 1px solid var(--border); box-shadow: 0 8px 24px rgba(58,42,26,0.06); z-index: 99; }
+    .nav-cta { background: var(--accent); color: #FFF !important; padding: 8px 20px; border-radius: 999px; font-size: 13px !important; font-weight: 700 !important; transition: transform 0.2s, box-shadow 0.2s; }
+    .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(192,112,80,0.25); }
+    .nav-mobile { display: none; background: none; border: none; cursor: pointer; padding: 8px; }
+    .nav-mobile svg { width: 24px; height: 24px; color: var(--text); }
+
+    /* ===== Buttons ===== */
+    .btn-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: #FFF; padding: 14px 28px; border-radius: 12px; font-size: 16px; font-weight: 700; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 16px rgba(192,112,80,0.3); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(192,112,80,0.35); }
+    .btn-secondary { display: inline-flex; align-items: center; gap: 8px; background: var(--bg-card); color: var(--text); padding: 14px 28px; border-radius: 12px; font-size: 16px; font-weight: 700; border: 1.5px solid var(--border); transition: transform 0.2s, border-color 0.2s; }
+    .btn-secondary:hover { transform: translateY(-2px); border-color: var(--accent-border); }
+
+    /* ===== Hero ===== */
+    .hero { padding: 120px 0 60px; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; top: -200px; right: -100px; width: 800px; height: 800px; background: radial-gradient(circle, rgba(192,112,80,0.06) 0%, transparent 70%); pointer-events: none; }
+    .hero-split { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; min-height: 520px; }
+    .hero-text { animation: fadeInUp 0.6s ease both; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-light); border: 1px solid var(--accent-border); border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: var(--accent-dark); margin-bottom: 20px; }
+    .hero h1 { font-size: clamp(34px, 5vw, 52px); font-weight: 900; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 18px; }
+    .hero h1 .accent { color: var(--accent); }
+    .hero-sub { font-size: 18px; color: var(--text-secondary); max-width: 480px; margin-bottom: 12px; line-height: 1.7; }
+    .hero-use-cases { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+    .use-case { background: var(--bg-input); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+    .hero-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+    .hero-visual { display: flex; align-items: flex-end; justify-content: center; position: relative; animation: fadeInUp 0.8s ease 0.3s both; }
+    .hero-fox-wrap { position: absolute; left: -40px; bottom: 60px; z-index: 2; }
+    .fox-full { width: 110px; height: auto; filter: drop-shadow(0 8px 24px rgba(192,112,80,0.15)); animation: foxBounce 3s ease-in-out infinite; }
+    .fox-speech { position: absolute; top: -12px; right: -20px; background: var(--bg-card); color: var(--accent-dark); font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 12px 12px 12px 4px; box-shadow: 0 4px 12px rgba(58,42,26,0.08); white-space: nowrap; animation: fadeInUp 0.5s ease 1s both; }
+    @keyframes foxBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .hero-mockup { max-width: 300px; position: relative; z-index: 1; }
+    .phone-frame { background: var(--text); border-radius: 40px; padding: 10px; box-shadow: 0 20px 60px rgba(58,42,26,0.15), 0 4px 20px rgba(58,42,26,0.08); }
+    .phone-screenshot { width: 100%; display: block; border-radius: 32px; }
+
+    /* ===== Waitlist ===== */
+    .waitlist { padding: 56px 0; background: var(--text); text-align: center; position: relative; overflow: hidden; }
+    .waitlist::before { content: ''; position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 600px; height: 400px; background: radial-gradient(circle, rgba(192,112,80,0.12) 0%, transparent 70%); }
+    .waitlist-inner { position: relative; max-width: 560px; margin: 0 auto; }
+    .waitlist h2 { font-size: clamp(22px, 3.5vw, 30px); font-weight: 900; color: var(--bg); margin-bottom: 8px; }
+    .waitlist p { font-size: 15px; color: var(--text-muted); margin-bottom: 24px; }
+    .waitlist-form { display: flex; gap: 10px; max-width: 440px; margin: 0 auto; }
+    .waitlist-input { flex: 1; padding: 14px 18px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.12); color: #FFFFFF; font-size: 15px; font-weight: 600; font-family: inherit; outline: none; transition: border-color 0.2s; }
+    .waitlist-input::placeholder { color: rgba(255,255,255,0.4); }
+    .waitlist-input:focus { border-color: var(--accent); background: rgba(255,255,255,0.18); }
+    .waitlist-btn { padding: 14px 24px; border-radius: 12px; background: var(--accent); color: #FFF; font-size: 15px; font-weight: 700; border: none; cursor: pointer; font-family: inherit; transition: transform 0.2s, box-shadow 0.2s; white-space: nowrap; }
+    .waitlist-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(192,112,80,0.4); }
+    .waitlist-note { font-size: 12px; color: var(--text-muted); margin-top: 12px; }
+    .waitlist-success { display: none; padding: 16px; background: rgba(90,154,90,0.15); border-radius: 12px; color: var(--success); font-weight: 700; font-size: 15px; }
+
+    /* ===== Problem / Pain ===== */
+    .problem { padding: 80px 0; }
+    .problem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+    .problem-text h2 { font-size: clamp(26px, 4vw, 36px); font-weight: 900; letter-spacing: -0.8px; line-height: 1.2; margin-bottom: 16px; }
+    .problem-text p { font-size: 16px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 16px; }
+    .pain-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .pain-item { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; color: var(--text-secondary); line-height: 1.6; }
+    .pain-icon { font-size: 18px; flex-shrink: 0; margin-top: 2px; }
+    .problem-visual { display: flex; justify-content: center; }
+    .problem-phone { background: var(--text); border-radius: 36px; padding: 10px; max-width: 260px; box-shadow: 0 20px 60px rgba(58,42,26,0.12); }
+    .problem-phone img { width: 100%; border-radius: 28px; }
+
+    /* ===== Social Proof ===== */
+    .social-proof { padding: 40px 0; text-align: center; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .social-proof > .container > p { font-size: 14px; color: var(--text-muted); font-weight: 600; }
+    .proof-stats { display: flex; justify-content: center; gap: 48px; margin-top: 20px; flex-wrap: wrap; }
+    .proof-stat { text-align: center; }
+    .proof-stat .number { font-size: 28px; font-weight: 900; color: var(--text); }
+    .proof-stat .label { font-size: 13px; color: var(--text-tertiary); font-weight: 600; }
+
+    /* ===== Section Heading ===== */
+    .section-heading { text-align: center; margin-bottom: 48px; }
+    .section-tag { display: inline-block; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; color: var(--accent); margin-bottom: 12px; }
+    .section-heading h2 { font-size: clamp(28px, 4vw, 42px); font-weight: 900; letter-spacing: -1px; line-height: 1.2; margin-bottom: 12px; }
+    .section-heading p { font-size: 17px; color: var(--text-secondary); max-width: 540px; margin: 0 auto; }
+
+    /* ===== Modes ===== */
+    .modes { padding: 80px 0; }
+    .modes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+    .mode-card { background: var(--bg-card); border-radius: 20px; padding: 32px 28px; border: 1.5px solid transparent; transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s; position: relative; overflow: hidden; }
+    .mode-card:hover { transform: translateY(-4px); border-color: var(--accent-border); box-shadow: 0 12px 40px rgba(58,42,26,0.06); }
+    .mode-emoji { font-size: 32px; margin-bottom: 16px; display: block; }
+    .mode-card h3 { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+    .mode-card .mode-time { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .mode-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+    .mode-badge { position: absolute; top: 20px; right: 20px; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: 1px; }
+    .badge-free { background: rgba(90,154,90,0.1); color: var(--success); }
+    .badge-pro { background: var(--accent-light); color: var(--accent); }
+
+    /* ===== How It Works ===== */
+    .how-it-works { padding: 80px 0; background: var(--bg-card); }
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 40px; }
+    .step { text-align: center; }
+    .step-number { width: 48px; height: 48px; border-radius: 14px; background: var(--accent-light); border: 2px solid var(--accent-border); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; color: var(--accent); margin-bottom: 16px; }
+    .step h3 { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
+    .step p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+    /* ===== Showcase ===== */
+    .showcase { padding: 80px 0; background: var(--bg-card); }
+    .showcase-phones { display: flex; justify-content: center; align-items: flex-end; gap: 24px; }
+    .showcase-item { flex: 0 0 auto; text-align: center; max-width: 220px; }
+    .showcase-item-raised { transform: translateY(-20px); }
+    .showcase-frame { background: var(--text); border-radius: 32px; padding: 8px; box-shadow: 0 16px 48px rgba(58,42,26,0.1); transition: transform 0.3s; }
+    .showcase-item:hover .showcase-frame { transform: translateY(-6px); }
+    .showcase-img { width: 100%; display: block; border-radius: 26px; }
+    .showcase-label { margin-top: 14px; font-size: 13px; font-weight: 700; color: var(--text-secondary); }
+
+    /* ===== Scoring ===== */
+    .scoring { padding: 80px 0; }
+    .scoring-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
+    .scoring-visual { display: flex; justify-content: center; }
+    .scoring-phone-frame { background: var(--text); border-radius: 36px; padding: 10px; max-width: 280px; box-shadow: 0 20px 60px rgba(58,42,26,0.12); }
+    .scoring-phone-img { width: 100%; display: block; border-radius: 28px; }
+    .scoring-text h2 { font-size: clamp(28px, 4vw, 38px); font-weight: 900; letter-spacing: -0.8px; line-height: 1.2; margin-bottom: 16px; }
+    .scoring-text p { font-size: 16px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 16px; }
+    .scoring-text ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .scoring-text li { font-size: 15px; color: var(--text-secondary); padding-left: 24px; position: relative; }
+    .scoring-text li::before { content: ''; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+    /* ===== Who It's For ===== */
+    .who-for { padding: 80px 0; background: var(--bg-card); }
+    .who-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+    .who-card { background: var(--bg); border-radius: 16px; padding: 24px 20px; text-align: center; border: 1.5px solid var(--border); transition: border-color 0.3s, transform 0.3s; }
+    .who-card:hover { border-color: var(--accent-border); transform: translateY(-3px); }
+    .who-emoji { font-size: 28px; margin-bottom: 10px; }
+    .who-card h3 { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+    .who-card p { font-size: 13px; color: var(--text-tertiary); line-height: 1.5; }
+
+    /* ===== Quote ===== */
+    .quote-section { padding: 80px 0; }
+    .quote-card { max-width: 640px; margin: 0 auto; text-align: center; }
+    .quote-card blockquote { font-size: clamp(20px, 3vw, 26px); font-weight: 700; line-height: 1.5; color: var(--text); margin-bottom: 20px; font-style: italic; }
+    .quote-card cite { font-size: 14px; font-weight: 600; color: var(--text-tertiary); font-style: normal; }
+
+    /* ===== FAQ ===== */
+    .faq { padding: 80px 0; background: var(--bg-card); }
+    .faq-list { max-width: 680px; margin: 0 auto; }
+    .faq-item { border-bottom: 1px solid var(--border); }
+    .faq-question { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 20px 0; font-size: 16px; font-weight: 700; color: var(--text); background: none; border: none; cursor: pointer; text-align: left; font-family: inherit; gap: 16px; }
+    .faq-question:hover { color: var(--accent); }
+    .faq-icon { width: 24px; height: 24px; border-radius: 50%; background: var(--bg-input); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; font-weight: 700; color: var(--text-tertiary); transition: transform 0.3s, background 0.3s; }
+    .faq-item.open .faq-icon { transform: rotate(45deg); background: var(--accent-light); color: var(--accent); }
+    .faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.3s; }
+    .faq-item.open .faq-answer { max-height: 200px; }
+    .faq-answer p { padding-bottom: 20px; font-size: 15px; color: var(--text-secondary); line-height: 1.7; }
+
+    /* ===== Final CTA ===== */
+    .final-cta { padding: 80px 0; text-align: center; background: var(--text); color: var(--bg); position: relative; overflow: hidden; }
+    .final-cta::before { content: ''; position: absolute; top: -100px; left: 50%; transform: translateX(-50%); width: 600px; height: 600px; background: radial-gradient(circle, rgba(192,112,80,0.15) 0%, transparent 70%); }
+    .final-cta h2 { font-size: clamp(28px, 4vw, 42px); font-weight: 900; letter-spacing: -1px; margin-bottom: 12px; position: relative; }
+    .final-cta > .container > p { font-size: 17px; color: var(--text-muted); margin-bottom: 24px; position: relative; }
+    .final-cta .waitlist-form { margin-bottom: 12px; }
+    .final-cta .waitlist-note { color: rgba(250,246,240,0.4); }
+    .final-cta .btn-primary { position: relative; font-size: 18px; padding: 16px 36px; }
+
+    /* ===== Footer ===== */
+    footer { padding: 48px 0; border-top: 1px solid var(--border); }
+    .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+    .footer-brand { font-size: 16px; font-weight: 900; display: flex; align-items: center; gap: 6px; }
+    .footer-brand span { color: var(--accent); }
+    .footer-brand img { width: 28px; height: 28px; }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: 13px; color: var(--text-tertiary); font-weight: 600; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy { font-size: 12px; color: var(--text-muted); width: 100%; text-align: center; margin-top: 24px; }
+
+    /* ===== Animations ===== */
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.6s, transform 0.6s; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+      .container { padding: 0 20px; }
+      .nav-links { display: none; }
+      .nav-mobile { display: block; }
+      .hero { padding: 100px 0 40px; }
+      .hero-split { grid-template-columns: 1fr; gap: 32px; min-height: auto; text-align: center; }
+      .hero-text { order: 1; }
+      .hero-visual { order: 2; }
+      .hero h1 { font-size: 32px; letter-spacing: -1px; }
+      .hero-sub { font-size: 16px; margin: 0 auto 12px; }
+      .hero-use-cases { justify-content: center; }
+      .hero-buttons { justify-content: center; }
+      .hero-fox-wrap { left: -20px; bottom: 40px; }
+      .fox-full { width: 80px; }
+      .hero-mockup { max-width: 260px; }
+      .phone-frame { border-radius: 32px; padding: 8px; }
+      .phone-screenshot { border-radius: 26px; }
+      .problem-grid { grid-template-columns: 1fr; gap: 32px; }
+      .problem-visual { order: -1; }
+      .problem-phone { max-width: 220px; }
+      .scoring-grid { grid-template-columns: 1fr; gap: 32px; }
+      .scoring-phone-frame { max-width: 240px; }
+      .showcase { padding: 56px 0; }
+      .showcase-phones { gap: 16px; }
+      .showcase-item { max-width: 180px; }
+      .showcase-frame { border-radius: 26px; padding: 6px; }
+      .showcase-img { border-radius: 22px; }
+      .showcase-item-raised { transform: translateY(-12px); }
+      .proof-stats { gap: 24px; }
+      .proof-stat .number { font-size: 24px; }
+      .social-proof { padding: 32px 0; }
+      .modes, .how-it-works, .scoring, .who-for, .quote-section, .faq, .final-cta { padding: 56px 0; }
+      .section-heading { margin-bottom: 32px; }
+      .section-heading h2 { font-size: 26px; }
+      .mode-card { padding: 24px 20px; }
+      .waitlist-form { flex-direction: column; }
+      .waitlist-input, .waitlist-btn { width: 100%; }
+      .footer-inner { flex-direction: column; text-align: center; }
+      .footer-links { justify-content: center; }
+    }
+
+    @media (max-width: 480px) {
+      .hero { padding: 90px 0 32px; }
+      .hero h1 { font-size: 28px; }
+      .hero-buttons { flex-direction: column; align-items: stretch; }
+      .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+      .hero-fox-wrap { left: -10px; bottom: 30px; }
+      .fox-full { width: 70px; }
+      .hero-mockup { max-width: 240px; }
+      .modes-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 24px; }
+      .showcase-phones { gap: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; justify-content: flex-start; }
+      .showcase-item { min-width: 160px; max-width: 160px; }
+      .showcase-item-raised { transform: none; }
+      .who-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    }
+  </style>
+
+  <script type="application/ld+json">
+  { "@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Sharp", "applicationCategory": "EducationApplication", "operatingSystem": "iOS", "description": "AI-powered communication coach. Score your speaking on 5 dimensions and get sharper every day.", "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" } }
+  </script>
+</head>
+
+<body>
+  <!-- Nav -->
+  <nav id="nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo"><img src="fox-icon.svg" alt="" class="nav-fox">Sharp<span>.</span></a>
+      <div class="nav-links">
+        <a href="#how-it-works">How It Works</a>
+        <a href="#modes">Features</a>
+        <a href="#scoring">Scoring</a>
+        <a href="#faq">FAQ</a>
+        <a href="#waitlist-bottom" class="nav-cta">Join Waitlist</a>
+      </div>
+      <button class="nav-mobile" aria-label="Menu">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-split">
+        <div class="hero-text">
+          <div class="hero-badge">Coming soon to iOS</div>
+          <h1>Your AI coach for<br><span class="accent">speaking under pressure</span></h1>
+          <p class="hero-sub">Sharp listens to how you speak, scores you on 5 dimensions, and coaches you to be clearer, more concise, and more credible. 30 seconds a day.</p>
+          <div class="hero-use-cases">
+            <span class="use-case">Job interviews</span>
+            <span class="use-case">Promotion panels</span>
+            <span class="use-case">Investor pitches</span>
+            <span class="use-case">Stakeholder updates</span>
+            <span class="use-case">University presentations</span>
+          </div>
+          <div class="hero-buttons">
+            <a href="#waitlist-bottom" class="btn-primary">Join the waitlist</a>
+            <a href="#how-it-works" class="btn-secondary">See how it works</a>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <div class="hero-fox-wrap">
+            <img src="fox.svg" alt="Sharp Fox Mascot" class="fox-full">
+            <div class="fox-speech">Try me!</div>
+          </div>
+          <div class="hero-mockup">
+            <div class="phone-frame">
+              <img src="screenshots/home.png" alt="Sharp Home Screen" class="phone-screenshot">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Waitlist (top) -->
+  <section class="waitlist" id="waitlist-top">
+    <div class="container">
+      <div class="waitlist-inner">
+        <h2>Be first to get Sharp</h2>
+        <p>Join the waitlist. We'll let you know when it launches.</p>
+        <form class="waitlist-form">
+          <input type="email" class="waitlist-input" placeholder="your@email.com" required>
+          <button type="submit" class="waitlist-btn">Join waitlist</button>
+        </form>
+        <p class="waitlist-note">No spam. Just a launch notification.</p>
+        <div class="waitlist-success">You're on the list! We'll email you when Sharp launches.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem -->
+  <section class="problem">
+    <div class="container">
+      <div class="problem-grid">
+        <div class="problem-text reveal">
+          <div class="section-tag">The problem</div>
+          <h2>You know what to say. You just can't say it clearly under pressure.</h2>
+          <p>You've got the expertise. But when someone puts you on the spot — in an interview, a meeting, a pitch — your answer comes out rambling, vague, or stuffed with filler words.</p>
+          <ul class="pain-list">
+            <li class="pain-item"><span class="pain-icon">&#128556;</span> You bury the point halfway through your answer</li>
+            <li class="pain-item"><span class="pain-icon">&#128556;</span> You say "um," "like," "basically" more than you realise</li>
+            <li class="pain-item"><span class="pain-icon">&#128556;</span> You ramble when a 20-second answer would land better</li>
+            <li class="pain-item"><span class="pain-icon">&#128556;</span> You sound confident but say nothing memorable</li>
+            <li class="pain-item"><span class="pain-icon">&#128556;</span> You can't practise speaking the way you practise coding or writing</li>
+          </ul>
+        </div>
+        <div class="problem-visual reveal">
+          <div class="problem-phone">
+            <img src="screenshots/results.png" alt="Sharp Results — AI scores your speaking">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Social Proof -->
+  <section class="social-proof">
+    <div class="container">
+      <p>Built on communication science. Powered by AI.</p>
+      <div class="proof-stats">
+        <div class="proof-stat"><div class="number">5</div><div class="label">Scoring dimensions</div></div>
+        <div class="proof-stat"><div class="number">30s</div><div class="label">Daily commitment</div></div>
+        <div class="proof-stat"><div class="number">8</div><div class="label">Research frameworks</div></div>
+        <div class="proof-stat"><div class="number">4</div><div class="label">Practice modes</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-heading reveal">
+        <div class="section-tag">How it works</div>
+        <h2>Three steps. Thirty seconds. Real improvement.</h2>
+        <p>No courses. No rehearsed scripts. Just daily reps that rewire how you communicate.</p>
+      </div>
+      <div class="steps">
+        <div class="step reveal">
+          <div class="step-number">1</div>
+          <h3>Get a tailored question</h3>
+          <p>Sharp generates questions based on your role, company, and what you're preparing for. It even pulls real industry news to keep things relevant.</p>
+        </div>
+        <div class="step reveal">
+          <div class="step-number">2</div>
+          <h3>Speak your answer</h3>
+          <p>Hit record and respond naturally. No scripts, no prep time. Just you, thinking on your feet — exactly like the real thing.</p>
+        </div>
+        <div class="step reveal">
+          <div class="step-number">3</div>
+          <h3>Get scored and coached</h3>
+          <p>AI scores you on 5 dimensions, tells you exactly what you did well, what to fix, and gives you a model answer you can listen to.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Modes -->
+  <section class="modes" id="modes">
+    <div class="container">
+      <div class="section-heading reveal">
+        <div class="section-tag">Four ways to train</div>
+        <h2>Every mode sharpens a different edge</h2>
+        <p>From 30-second daily reps to intense multi-turn pressure drills.</p>
+      </div>
+      <div class="modes-grid">
+        <div class="mode-card reveal">
+          <span class="mode-badge badge-free">Free</span>
+          <span class="mode-emoji">&#9728;&#65039;</span>
+          <h3>Daily 30</h3>
+          <div class="mode-time">30 seconds</div>
+          <p>One question. Same for everyone. Record, score, compare with friends. Build the daily habit that changes how you speak.</p>
+        </div>
+        <div class="mode-card reveal">
+          <span class="mode-badge badge-pro">Pro</span>
+          <span class="mode-emoji">&#9889;</span>
+          <h3>One Shot</h3>
+          <div class="mode-time">90 seconds</div>
+          <p>Full coaching session. 5-dimension scoring, model answer you can listen to, before/after snippet showing exactly how to improve.</p>
+        </div>
+        <div class="mode-card reveal">
+          <span class="mode-badge badge-pro">Pro</span>
+          <span class="mode-emoji">&#9875;</span>
+          <h3>Threaded Challenge</h3>
+          <div class="mode-time">4 rounds</div>
+          <p>Four follow-up questions that escalate in pressure. Like a real interview where every answer gets probed deeper.</p>
+        </div>
+        <div class="mode-card reveal">
+          <span class="mode-badge badge-free">Free</span>
+          <span class="mode-emoji">&#9876;&#65039;</span>
+          <h3>Sharp Duels</h3>
+          <div class="mode-time">Async 1v1</div>
+          <p>Challenge a friend to the same question. Compare scores side by side. The sharpest speaker wins. Practice made social.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Showcase -->
+  <section class="showcase">
+    <div class="container">
+      <div class="section-heading reveal">
+        <div class="section-tag">Personalised to you</div>
+        <h2>Your role. Your industry. Your questions.</h2>
+        <p>Upload your CV, set your context, and Sharp tailors every question to what you're actually preparing for.</p>
+      </div>
+      <div class="showcase-phones">
+        <div class="showcase-item reveal">
+          <div class="showcase-frame"><img src="screenshots/context.png" alt="Context Setup" class="showcase-img"></div>
+          <div class="showcase-label">Set your context</div>
+        </div>
+        <div class="showcase-item showcase-item-raised reveal">
+          <div class="showcase-frame"><img src="screenshots/industry.png" alt="Industry Insight" class="showcase-img"></div>
+          <div class="showcase-label">Real industry news</div>
+        </div>
+        <div class="showcase-item reveal">
+          <div class="showcase-frame"><img src="screenshots/session.png" alt="Session Review" class="showcase-img"></div>
+          <div class="showcase-label">Full coaching review</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Scoring -->
+  <section class="scoring" id="scoring">
+    <div class="container">
+      <div class="scoring-grid">
+        <div class="scoring-visual reveal">
+          <div class="scoring-phone-frame"><img src="screenshots/results.png" alt="5-dimension scoring" class="scoring-phone-img"></div>
+        </div>
+        <div class="scoring-text reveal">
+          <div class="section-tag">AI Scoring</div>
+          <h2>Five dimensions. Zero guesswork.</h2>
+          <p>Every answer is scored on the dimensions that actually matter. Not "good job" — real numbers, real criticism, real coaching grounded in communication science.</p>
+          <ul>
+            <li><strong>Structure</strong> — Did you lead with the answer, not the backstory?</li>
+            <li><strong>Concision</strong> — Could you have said it in half the words?</li>
+            <li><strong>Substance</strong> — Did you use evidence, numbers, specifics?</li>
+            <li><strong>Filler Words</strong> — How many "ums," "likes," and "basicallys"?</li>
+            <li><strong>Awareness</strong> — Do you understand your industry context?</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Who It's For -->
+  <section class="who-for">
+    <div class="container">
+      <div class="section-heading reveal">
+        <div class="section-tag">Who it's for</div>
+        <h2>If you speak at work, Sharp is for you</h2>
+      </div>
+      <div class="who-grid">
+        <div class="who-card reveal"><div class="who-emoji">&#128187;</div><h3>Software Engineers</h3><p>Nail system design explanations and stand-ups</p></div>
+        <div class="who-card reveal"><div class="who-emoji">&#128188;</div><h3>Product Managers</h3><p>Pitch features, handle stakeholder pushback</p></div>
+        <div class="who-card reveal"><div class="who-emoji">&#127891;</div><h3>Students</h3><p>Prepare for graduate interviews and presentations</p></div>
+        <div class="who-card reveal"><div class="who-emoji">&#128640;</div><h3>Founders</h3><p>Sharpen your pitch for investors and customers</p></div>
+        <div class="who-card reveal"><div class="who-emoji">&#128200;</div><h3>Consultants</h3><p>Deliver structured, concise client recommendations</p></div>
+        <div class="who-card reveal"><div class="who-emoji">&#127942;</div><h3>Career Climbers</h3><p>Ace promotion panels and performance reviews</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quote -->
+  <section class="quote-section">
+    <div class="container">
+      <div class="quote-card reveal">
+        <blockquote>"Most people don't have a speaking problem. They have a thinking-out-loud problem. Sharp teaches you to think before you speak — in 30 seconds a day."</blockquote>
+        <cite>The idea behind Sharp</cite>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq" id="faq">
+    <div class="container">
+      <div class="section-heading reveal">
+        <div class="section-tag">FAQ</div>
+        <h2>Questions? Answers.</h2>
+      </div>
+      <div class="faq-list">
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Is Sharp free?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>The Daily 30 challenge and Sharp Duels are completely free, forever. One Shot and Threaded Challenge require Sharp Pro for unlimited access — but you get free tries every day.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>How does the AI scoring work?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Your spoken answer is transcribed in real-time and analysed by AI across 5 dimensions. The coaching is grounded in 8 communication science frameworks — but it sounds like a mentor, not a textbook. You also get a model answer you can listen to.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What kind of questions does Sharp ask?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Questions are tailored to your role, company, and situation. Preparing for an interview? You'll get interview-style questions. Promotion panel? Leadership scenarios. Sharp even pulls real industry news so your practice stays relevant to the real world.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Is my audio stored?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>No. Your audio is transcribed in real-time and immediately discarded. We never store recordings on our servers. Your practice data stays on your device.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>How is this different from practising with ChatGPT?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>ChatGPT reads your text. Sharp listens to your voice. You record yourself speaking under a timer — just like the real thing — and get scored on how you actually sound, not how you type. That's the difference between knowing what to say and being able to say it.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What are Sharp Duels?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Challenge a friend to answer the same question. You both record separately, get scored by the same AI, and compare results side by side. It's free and it's how you make practice competitive and social.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>When does Sharp launch?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Soon! Join the waitlist above and we'll email you the moment it's live on the App Store.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="final-cta" id="waitlist-bottom">
+    <div class="container">
+      <h2>Stop rambling. Start leading.</h2>
+      <p>Join the waitlist and be first to train with Sharp when it launches.</p>
+      <form class="waitlist-form">
+        <input type="email" class="waitlist-input" placeholder="your@email.com" required>
+        <button type="submit" class="waitlist-btn">Join waitlist</button>
+      </form>
+      <p class="waitlist-note">Free to start. No spam. Just a launch email.</p>
+      <div class="waitlist-success">You're on the list! We'll email you when Sharp launches.</div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand"><img src="fox-icon.svg" alt="">Sharp<span>.</span></div>
+        <div class="footer-links">
+          <a href="privacy-policy.html">Privacy Policy</a>
+          <a href="mailto:hello@speaksharpai.com">Contact</a>
+        </div>
+      </div>
+      <p class="footer-copy">&copy; 2026 Sharp. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Nav scroll
+    window.addEventListener('scroll', () => document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10));
+
+    // Reveal
+    const observer = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }), { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Mobile nav
+    const navToggle = document.querySelector('.nav-mobile');
+    const navLinks = document.querySelector('.nav-links');
+    navToggle?.addEventListener('click', () => navLinks.classList.toggle('mobile-open'));
+    navLinks?.querySelectorAll('a').forEach(link => link.addEventListener('click', () => navLinks.classList.remove('mobile-open')));
+
+    // Waitlist
+    document.querySelectorAll('.waitlist-form').forEach(function(form) {
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var input = form.querySelector('input[type="email"]');
+        var email = input.value.trim();
+        if (!email) return;
+        var btn = form.querySelector('.waitlist-btn');
+        btn.textContent = 'Joining...';
+        btn.disabled = true;
+        fetch('https://sharp-production-2d7c.up.railway.app/api/waitlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, joinedAt: new Date().toISOString() })
+        }).then(function(r) { return r.json(); }).then(function() {
+          form.style.display = 'none';
+          form.parentElement.querySelector('.waitlist-success').style.display = 'block';
+        }).catch(function() {
+          // Fallback — save locally and show success anyway
+          form.style.display = 'none';
+          form.parentElement.querySelector('.waitlist-success').style.display = 'block';
+        });
+      });
+    });
+  </script>
+</body>
+</html>

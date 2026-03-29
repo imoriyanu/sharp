@@ -68,13 +68,13 @@ export async function syncSessionToCloud(session: Session): Promise<void> {
         scores: turn.scores,
         overall: turn.overall,
         summary: turn.summary,
-        positives: (turn as any).positives || null,
-        improvements: (turn as any).improvements || null,
+        positives: turn.positives || null,
+        improvements: turn.improvements || null,
         coaching_insight: turn.coachingInsight,
-        communication_tip: (turn as any).communicationTip || null,
+        communication_tip: turn.communicationTip || null,
         snippet: turn.snippet,
-        filler_words_found: (turn as any).fillerWordsFound || [],
-        filler_count: (turn as any).fillerCount || 0,
+        filler_words_found: turn.fillerWordsFound || [],
+        filler_count: turn.fillerCount || 0,
         created_at: session.createdAt,
       });
     }

@@ -55,7 +55,8 @@ export default function CoachingScreen() {
   async function startRecording() {
     try {
       await stopAudio();
-      await requestRecordingPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) return;
       // Try configuring audio session with fallback modes
       let sessionReady = false;
       for (const mode of ['duckOthers', 'mixWithOthers'] as const) {

@@ -11,13 +11,14 @@ import { getContext, saveContext } from '../../src/services/storage';
 import { playQuestionAudio, stopAudio } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { isPremium } from '../../src/services/premium';
+import { trackEvent, Events } from '../../src/services/analytics';
 import type { UserContext } from '../../src/types';
 
 const FIELDS = [
-  { key: 'roleText' as const, question: "Tell me about your role. What's your job title, what team are you on, and how long have you been doing this?", label: 'Your Role', emoji: '👤', placeholder: 'e.g. Senior product manager, Growth team, 5 years' },
-  { key: 'currentCompany' as const, question: "What company do you work at?", label: 'Company', emoji: '🏢', placeholder: 'e.g. Stripe, Google, a startup' },
-  { key: 'situationText' as const, question: "What are you preparing for right now? An interview, a promotion, a big presentation? Tell me what's coming up.", label: 'Your Situation', emoji: '🎯', placeholder: 'e.g. Staff promotion panel in 6 weeks' },
-  { key: 'dreamRoleAndCompany' as const, question: "If you could have any role at any company, what would it be?", label: 'Dream Role', emoji: '✨', placeholder: 'e.g. Engineering Manager at Anthropic' },
+  { key: 'roleText' as const, question: "Tell me about yourself. What do you do? Whether you're working, studying, building something, or preparing for your next move — I'd love to know.", label: 'Your Role', emoji: '👤', placeholder: 'e.g. Product manager, final-year student, freelance designer, between roles' },
+  { key: 'currentCompany' as const, question: "Where are you right now? A company, university, your own project — anything works.", label: 'Company / Organisation', emoji: '🏢', placeholder: 'e.g. Stripe, University of Manchester, self-employed, exploring' },
+  { key: 'situationText' as const, question: "What are you preparing for right now? An interview, a promotion, a presentation, exams, a pitch? Tell me what's coming up.", label: 'Your Situation', emoji: '🎯', placeholder: 'e.g. Graduate interviews next month, staff promotion panel, investor pitch' },
+  { key: 'dreamRoleAndCompany' as const, question: "If you could have any role at any company, what would it be?", label: 'Dream Role', emoji: '✨', placeholder: 'e.g. Engineering Manager at Anthropic, founder of my own startup' },
 ];
 
 type ContextKey = typeof FIELDS[number]['key'];
@@ -65,7 +66,7 @@ export default function ContextSetupScreen() {
   async function speakQuestion() {
     if (voiceStep >= FIELDS.length) return;
     setRecState('speaking');
-    const greeting = voiceStep === 0 ? "Let's set up your context. I'll ask you a few questions — just speak naturally. " : '';
+    const greeting = voiceStep === 0 ? "Let's set up your context. Whether you're working, studying, or building something new — I'll ask a few questions so I can tailor your practice. Just speak naturally. " : '';
     await playQuestionAudio(greeting + FIELDS[voiceStep].question);
     if (mountedRef.current) setRecState('ready');
   }
@@ -73,7 +74,11 @@ export default function ContextSetupScreen() {
   async function startRecording() {
     try {
       await stopAudio();
-      await requestRecordingPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        setRecState('ready');
+        return;
+      }
       let sessionReady = false;
       for (const m of ['duckOthers', 'mixWithOthers'] as const) {
         try { await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, interruptionMode: m }); sessionReady = true; break; } catch {}
@@ -124,6 +129,7 @@ export default function ContextSetupScreen() {
 
   async function handleSave() {
     await saveContext(ctx);
+    trackEvent(Events.CONTEXT_SETUP_COMPLETED);
     setHasChanges(false);
     router.back();
   }
@@ -322,6 +328,9 @@ export default function ContextSetupScreen() {
           {/* Documents */}
           <View style={s.docsSection}>
             <Text style={s.docsTitle}>Documents</Text>
+            <Text style={s.docsHint}>
+              Share anything that helps us understand you better — a CV, job description, project brief, university coursework, or pitch deck. The more we know, the sharper your practice gets.
+            </Text>
             {ctx.documents.length > 0 ? (
               ctx.documents.map(doc => (
                 <View key={doc.id} style={s.docRow}>
@@ -407,6 +416,7 @@ const s = StyleSheet.create({
   docInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   docName: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.primary, flex: 1 },
   docType: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.accent.primary, textTransform: 'uppercase' as const },
+  docsHint: { fontSize: typography.size.xs, color: colors.text.tertiary, lineHeight: fp(18), marginBottom: spacing.md },
   docsEmpty: { fontSize: typography.size.sm, color: colors.text.muted, fontStyle: 'italic', marginBottom: spacing.md },
   addDocBtn: { borderWidth: 1.5, borderColor: colors.accent.border, borderStyle: 'dashed', borderRadius: radius.lg, paddingVertical: wp(12), alignItems: 'center' },
   addDocBtnText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary },

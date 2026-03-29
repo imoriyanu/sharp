@@ -8,6 +8,10 @@ function safeParse<T>(json: string | null, fallback: T): T {
   try { return JSON.parse(json); } catch { return fallback; }
 }
 
+function syncQuietly(fn: Promise<any>, label: string): void {
+  fn.catch(e => __DEV__ && console.warn(`Sync failed (${label}):`, e?.message || e));
+}
+
 const KEYS = {
   CONTEXT: 'sharp:context',
   SESSIONS: 'sharp:sessions',
@@ -82,7 +86,7 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
   await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(profile));
-  syncProfileToCloud(profile).catch(() => {});
+  syncQuietly(syncProfileToCloud(profile), 'profile');
 }
 
 // ===== Context =====
@@ -94,7 +98,7 @@ export async function getContext(): Promise<UserContext | null> {
 
 export async function saveContext(context: UserContext): Promise<void> {
   await AsyncStorage.setItem(KEYS.CONTEXT, JSON.stringify(context));
-  syncContextToCloud(context).catch(() => {});
+  syncQuietly(syncContextToCloud(context), 'context');
 }
 
 // ===== Sessions =====
@@ -119,7 +123,7 @@ export async function saveSession(session: Session): Promise<void> {
     AsyncStorage.setItem(KEYS.SESSIONS, JSON.stringify(sessions.slice(0, 100))),
     AsyncStorage.setItem(KEYS.SESSION_DETAIL + session.id, JSON.stringify(session)),
   ]);
-  syncSessionToCloud(session).catch(() => {});
+  syncQuietly(syncSessionToCloud(session), 'session');
 }
 
 export async function getSessionById(id: string): Promise<Session | null> {
@@ -215,8 +219,8 @@ export async function updateStreak(): Promise<StreakUpdateResult> {
   ]);
 
   // Sync to cloud
-  syncStreakToCloud(streak).catch(() => {});
-  if (newBadge) syncBadgeToCloud(newBadge.day).catch(() => {});
+  syncQuietly(syncStreakToCloud(streak), 'streak');
+  if (newBadge) syncQuietly(syncBadgeToCloud(newBadge.day), 'badge');
 
   return { ...streak, newBadge };
 }
@@ -238,7 +242,7 @@ export async function saveDailyResult(result: DailyResult): Promise<void> {
   history.unshift(result);
   await AsyncStorage.setItem(KEYS.DAILY_HISTORY, JSON.stringify(history.slice(0, 90)));
   await AsyncStorage.setItem(KEYS.DAILY_LAST_DATE, result.date);
-  syncDailyResultToCloud(result).catch(() => {});
+  syncQuietly(syncDailyResultToCloud(result), 'daily');
 }
 
 export async function getDailyHistory(): Promise<DailyResult[]> {
@@ -561,6 +565,20 @@ export async function clearStaleThread(): Promise<void> {
   if (age > 60 * 60 * 1000) {
     await clearThreadState();
   }
+}
+
+// ===== Storage Cleanup =====
+
+export async function cleanOrphanedSessions(): Promise<void> {
+  try {
+    const summaries = await getSessions();
+    const validIds = new Set(summaries.map(s => s.id));
+    const allKeys = await AsyncStorage.getAllKeys();
+    const orphanKeys = allKeys.filter(k => k.startsWith(KEYS.SESSION_DETAIL) && !validIds.has(k.replace(KEYS.SESSION_DETAIL, '')));
+    if (orphanKeys.length > 0) {
+      await AsyncStorage.multiRemove(orphanKeys);
+    }
+  } catch {}
 }
 
 // ===== Utility =====

@@ -1,15 +1,44 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
-const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://fnttqojuezvmcxihcnne.supabase.co';
-const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZudHRxb2p1ZXp2bWN4aWhjbm5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NzUxMTIsImV4cCI6MjA5MDA1MTExMn0.klhUhBxl_-qMviiY2_Vwr3n0Ld-4UH3kNwQdmKYqfWc';
+const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+const isConfigured = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+const realClient: SupabaseClient | null = isConfigured
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
+
+// Safe default that works for both sync and async access patterns:
+// - supabase.auth.getSession()         → Promise { data: { session: null }, error: null }
+// - supabase.auth.getUser()            → Promise { data: { user: null }, error: null }
+// - supabase.auth.onAuthStateChange()  → { data: { subscription: { unsubscribe: () => {} } } }
+// - supabase.from('x').upsert({})      → Promise { data: null, error: null }
+const NOOP_RESULT = {
+  data: {
+    session: null,
+    user: null,
+    subscription: { unsubscribe: () => {} },
   },
-});
+  error: null,
+  // Make it thenable so it works with both await and .then()
+  then: (resolve: any) => resolve ? resolve(NOOP_RESULT) : Promise.resolve(NOOP_RESULT),
+};
+
+function createNoopProxy(): any {
+  return new Proxy(function () {}, {
+    get: () => createNoopProxy(),
+    apply: () => NOOP_RESULT,
+  });
+}
+
+export const supabase: SupabaseClient = realClient || createNoopProxy();

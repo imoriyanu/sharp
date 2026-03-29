@@ -191,7 +191,7 @@ function getWeekStart(): string {
 
 async function saveUsage(usage: DailyUsage): Promise<void> {
   await AsyncStorage.setItem(USAGE_KEY, JSON.stringify(usage));
-  syncUsageToCloud(usage).catch(() => {});
+  syncUsageToCloud(usage).catch(e => __DEV__ && console.warn('Sync failed (usage):', e?.message || e));
 }
 
 async function syncUsageToCloud(usage: DailyUsage): Promise<void> {

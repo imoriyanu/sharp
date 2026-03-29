@@ -11,6 +11,7 @@ import { generateQuestion } from '../../src/services/scoring';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
 import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, getRecentQuestions, addRecentQuestion, getAverageScores, getRecentInsights, getRecentSessionHistory } from '../../src/services/storage';
+import { trackEvent, Events } from '../../src/services/analytics';
 import type { RecordingState, GeneratedQuestion } from '../../src/types';
 
 const DEFAULT_TIMER = 60;
@@ -96,7 +97,8 @@ export default function DailyChallengeScreen() {
   async function startRecording() {
     try {
       await stopAudio();
-      await requestRecordingPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) return;
       // Try configuring audio session with fallback modes
       let sessionReady = false;
       for (const mode of ['duckOthers', 'mixWithOthers'] as const) {
@@ -109,6 +111,7 @@ export default function DailyChallengeScreen() {
       recorder.record();
       recorderRef.current = recorder;
       setState('recording');
+      trackEvent(Events.DAILY_CHALLENGE_STARTED);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       setTimeLeft(timerMax);
@@ -168,6 +171,7 @@ export default function DailyChallengeScreen() {
 
       const today = new Date().toISOString().split('T')[0];
       await saveDailyResult({ score: result.overall, insight: result.coachingInsight, date: today, transcript: text });
+      trackEvent(Events.DAILY_CHALLENGE_COMPLETED, { score: result.overall });
       await clearDailyQuestionCache();
       const streakResult = await updateStreak();
       await saveSession({

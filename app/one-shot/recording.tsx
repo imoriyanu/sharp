@@ -11,6 +11,7 @@ import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer, generateFollowUp, generateDebrief, computeProgressScore } from '../../src/services/scoring';
 import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache, clearIndustryQuestionCache, getThreadState, saveThreadState, clearThreadState, getSessions, getSessionById } from '../../src/services/storage';
 import { trackOneShotUsage, trackThreadedUsage } from '../../src/services/premium';
+import { trackEvent, Events } from '../../src/services/analytics';
 
 const DEFAULT_TIMER = 90;
 
@@ -41,7 +42,11 @@ export default function RecordingScreen() {
   async function startRecording() {
     try {
       await stopAudio();
-      await requestRecordingPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        setRetryReason('Microphone permission denied. Please enable it in Settings to use Sharp.');
+        return;
+      }
 
       // Try configuring audio session — fallback through modes if one fails
       let sessionReady = false;
@@ -62,6 +67,7 @@ export default function RecordingScreen() {
       recorder.record();
       recorderRef.current = recorder;
       setIsRecording(true);
+      trackEvent(Events.RECORDING_STARTED, { mode: params.mode });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       timerRef.current = setInterval(() => {
@@ -221,6 +227,7 @@ export default function RecordingScreen() {
         recentScores,
       });
 
+      trackEvent(Events.SESSION_COMPLETED, { mode: params.mode, score: result.overall });
       await Promise.all([clearOneShotQuestionCache(), clearIndustryQuestionCache()]);
       await trackOneShotUsage();
 

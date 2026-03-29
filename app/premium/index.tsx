@@ -1,10 +1,12 @@
 import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
 import { PLANS, MAX_PLANS, setPremiumStatus, isPremium } from '../../src/services/premium';
+import { getContext } from '../../src/services/storage';
+import { trackEvent, Events } from '../../src/services/analytics';
 import type { PlanId } from '../../src/types';
 
 const COMPARISON = [
@@ -26,6 +28,8 @@ export default function PremiumScreen() {
   const [selected, setSelected] = useState<PlanId>(isPremium() ? 'max_annual' : 'annual');
   const [purchasing, setPurchasing] = useState(false);
 
+  useEffect(() => { trackEvent(Events.PAYWALL_VIEWED); }, []);
+
   const selectedPlan = ALL_PLANS.find(p => p.id === selected) || ALL_PLANS[0];
   const isMaxPlan = selected === 'max_monthly' || selected === 'max_annual';
 
@@ -38,7 +42,14 @@ export default function PremiumScreen() {
         ? new Date(Date.now() + 31 * 86400000).toISOString()
         : new Date(Date.now() + 365 * 86400000).toISOString();
       await setPremiumStatus(selected, expiresAt);
-      router.back();
+      // Prompt context setup if not already done
+      const ctx = await getContext();
+      const hasContext = !!(ctx?.roleText || ctx?.currentCompany || ctx?.situationText || ctx?.dreamRoleAndCompany);
+      if (!hasContext) {
+        router.replace('/context/setup');
+      } else {
+        router.back();
+      }
     } catch {
       setPurchasing(false);
     }

@@ -1,50 +1,76 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const multer = require('multer');
+const helmet = require('helmet');
 const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const Groq = require('groq-sdk');
 const prompts = require('./prompts');
 
+const log = process.env.NODE_ENV === 'production' ? () => {} : console.log.bind(console);
+const logError = console.error.bind(console); // always log errors
+const isProd = process.env.NODE_ENV === 'production';
+
+function sendError(res, status, error, context) {
+  logError(`${context}:`, error);
+  res.status(status).json({ error: isProd ? 'Something went wrong. Please try again.' : error.message || error });
+}
+
+// Validate required API keys before starting
+const REQUIRED_KEYS = ['ANTHROPIC_API_KEY', 'GROQ_API_KEY'];
+for (const key of REQUIRED_KEYS) {
+  if (!process.env[key]) {
+    console.error(`FATAL: Missing required environment variable ${key}`);
+    process.exit(1);
+  }
+}
+
 const app = express();
+
+// Security headers
+app.use(helmet());
 
 // CORS — restrict to known origins in production
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:8081', 'http://localhost:19006', 'exp://'];
+  : (isProd ? [] : ['http://localhost:8081', 'http://localhost:19006', 'exp://']);
 app.use(cors({
   origin: (origin, cb) => {
     // Allow requests with no origin (mobile apps, curl)
     if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.some(o => origin.startsWith(o))) return cb(null, true);
-    cb(null, true); // Allow all for now — tighten after launch
+    cb(new Error('Not allowed by CORS'));
   },
 }));
 
 app.use(express.json({ limit: '25mb' }));
 
-// Rate limiting — per IP
+// Rate limiting — per IP, with periodic cleanup
 const rateLimits = new Map();
+const RATE_WINDOW = 60000;
+
+// Clean expired entries every 2 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateLimits) {
+    const recent = v.filter(t => now - t < RATE_WINDOW);
+    if (recent.length === 0) rateLimits.delete(k);
+    else rateLimits.set(k, recent);
+  }
+}, 120000).unref();
+
 function rateLimit(maxPerMinute) {
   return (req, res, next) => {
     const key = req.ip + req.path;
     const now = Date.now();
-    const window = 60000;
     const hits = rateLimits.get(key) || [];
-    const recent = hits.filter(t => now - t < window);
+    const recent = hits.filter(t => now - t < RATE_WINDOW);
     if (recent.length >= maxPerMinute) {
       return res.status(429).json({ error: 'Too many requests. Please slow down.' });
     }
     recent.push(now);
     rateLimits.set(key, recent);
-    // Clean old entries every 100 requests
-    if (rateLimits.size > 1000) {
-      for (const [k, v] of rateLimits) {
-        if (v.every(t => now - t > window)) rateLimits.delete(k);
-      }
-    }
     next();
   };
 }
@@ -75,8 +101,17 @@ function resetUsageIfNewDay() {
   }
 }
 
-// File upload handling
-const upload = multer({ dest: 'uploads/' });
+// ===== Input Validation =====
+
+const MAX_TRANSCRIPT = 50000;
+const MAX_QUESTION = 2000;
+const MAX_TTS_TEXT = 1000;
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024; // 15MB
+
+function sanitizeString(str, maxLen) {
+  if (typeof str !== 'string') return '';
+  return str.slice(0, maxLen);
+}
 
 // ===== API Clients =====
 
@@ -123,7 +158,7 @@ async function callClaude(prompt, maxTokens = 1500) {
           return JSON.parse(jsonMatch[0]);
         } catch {}
       }
-      console.error('Failed to parse Claude response:', cleaned.slice(0, 500));
+      logError('Failed to parse Claude response:', cleaned.slice(0, 500));
       throw new Error('Invalid JSON response from Claude');
     }
   } catch (e) {
@@ -265,7 +300,7 @@ Return ONLY valid JSON:
 
     return unique.slice(0, 20);
   } catch (e) {
-    console.error('Agent research error:', e);
+    logError('Agent research error:', e);
     return [];
   }
 }
@@ -293,8 +328,7 @@ app.post('/api/question/generate', async (req, res) => {
     const result = await callClaude(prompt, tokens);
     res.json(result);
   } catch (error) {
-    console.error('Question generation error:', error);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error, 'Question generation');
   }
 });
 
@@ -302,19 +336,23 @@ app.post('/api/question/generate', async (req, res) => {
 
 app.post('/api/score', async (req, res) => {
   try {
-    if (!req.body?.transcript) {
+    if (!req.body?.transcript || typeof req.body.transcript !== 'string') {
       return res.status(400).json({ error: 'transcript is required' });
     }
-    if (!req.body?.question) {
+    if (!req.body?.question || typeof req.body.question !== 'string') {
       return res.status(400).json({ error: 'question is required' });
     }
+    if (req.body.transcript.length > MAX_TRANSCRIPT) {
+      return res.status(400).json({ error: 'Transcript too long' });
+    }
+    req.body.transcript = sanitizeString(req.body.transcript, MAX_TRANSCRIPT);
+    req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
     const promptFn = req.body.isOnboarding ? prompts.onboardingScoringPrompt : prompts.scoringPrompt;
     const prompt = promptFn(req.body);
     const result = await callClaude(prompt, 2000);
     res.json(result);
   } catch (error) {
-    console.error('Scoring error:', error);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error, 'Scoring');
   }
 });
 
@@ -325,12 +363,13 @@ app.post('/api/threaded/follow-up', async (req, res) => {
     if (!req.body?.question || !req.body?.transcript) {
       return res.status(400).json({ error: 'question and transcript are required' });
     }
+    req.body.transcript = sanitizeString(req.body.transcript, MAX_TRANSCRIPT);
+    req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
     const prompt = prompts.followUpPrompt(req.body);
     const result = await callClaude(prompt, 400);
     res.json(result);
   } catch (error) {
-    console.error('Follow-up generation error:', error);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error, 'Follow-up generation');
   }
 });
 
@@ -345,8 +384,7 @@ app.post('/api/threaded/debrief', async (req, res) => {
     const result = await callClaude(prompt, 2000);
     res.json(result);
   } catch (error) {
-    console.error('Debrief error:', error);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error, 'Debrief');
   }
 });
 
@@ -355,14 +393,16 @@ app.post('/api/threaded/debrief', async (req, res) => {
 app.post('/api/progress/summary', async (req, res) => {
   try {
     const { progressData, roleText, currentCompany } = req.body;
+    const safeRole = sanitizeString(roleText, 200);
+    const safeCompany = sanitizeString(currentCompany, 200);
     const prompt = `You are Sharp, a communication coach. Generate a 30-second spoken progress summary for your student.
 
 THEIR DATA:
-- Total sessions: ${progressData.totalSessions}
-- Sessions this week: ${progressData.sessionsThisWeek} (last week: ${progressData.sessionsLastWeek})
-- Current streak: ${progressData.currentStreak} days (best ever: ${progressData.longestStreak})
-- Role: ${roleText || 'Not set'}
-- Company: ${currentCompany || 'Not set'}
+- Total sessions: ${Number(progressData?.totalSessions) || 0}
+- Sessions this week: ${Number(progressData?.sessionsThisWeek) || 0} (last week: ${Number(progressData?.sessionsLastWeek) || 0})
+- Current streak: ${Number(progressData?.currentStreak) || 0} days (best ever: ${Number(progressData?.longestStreak) || 0})
+- Role: ${safeRole || 'Not set'}
+- Company: ${safeCompany || 'Not set'}
 
 SCORE TRENDS (recent sessions):
 ${JSON.stringify(progressData.overallTrend?.slice(-10) || [])}
@@ -404,26 +444,28 @@ Return ONLY valid JSON (no markdown):
     const result = await callClaude(prompt, 600);
     res.json(result);
   } catch (error) {
-    console.error('Progress summary error:', error);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error, 'Progress summary');
   }
 });
 
 // ===== Transcription (Groq/Whisper) =====
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 app.post('/api/transcribe', async (req, res) => {
   const files = [];
   try {
     const { audio, filename } = req.body;
-    console.log('Transcribe request received. Has audio:', !!audio, 'Body keys:', Object.keys(req.body));
-    if (!audio) {
+    log('Transcribe request received. Has audio:', !!audio, 'Body keys:', Object.keys(req.body));
+    if (!audio || typeof audio !== 'string') {
       return res.status(400).json({ error: 'No audio data. Send { audio: base64, filename: "recording.m4a" }' });
     }
 
     const buffer = Buffer.from(audio, 'base64');
-    console.log('Decoded buffer size:', buffer.length, 'bytes');
+    if (buffer.length > MAX_AUDIO_BYTES) {
+      return res.status(400).json({ error: 'Audio file too large (max 15MB)' });
+    }
+    log('Decoded buffer size:', buffer.length, 'bytes');
     const ts = Date.now();
     const rawPath = path.join(__dirname, 'uploads', `rec_${ts}_raw.m4a`);
     const mp3Path = path.join(__dirname, 'uploads', `rec_${ts}.mp3`);
@@ -439,48 +481,49 @@ app.post('/api/transcribe', async (req, res) => {
 
     // Approach 1: afconvert → ffmpeg (macOS only, handles chnl box)
     try {
-      execSync(`afconvert "${rawPath}" "${wavPath}" -d LEI16 -f WAVE 2>/dev/null`, { timeout: 15000 });
-      execSync(`ffmpeg -i "${wavPath}" -acodec libmp3lame -ar 16000 -ac 1 -b:a 64k "${mp3Path}" -y 2>/dev/null`, { timeout: 15000 });
+      execFileSync('afconvert', [rawPath, wavPath, '-d', 'LEI16', '-f', 'WAVE'], { timeout: 15000, stdio: 'ignore' });
+      execFileSync('ffmpeg', ['-i', wavPath, '-acodec', 'libmp3lame', '-ar', '16000', '-ac', '1', '-b:a', '64k', mp3Path, '-y'], { timeout: 15000, stdio: 'ignore' });
       convertedPath = mp3Path;
-      console.log('afconvert+ffmpeg success:', fs.statSync(rawPath).size, '→', fs.statSync(mp3Path).size);
+      log('afconvert+ffmpeg success:', fs.statSync(rawPath).size, '→', fs.statSync(mp3Path).size);
     } catch (_) {
       // Approach 2: ffmpeg directly with -err_detect ignore_err (Linux, newer ffmpeg)
       try {
-        execSync(`ffmpeg -err_detect ignore_err -i "${rawPath}" -acodec libmp3lame -ar 16000 -ac 1 -b:a 64k "${mp3Path}" -y 2>/dev/null`, { timeout: 15000 });
+        execFileSync('ffmpeg', ['-err_detect', 'ignore_err', '-i', rawPath, '-acodec', 'libmp3lame', '-ar', '16000', '-ac', '1', '-b:a', '64k', mp3Path, '-y'], { timeout: 15000, stdio: 'ignore' });
         if (fs.existsSync(mp3Path) && fs.statSync(mp3Path).size > 1000) {
           convertedPath = mp3Path;
-          console.log('ffmpeg direct success:', fs.statSync(mp3Path).size);
+          log('ffmpeg direct success:', fs.statSync(mp3Path).size);
         }
       } catch (__) {}
 
       // Approach 3: send raw M4A to Groq (some versions accept it)
       if (!convertedPath) {
         convertedPath = rawPath;
-        console.log('Using raw M4A as fallback');
+        log('Using raw M4A as fallback');
       }
     }
 
     resetUsageIfNewDay();
     apiUsage.groq.calls++;
-    const transcription = await groq.audio.transcriptions.create({
-      file: fs.createReadStream(convertedPath),
-      model: 'whisper-large-v3-turbo',
-      language: 'en',
-      response_format: 'verbose_json',
-    });
+    try {
+      const transcription = await groq.audio.transcriptions.create({
+        file: fs.createReadStream(convertedPath),
+        model: 'whisper-large-v3-turbo',
+        language: 'en',
+        response_format: 'verbose_json',
+      });
 
-    // Cleanup
-    files.forEach(f => { try { fs.unlinkSync(f); } catch (_) {} });
-
-    res.json({
-      transcript: transcription.text,
-      duration: transcription.duration || 0,
-    });
+      res.json({
+        transcript: transcription.text,
+        duration: transcription.duration || 0,
+      });
+    } finally {
+      // Always clean up temp files
+      files.forEach(f => { try { fs.unlinkSync(f); } catch (_) {} });
+    }
   } catch (error) {
     apiUsage.groq.errors++;
-    console.error('Transcription error:', error.message || error);
     files.forEach(f => { try { fs.unlinkSync(f); } catch (_) {} });
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error, 'Transcription');
   }
 });
 
@@ -499,8 +542,42 @@ app.post('/api/document/parse', async (req, res) => {
     const result = await callClaude(prompt, 1000);
     res.json(result);
   } catch (error) {
-    console.error('Document parsing error:', error);
-    res.status(500).json({ error: error.message });
+    sendError(res, 500, error, 'Document parsing');
+  }
+});
+
+// ===== Waitlist =====
+
+const WAITLIST_FILE = path.join(__dirname, 'waitlist.json');
+
+app.post('/api/waitlist', (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email required' });
+    }
+    const sanitized = email.trim().toLowerCase().slice(0, 200);
+    let list = [];
+    try { list = JSON.parse(fs.readFileSync(WAITLIST_FILE, 'utf8')); } catch {}
+    if (list.some(e => e.email === sanitized)) {
+      return res.json({ status: 'already_joined' });
+    }
+    list.push({ email: sanitized, joinedAt: new Date().toISOString() });
+    fs.writeFileSync(WAITLIST_FILE, JSON.stringify(list, null, 2));
+    log('Waitlist signup:', sanitized, '— total:', list.length);
+    res.json({ status: 'joined', count: list.length });
+  } catch (error) {
+    sendError(res, 500, error, 'Waitlist');
+  }
+});
+
+app.get('/api/waitlist/count', (req, res) => {
+  try {
+    let list = [];
+    try { list = JSON.parse(fs.readFileSync(WAITLIST_FILE, 'utf8')); } catch {}
+    res.json({ count: list.length });
+  } catch (error) {
+    sendError(res, 500, error, 'Waitlist count');
   }
 });
 
@@ -512,12 +589,18 @@ app.get('/api/tts', async (req, res) => {
     if (!text) {
       return res.status(400).json({ error: 'No text provided' });
     }
+    if (String(text).length > MAX_TTS_TEXT) {
+      return res.status(400).json({ error: 'Text too long' });
+    }
+    if (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_VOICE_ID) {
+      return res.status(503).json({ error: 'TTS not configured' });
+    }
 
     resetUsageIfNewDay();
     apiUsage.elevenlabs.calls++;
     apiUsage.elevenlabs.characters += String(text).length;
 
-    const voiceId = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
+    const voiceId = process.env.ELEVENLABS_VOICE_ID;
 
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
@@ -560,29 +643,36 @@ app.get('/api/tts', async (req, res) => {
         if (!res.writableEnded) res.write(value);
       }
     } catch (streamErr) {
-      console.error('TTS stream error:', streamErr.message);
+      logError('TTS stream error:', streamErr.message);
     } finally {
       if (!res.writableEnded) res.end();
     }
 
   } catch (error) {
-    console.error('TTS error:', error);
+    logError('TTS error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
+      sendError(res, 500, error, 'TTS');
     } else if (!res.writableEnded) {
       res.end();
     }
   }
 });
 
+// ===== Request Timeout =====
+
+app.use((req, res, next) => {
+  req.setTimeout(60000); // 60s timeout for all requests
+  res.setTimeout(60000);
+  next();
+});
+
 // ===== Start Server =====
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  Sharp AI Backend running on port ${PORT}`);
   console.log(`  Health check: http://localhost:${PORT}/api/health\n`);
 
-  // Verify API keys
   const keys = {
     Anthropic: !!process.env.ANTHROPIC_API_KEY,
     Groq: !!process.env.GROQ_API_KEY,
@@ -594,3 +684,21 @@ app.listen(PORT, '0.0.0.0', () => {
   });
   console.log('');
 });
+
+// ===== Graceful Shutdown =====
+
+function shutdown(signal) {
+  console.log(`\n  ${signal} received — shutting down gracefully...`);
+  server.close(() => {
+    console.log('  Server closed.');
+    process.exit(0);
+  });
+  // Force exit after 10s if connections don't close
+  setTimeout(() => {
+    console.error('  Forcing exit — connections did not close in time.');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

@@ -1,12 +1,16 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
 import { SharpFox, SpeechBubble } from '../../src/components/Illustrations';
+import { trackEvent, Events } from '../../src/services/analytics';
 
 export default function OnboardingHook() {
   const router = useRouter();
+
+  useEffect(() => { trackEvent(Events.ONBOARDING_STARTED); }, []);
 
   return (
     <SafeAreaView style={s.safe}>

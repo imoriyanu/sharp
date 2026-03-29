@@ -7,7 +7,7 @@ import { stopAudio } from '../src/services/tts';
 import { hasOnboarded, clearStaleThread } from '../src/services/storage';
 import { initPremium } from '../src/services/premium';
 import { initErrorTracking } from '../src/services/errorTracking';
-import { initAnalytics } from '../src/services/analytics';
+import { initAnalytics, trackEvent, Events } from '../src/services/analytics';
 import { AuthProvider } from '../src/context/AuthContext';
 
 function AudioGuard() {
@@ -23,6 +23,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     Promise.all([hasOnboarded(), initPremium(), clearStaleThread(), initErrorTracking(), initAnalytics()]).then(([val]) => {
+      trackEvent(Events.APP_OPENED);
       setOnboarded(val);
       setChecked(true);
       if (!val) {

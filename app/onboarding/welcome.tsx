@@ -7,12 +7,13 @@ import { FadeIn } from '../../src/components/Animations';
 import { SharpFox, ConfettiBurst } from '../../src/components/Illustrations';
 import { getUserProfile, setOnboarded } from '../../src/services/storage';
 import { isPremium } from '../../src/services/premium';
+import { trackEvent, Events } from '../../src/services/analytics';
 
 export default function OnboardingWelcome() {
   const router = useRouter();
   const [name, setName] = useState('');
 
-  useEffect(() => { getUserProfile().then(p => { if (p) setName(p.displayName); }); }, []);
+  useEffect(() => { trackEvent(Events.ONBOARDING_COMPLETED); getUserProfile().then(p => { if (p) setName(p.displayName); }); }, []);
 
   async function finish() {
     await setOnboarded();

@@ -8,6 +8,7 @@ import { FadeIn } from '../../src/components/Animations';
 import { getStreak, getSessions, hasCompletedDailyToday, getContext, getUserProfile } from '../../src/services/storage';
 import { isPremium, canDoOneShot, canDoThreaded, canDoIndustry, checkPremiumStatus } from '../../src/services/premium';
 import { getCurrentBadge, getNextBadge } from '../../src/constants/badges';
+import { trackScreen } from '../../src/services/analytics';
 import type { Streak, SessionSummary, UserContext, UserProfile } from '../../src/types';
 
 function getGreeting(): string {
@@ -28,7 +29,7 @@ export default function HomeScreen() {
   const [threadedLeft, setThreadedLeft] = useState<number | null>(null);
   const [industryLeft, setIndustryLeft] = useState<number | null>(null);
 
-  useFocusEffect(useCallback(() => { checkPremiumStatus(); loadData(); loadUsage(); }, []));
+  useFocusEffect(useCallback(() => { trackScreen('Home'); checkPremiumStatus(); loadData(); loadUsage(); }, []));
 
   async function loadUsage() {
     const [os, th, ind] = await Promise.all([canDoOneShot(), canDoThreaded(), canDoIndustry()]);

@@ -33,7 +33,11 @@ export default function OnboardingRecording() {
     try {
       setRetryMsg('');
       await stopAudio();
-      await requestRecordingPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        setRetryMsg('Microphone permission denied. Please enable it in Settings to use Sharp.');
+        return;
+      }
       // Try configuring audio session with fallback modes
       let sessionReady = false;
       for (const mode of ['duckOthers', 'mixWithOthers'] as const) {

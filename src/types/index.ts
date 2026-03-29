@@ -164,6 +164,11 @@ export interface Turn {
   coachingInsight: string;
   awarenessNote: string | null;
   snippet: WeakestSnippet;
+  positives?: string;
+  improvements?: string;
+  communicationTip?: string;
+  fillerWordsFound?: string[];
+  fillerCount?: number;
   followUpTargeting?: string;
 }
 

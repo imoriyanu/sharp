@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
@@ -29,15 +29,41 @@ export default function HistoryScreen() {
     setRefreshing(false);
   }
 
+  const renderItem = useCallback(({ item: sess }: { item: SessionSummary }) => (
+    <TouchableOpacity style={s.item} onPress={() => router.push(`/session/${sess.id}`)} activeOpacity={0.7}>
+      <View style={[s.typeIcon, { backgroundColor: sess.type === 'daily_30' ? colors.daily.bg : sess.type === 'threaded' ? colors.feedback.positiveBg : colors.accent.light }]}>
+        <Text style={s.typeEmoji}>{TYPE_EMOJI[sess.type] || '⚡'}</Text>
+      </View>
+      <View style={s.itemInfo}>
+        <Text style={s.itemType}>{TYPE_LABELS[sess.type] || 'Session'}</Text>
+        <Text style={s.question} numberOfLines={1}>{sess.scenario || 'Practice session'}</Text>
+        <Text style={s.meta}>{new Date(sess.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {sess.turnCount} turn{sess.turnCount !== 1 ? 's' : ''}</Text>
+      </View>
+      <View style={s.scoreWrap}>
+        <Text style={[s.score, { color: getScoreColor(sess.overall) }]}>{sess.overall.toFixed(1)}</Text>
+        <View style={[s.scoreDot, { backgroundColor: getScoreColor(sess.overall) }]} />
+      </View>
+    </TouchableOpacity>
+  ), []);
+
   return (
     <SafeAreaView style={s.safe}>
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent.primary} />}>
-        <Text style={s.title}>History</Text>
-        {sessions.length > 0 && (
-          <Text style={s.subtitle}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</Text>
-        )}
-
-        {sessions.length === 0 ? (
+      <FlatList
+        data={sessions}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={s.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent.primary} />}
+        ListHeaderComponent={
+          <>
+            <Text style={s.title}>History</Text>
+            {sessions.length > 0 && (
+              <Text style={s.subtitle}>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</Text>
+            )}
+          </>
+        }
+        ListEmptyComponent={
           <FadeIn>
             <View style={s.empty}>
               <Text style={s.emptyEmoji}>📊</Text>
@@ -45,31 +71,9 @@ export default function HistoryScreen() {
               <Text style={s.emptyText}>Complete a Daily Challenge or One Shot to see your history here</Text>
             </View>
           </FadeIn>
-        ) : (
-          <View style={s.list}>
-            {sessions.map((sess, i) => (
-              <FadeIn key={sess.id} delay={Math.min(i * 50, 300)}>
-                <TouchableOpacity style={s.item} onPress={() => router.push(`/session/${sess.id}`)} activeOpacity={0.7}>
-                  <View style={[s.typeIcon, { backgroundColor: sess.type === 'daily_30' ? colors.daily.bg : sess.type === 'threaded' ? colors.feedback.positiveBg : colors.accent.light }]}>
-                    <Text style={s.typeEmoji}>{TYPE_EMOJI[sess.type] || '⚡'}</Text>
-                  </View>
-                  <View style={s.itemInfo}>
-                    <Text style={s.itemType}>{TYPE_LABELS[sess.type] || 'Session'}</Text>
-                    <Text style={s.question} numberOfLines={1}>{sess.scenario || 'Practice session'}</Text>
-                    <Text style={s.meta}>{new Date(sess.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {sess.turnCount} turn{sess.turnCount !== 1 ? 's' : ''}</Text>
-                  </View>
-                  <View style={s.scoreWrap}>
-                    <Text style={[s.score, { color: getScoreColor(sess.overall) }]}>{sess.overall.toFixed(1)}</Text>
-                    <View style={[s.scoreDot, { backgroundColor: getScoreColor(sess.overall) }]} />
-                  </View>
-                </TouchableOpacity>
-              </FadeIn>
-            ))}
-          </View>
-        )}
-
-        <View style={s.bottomSpacer} />
-      </ScrollView>
+        }
+        ListFooterComponent={<View style={s.bottomSpacer} />}
+      />
     </SafeAreaView>
   );
 }
@@ -86,7 +90,6 @@ const s = StyleSheet.create({
   emptyTitle: { fontSize: typography.size.md, fontWeight: typography.weight.bold, color: colors.text.primary, marginBottom: spacing.sm },
   emptyText: { fontSize: typography.size.sm, color: colors.text.tertiary, textAlign: 'center', lineHeight: fp(20) },
 
-  list: { marginTop: spacing.md },
   item: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.sm, ...shadows.sm },
   typeIcon: { width: wp(40), height: wp(40), borderRadius: wp(12), alignItems: 'center', justifyContent: 'center' },
   typeEmoji: { fontSize: fp(16) },

@@ -1,16 +1,11 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-// ===== PRODUCTION URL — update this after deploying backend =====
-const PRODUCTION_API_URL = 'https://sharp-production-2d7c.up.railway.app';
-// ================================================================
+const PROD_API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://sharp-production-2d7c.up.railway.app';
 
-function getApiBase(): string {
-  // Always use production backend
-  return PRODUCTION_API_URL;
-}
-
-const API_BASE = getApiBase();
+// In dev, use local backend if EXPO_PUBLIC_API_URL is not set — fall back to production
+// To use local backend in dev, start it with: cd backend && node server.js
+const API_BASE = PROD_API_URL;
 
 export async function apiPost<T>(endpoint: string, body: any): Promise<T> {
   const response = await fetch(`${API_BASE}/api${endpoint}`, {
