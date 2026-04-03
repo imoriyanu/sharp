@@ -1,29 +1,23 @@
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from './supabase';
 
 export async function signInWithApple() {
-  console.log('[Apple Auth] Starting sign in...');
   const credential = await AppleAuthentication.signInAsync({
     requestedScopes: [
       AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
       AppleAuthentication.AppleAuthenticationScope.EMAIL,
     ],
   });
-  console.log('[Apple Auth] Got credential, hasToken:', !!credential.identityToken);
 
   if (!credential.identityToken) {
     throw new Error('No identity token returned from Apple');
   }
 
-  console.log('[Apple Auth] Calling Supabase signInWithIdToken...');
   const { data, error } = await supabase.auth.signInWithIdToken({
     provider: 'apple',
     token: credential.identityToken,
   });
-  const debugInfo = `error: ${error?.message || 'none'}\nhasSession: ${!!data?.session}\nhasUser: ${!!data?.user}`;
-  console.log('[Apple Auth] Supabase response —', debugInfo);
-  Alert.alert('Apple Auth Debug', debugInfo);
   if (error) throw error;
 
   // Validate that we actually got a session — catches noop client

@@ -39,9 +39,8 @@ export default function AuthSignIn() {
       // Sign-in succeeded at Supabase level — now wait for AuthContext to pick it up
       setWaitingForAuth(true);
     } catch (e: any) {
-      console.error('[Apple Sign In Error]', JSON.stringify({ code: e?.code, message: e?.message, status: e?.status }, null, 2));
       if (e?.code === 'ERR_REQUEST_CANCELED') return;
-      setError(e?.message || 'Apple sign in failed. Please try again.');
+      setError(e?.message?.includes('no session') ? 'Sign in failed. Please check your connection.' : 'Apple sign in failed. Please try again.');
     } finally {
       setAppleLoading(false);
     }
