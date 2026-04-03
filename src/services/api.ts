@@ -7,42 +7,80 @@ const PROD_API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://sharp-produ
 // To use local backend in dev, start it with: cd backend && node server.js
 const API_BASE = PROD_API_URL;
 
-export async function apiPost<T>(endpoint: string, body: any): Promise<T> {
-  const response = await fetch(`${API_BASE}/api${endpoint}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `API error: ${response.status}`);
+const DEFAULT_TIMEOUT = 45_000; // 45s
+
+function withTimeout(signal?: AbortSignal, ms = DEFAULT_TIMEOUT): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+
+  // If caller passed a signal, forward its abort too
+  const onCallerAbort = () => controller.abort();
+  signal?.addEventListener('abort', onCallerAbort, { once: true });
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onCallerAbort);
+    },
+  };
+}
+
+export async function apiPost<T>(endpoint: string, body: any, signal?: AbortSignal): Promise<T> {
+  const { signal: combined, cleanup } = withTimeout(signal);
+  try {
+    const response = await fetch(`${API_BASE}/api${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: combined,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `API error: ${response.status}`);
+    }
+    return response.json();
+  } finally {
+    cleanup();
   }
-  return response.json();
 }
 
 export async function apiGet<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${API_BASE}/api${endpoint}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `API error: ${response.status}`);
+  const { signal, cleanup } = withTimeout();
+  try {
+    const response = await fetch(url.toString(), { signal });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `API error: ${response.status}`);
+    }
+    return response.json();
+  } finally {
+    cleanup();
   }
-  return response.json();
 }
 
 export async function apiUpload(endpoint: string, formData: FormData): Promise<any> {
-  const response = await fetch(`${API_BASE}/api${endpoint}`, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `API error: ${response.status}`);
+  const { signal, cleanup } = withTimeout(undefined, 60_000); // 60s for uploads
+  try {
+    const response = await fetch(`${API_BASE}/api${endpoint}`, {
+      method: 'POST',
+      body: formData,
+      signal,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `API error: ${response.status}`);
+    }
+    return response.json();
+  } finally {
+    cleanup();
   }
-  return response.json();
 }
 
-export function getTtsUrl(text: string): string {
-  return `${API_BASE}/api/tts?text=${encodeURIComponent(text)}`;
+export type VoiceMode = 'question' | 'coaching' | 'model' | 'followup' | 'briefing';
+
+export function getTtsUrl(text: string, mode: VoiceMode = 'question'): string {
+  return `${API_BASE}/api/tts?text=${encodeURIComponent(text)}&mode=${mode}`;
 }

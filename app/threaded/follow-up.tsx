@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { FadeIn, AudioWaveBars } from '../../src/components/Animations';
-import { stopAudio, playQuestionAudio } from '../../src/services/tts';
+import { stopAudio, playFollowUpAudio } from '../../src/services/tts';
 import type { ThreadTurn } from '../../src/types';
 
 function safeParse<T>(json: string | undefined, fallback: T): T {
@@ -31,6 +31,7 @@ export default function FollowUpScreen() {
     pressureLevel: string; turnNumber: string; turns: string;
   }>();
   const [speaking, setSpeaking] = useState(false);
+  const [textOnly, setTextOnly] = useState(false);
   const mountedRef = useRef(true);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -48,8 +49,8 @@ export default function FollowUpScreen() {
     const spoken = `${p.reaction || ''} ${p.question || ''}`.trim();
     if (!spoken) return;
     setSpeaking(true);
-    await playQuestionAudio(spoken);
-    if (mountedRef.current) setSpeaking(false);
+    const played = await playFollowUpAudio(spoken);
+    if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
   }
 
   return (
@@ -110,6 +111,11 @@ export default function FollowUpScreen() {
               <Text style={s.speakingHint}>Sharp is speaking...</Text>
             </View>
           )}
+          {textOnly && !speaking && (
+            <View style={s.textOnlyRow}>
+              <Text style={s.textOnlyText}>Text only mode</Text>
+            </View>
+          )}
         </ScrollView>
 
         {/* Actions */}
@@ -120,9 +126,11 @@ export default function FollowUpScreen() {
             </TouchableOpacity>
           ) : (
             <>
-              <TouchableOpacity style={s.replayBtn} onPress={speakReactionAndQuestion} activeOpacity={0.7}>
-                <Text style={s.replayText}>🔊 Replay</Text>
-              </TouchableOpacity>
+              {!textOnly && (
+                <TouchableOpacity style={s.replayBtn} onPress={speakReactionAndQuestion} activeOpacity={0.7}>
+                  <Text style={s.replayText}>🔊 Replay</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={s.recordBtn}
                 onPress={() => router.push({
@@ -171,6 +179,8 @@ const s = StyleSheet.create({
 
   speakingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   speakingHint: { fontSize: typography.size.xs, color: colors.accent.primary, fontWeight: typography.weight.semibold },
+  textOnlyRow: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(5), alignSelf: 'flex-start', marginTop: spacing.sm },
+  textOnlyText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.text.muted },
 
   btnArea: { paddingTop: spacing.md, gap: spacing.sm },
   replayBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(12), alignItems: 'center' },

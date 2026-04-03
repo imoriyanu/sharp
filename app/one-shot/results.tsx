@@ -5,8 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { ScoreReveal, FadeIn } from '../../src/components/Animations';
-import { playQuestionAudio, stopAudio } from '../../src/services/tts';
-import { saveSession, generateId } from '../../src/services/storage';
+import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio } from '../../src/services/tts';
 import { isPremium, canPracticeAgain, trackPracticeAgainUsage } from '../../src/services/premium';
 
 const DIMS = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
@@ -45,15 +44,14 @@ export default function ResultsScreen() {
   const rewrite = (p.snippetRewrite as string) || '';
 
   const [playing, setPlaying] = React.useState<string | null>(null);
+  const [textOnly, setTextOnly] = React.useState(false);
   const [showReasoning, setShowReasoning] = React.useState(false);
-  const [saved, setSaved] = React.useState(false);
   const [practiceRemaining, setPracticeRemaining] = React.useState<number | null>(null);
   const mountedRef = React.useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
     speakFullFeedback();
-    saveFullSession();
     checkPracticeRemaining();
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
@@ -64,25 +62,7 @@ export default function ResultsScreen() {
     setPracticeRemaining(limit - used);
   }
 
-  async function saveFullSession() {
-    if (saved) return;
-    setSaved(true);
-    await saveSession({
-      id: generateId(), type: (p.mode as string) === 'threaded' ? 'threaded' : 'one_shot',
-      scenario: question.slice(0, 50),
-      turns: [{
-        id: generateId(), turnNumber: 1, question, questionReasoning: reasoning,
-        questionTargets: 'substance', questionDifficulty: 5,
-        transcript, recordingUri, modelAnswer,
-        scores, overall, summary, coachingInsight: insight,
-        awarenessNote, snippet: {
-          original: (p.snippetOriginal as string) || '', problems: safeParse<string[]>(p.snippetProblems as string, []),
-          rewrite, explanation: (p.snippetExplanation as string) || '',
-        },
-      }],
-      createdAt: new Date().toISOString(),
-    });
-  }
+  // Session is already saved in recording.tsx — no duplicate save needed
 
   async function speakFullFeedback() {
     const scoreWord = overall >= 7.5 ? 'Really solid work.' : overall >= 5.5 ? 'OK, not bad.' : 'Alright, let\'s break this down.';
@@ -93,8 +73,8 @@ export default function ResultsScreen() {
     const spoken = `${scoreWord} ${positivePart} ${improvePart} ${insightPart}`;
     if (!mountedRef.current) return;
     setPlaying('feedback');
-    await playQuestionAudio(spoken);
-    if (mountedRef.current) setPlaying(null);
+    const played = await playCoachingAudio(spoken);
+    if (mountedRef.current) { setPlaying(null); if (!played) setTextOnly(true); }
   }
 
   async function play(key: string, text: string) {
@@ -102,9 +82,10 @@ export default function ResultsScreen() {
     if (!mountedRef.current) return;
     setPlaying(key);
     await stopAudio();
-    const spoken = key === 'model' ? `Here's how I'd say it. ${text}` : text;
-    await playQuestionAudio(spoken);
-    if (mountedRef.current) setPlaying(null);
+    const played = key === 'model'
+      ? await playModelAudio(`Here's how I'd say it. ${text}`)
+      : await playCoachingAudio(text);
+    if (mountedRef.current) { setPlaying(null); if (!played) setTextOnly(true); }
   }
 
   return (
@@ -112,7 +93,10 @@ export default function ResultsScreen() {
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.title}>Results</Text>
+          <View style={s.headerLeft}>
+            <Text style={s.title}>Results</Text>
+            {textOnly && <View style={s.textOnlyBadge}><Text style={s.textOnlyText}>Text only mode</Text></View>}
+          </View>
           <TouchableOpacity onPress={() => { stopAudio(); router.replace('/(tabs)'); }}><Text style={s.close}>×</Text></TouchableOpacity>
         </View>
 
@@ -163,10 +147,10 @@ export default function ResultsScreen() {
         {positives ? (
           <FadeIn delay={400}>
             <Text style={s.section}>What went well</Text>
-            <TouchableOpacity style={s.positiveCard} onPress={() => play('positives', positives)} activeOpacity={0.7}>
+            <TouchableOpacity style={s.positiveCard} onPress={() => !textOnly && play('positives', positives)} activeOpacity={textOnly ? 1 : 0.7}>
               <View style={s.feedbackHeader}>
                 <Text style={s.feedbackEmoji}>✅</Text>
-                <Text style={s.posListenBtn}>{playing === 'positives' ? '⏸ Pause' : '🔊 Listen'}</Text>
+                {!textOnly && <Text style={s.posListenBtn}>{playing === 'positives' ? '⏸ Pause' : '🔊 Listen'}</Text>}
               </View>
               <Text style={s.positiveText}>{positives}</Text>
             </TouchableOpacity>
@@ -177,10 +161,10 @@ export default function ResultsScreen() {
         {improvements ? (
           <FadeIn delay={500}>
             <Text style={s.section}>To work on</Text>
-            <TouchableOpacity style={s.improveCard} onPress={() => play('improvements', improvements)} activeOpacity={0.7}>
+            <TouchableOpacity style={s.improveCard} onPress={() => !textOnly && play('improvements', improvements)} activeOpacity={textOnly ? 1 : 0.7}>
               <View style={s.feedbackHeader}>
                 <Text style={s.feedbackEmoji}>🎯</Text>
-                <Text style={s.listenBtn}>{playing === 'improvements' ? '⏸ Pause' : '🔊 Listen'}</Text>
+                {!textOnly && <Text style={s.listenBtn}>{playing === 'improvements' ? '⏸ Pause' : '🔊 Listen'}</Text>}
               </View>
               <Text style={s.feedbackText}>{improvements}</Text>
             </TouchableOpacity>
@@ -190,10 +174,10 @@ export default function ResultsScreen() {
         {/* Coaching insight */}
         {insight ? (
           <FadeIn delay={400}>
-            <TouchableOpacity style={s.insightCard} onPress={() => play('insight', insight)} activeOpacity={0.7}>
+            <TouchableOpacity style={s.insightCard} onPress={() => !textOnly && play('insight', insight)} activeOpacity={textOnly ? 1 : 0.7}>
               <View style={s.feedbackHeader}>
                 <Text style={s.feedbackEmoji}>💡</Text>
-                <Text style={s.listenBtn}>{playing === 'insight' ? '⏸ Pause' : '🔊 Listen'}</Text>
+                {!textOnly && <Text style={s.listenBtn}>{playing === 'insight' ? '⏸ Pause' : '🔊 Listen'}</Text>}
               </View>
               <Text style={s.insightText}>{insight}</Text>
             </TouchableOpacity>
@@ -204,10 +188,10 @@ export default function ResultsScreen() {
         {modelAnswer ? (
           <FadeIn delay={600}>
             <Text style={s.section}>Model Answer</Text>
-            <TouchableOpacity style={s.modelCard} onPress={() => play('model', modelAnswer)} activeOpacity={0.7}>
+            <TouchableOpacity style={s.modelCard} onPress={() => !textOnly && play('model', modelAnswer)} activeOpacity={textOnly ? 1 : 0.7}>
               <View style={s.feedbackHeader}>
                 <Text style={s.feedbackEmoji}>✨</Text>
-                <Text style={s.modelListenBtn}>{playing === 'model' ? '⏸ Pause' : '🔊 Listen to model'}</Text>
+                {!textOnly && <Text style={s.modelListenBtn}>{playing === 'model' ? '⏸ Pause' : '🔊 Listen to model'}</Text>}
               </View>
               <Text style={s.modelText}>"{modelAnswer}"</Text>
               <Text style={s.modelHint}>Built from your response — this is what a 9/10 sounds like</Text>
@@ -339,8 +323,11 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.primary },
   content: { padding: layout.screenPadding },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary },
   close: { fontSize: fp(22), color: colors.text.muted },
+  textOnlyBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
+  textOnlyText: { fontSize: fp(9), fontWeight: typography.weight.semibold, color: colors.text.muted },
 
   scoreSection: { alignItems: 'center', marginBottom: spacing.xl },
   ring: { width: wp(100), height: wp(100), borderRadius: wp(50), borderWidth: wp(4), alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },

@@ -1,11 +1,13 @@
 import { View, Text, ScrollView, Switch, TextInput, Image, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { getUserProfile, saveUserProfile, trackFeatureInterest } from '../../src/services/storage';
-import { isPremium, isMax, getPlanName, setPremiumStatus, clearPremiumStatus } from '../../src/services/premium';
+import { isPremium, getPlanName, syncFromRevenueCat } from '../../src/services/premium';
+import { restorePurchases, isRevenueCatConfigured } from '../../src/services/revenuecat';
 import { useAuth } from '../../src/context/AuthContext';
 import { signOut } from '../../src/services/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,18 +21,20 @@ export default function SettingsScreen() {
   const { user, isAuthenticated } = useAuth();
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
-  const [premiumState, setPremiumState] = useState(isPremium());
-  const [maxState, setMaxState] = useState(isMax());
 
   useEffect(() => {
+    // Load persisted preferences once
+    AsyncStorage.getItem('sharp:pref_audio').then(v => { if (v !== null) setAudioQuestions(v === 'true'); });
+    AsyncStorage.getItem('sharp:pref_haptics').then(v => { if (v !== null) setHaptics(v === 'true'); });
+  }, []);
+
+  // Reload profile every time screen gains focus (catches auth changes from modal)
+  useFocusEffect(useCallback(() => {
     getUserProfile().then(p => {
       setProfile(p);
       if (p) setNameInput(p.displayName);
     });
-    // Load persisted preferences
-    AsyncStorage.getItem('sharp:pref_audio').then(v => { if (v !== null) setAudioQuestions(v === 'true'); });
-    AsyncStorage.getItem('sharp:pref_haptics').then(v => { if (v !== null) setHaptics(v === 'true'); });
-  }, []);
+  }, []));
 
   async function saveName() {
     const name = nameInput.trim();
@@ -140,8 +144,8 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={s.section}>Plan</Text>
-        <TouchableOpacity style={s.card} onPress={() => !isPremium() && router.push('/premium')}>
-          <View style={[s.row, s.rowLast]}>
+        <View style={s.card}>
+          <TouchableOpacity style={[s.row, !isPremium() && !isRevenueCatConfigured() ? s.rowLast : {}]} onPress={() => !isPremium() && router.push('/premium')} activeOpacity={isPremium() ? 1 : 0.7}>
             <View style={s.planInfo}>
               <Text style={s.label}>{getPlanName()}</Text>
               <Text style={s.planSub}>{isPremium() ? 'All features unlocked' : 'Tap to upgrade'}</Text>
@@ -151,8 +155,22 @@ export default function SettingsScreen() {
             ) : (
               <Text style={[s.value, { color: colors.accent.primary, fontWeight: typography.weight.bold }]}>Upgrade →</Text>
             )}
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+          {!isPremium() && isRevenueCatConfigured() && (
+            <TouchableOpacity style={[s.row, s.rowLast]} onPress={async () => {
+              const planId = await restorePurchases();
+              if (planId) {
+                await syncFromRevenueCat();
+                Alert.alert('Restored', 'Your subscription has been restored.');
+              } else {
+                Alert.alert('No subscription found', 'We couldn\'t find an active subscription for this Apple ID.');
+              }
+            }}>
+              <Text style={[s.label, { color: colors.accent.primary }]}>Restore purchases</Text>
+              <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <Text style={s.section}>Legal</Text>
         <View style={s.card}>
@@ -161,57 +179,6 @@ export default function SettingsScreen() {
             <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Dev tools — remove before App Store release */}
-        {__DEV__ && (
-          <>
-            <Text style={s.section}>Dev Tools</Text>
-            <View style={s.card}>
-              <View style={s.row}>
-                <View style={s.planInfo}>
-                  <Text style={s.label}>Simulate Pro</Text>
-                  <Text style={s.planSub}>{premiumState && !maxState ? 'Active' : 'Off'}</Text>
-                </View>
-                <Switch
-                  value={premiumState && !maxState}
-                  onValueChange={async (val) => {
-                    if (val) {
-                      await setPremiumStatus('annual');
-                      setPremiumState(true);
-                      setMaxState(false);
-                    } else {
-                      await clearPremiumStatus();
-                      setPremiumState(false);
-                      setMaxState(false);
-                    }
-                  }}
-                  trackColor={{ false: colors.border, true: colors.accent.primary }}
-                />
-              </View>
-              <View style={[s.row, s.rowLast]}>
-                <View style={s.planInfo}>
-                  <Text style={s.label}>Simulate Pro Max</Text>
-                  <Text style={s.planSub}>{maxState ? 'Active — 20/day' : 'Off'}</Text>
-                </View>
-                <Switch
-                  value={maxState}
-                  onValueChange={async (val) => {
-                    if (val) {
-                      await setPremiumStatus('max_annual');
-                      setPremiumState(true);
-                      setMaxState(true);
-                    } else {
-                      await setPremiumStatus('annual');
-                      setPremiumState(true);
-                      setMaxState(false);
-                    }
-                  }}
-                  trackColor={{ false: colors.border, true: colors.duel.accent }}
-                />
-              </View>
-            </View>
-          </>
-        )}
 
         <View style={s.versionRow}><Text style={s.version}>Sharp v2.0</Text></View>
       </ScrollView>

@@ -4,7 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
-import { playQuestionAudio, stopAudio } from '../../src/services/tts';
+import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio } from '../../src/services/tts';
 import { getSessionById } from '../../src/services/storage';
 import { isPremium, canDoOneShot, trackOneShotUsage } from '../../src/services/premium';
 import type { Session, Turn } from '../../src/types';
@@ -38,9 +38,13 @@ export default function SessionDetailScreen() {
 
   async function play(key: string, text: string) {
     if (playing === key) { stopAudio(); setPlaying(null); return; }
-    setPlaying(key);
     await stopAudio();
-    await playQuestionAudio(text);
+    if (!mountedRef.current) return;
+    setPlaying(key);
+    const playFn = key.includes('model') ? playModelAudio
+      : key.includes('coaching') || key.includes('insight') ? playCoachingAudio
+      : playQuestionAudio;
+    await playFn(text);
     if (mountedRef.current) setPlaying(null);
   }
 

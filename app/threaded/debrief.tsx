@@ -1,10 +1,10 @@
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { ScoreReveal, FadeIn } from '../../src/components/Animations';
-import { stopAudio, playQuestionAudio } from '../../src/services/tts';
+import { stopAudio, playCoachingAudio } from '../../src/services/tts';
 import type { ThreadDebrief, ThreadTurn } from '../../src/types';
 
 function safeParse<T>(json: string | undefined, fallback: T): T {
@@ -26,9 +26,11 @@ export default function DebriefScreen() {
   const debrief = safeParse<ThreadDebrief | null>(p.debrief, null);
   const turns = safeParse<ThreadTurn[]>(p.turns, []);
 
+  const [textOnly, setTextOnly] = useState(false);
+
   useEffect(() => {
     if (debrief?.summary) {
-      playQuestionAudio(debrief.summary);
+      playCoachingAudio(debrief.summary).then((played) => { if (!played) setTextOnly(true); });
     }
     return () => { stopAudio(); };
   }, []);

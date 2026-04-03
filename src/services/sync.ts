@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Session, UserContext, UserProfile, Streak, DailyResult } from '../types';
+import type { Session, UserContext, UserProfile, Streak, DailyResult, UploadedDocument } from '../types';
 
 // ===== Helper: get current user ID =====
 async function getUserId(): Promise<string | null> {
@@ -20,7 +20,7 @@ export async function syncProfileToCloud(profile: UserProfile): Promise<void> {
       is_premium: profile.isPremium,
       updated_at: new Date().toISOString(),
     });
-  } catch (e) { __DEV__ && console.warn('Profile sync failed:', e); }
+  } catch (e) { console.warn('Profile sync failed:', e); }
 }
 
 // ===== Context Sync =====
@@ -37,7 +37,7 @@ export async function syncContextToCloud(ctx: UserContext): Promise<void> {
       dream_role_and_company: ctx.dreamRoleAndCompany,
       updated_at: new Date().toISOString(),
     });
-  } catch (e) { __DEV__ && console.warn('Context sync failed:', e); }
+  } catch (e) { console.warn('Context sync failed:', e); }
 }
 
 // ===== Session Sync =====
@@ -78,7 +78,7 @@ export async function syncSessionToCloud(session: Session): Promise<void> {
         created_at: session.createdAt,
       });
     }
-  } catch (e) { __DEV__ && console.warn('Session sync failed:', e); }
+  } catch (e) { console.warn('Session sync failed:', e); }
 }
 
 // ===== Streak Sync =====
@@ -95,7 +95,7 @@ export async function syncStreakToCloud(streak: Streak): Promise<void> {
       freezes_available: streak.freezesAvailable,
       updated_at: new Date().toISOString(),
     });
-  } catch (e) { __DEV__ && console.warn('Streak sync failed:', e); }
+  } catch (e) { console.warn('Streak sync failed:', e); }
 }
 
 // ===== Badge Sync =====
@@ -109,7 +109,7 @@ export async function syncBadgeToCloud(badgeDay: number): Promise<void> {
       badge_day: badgeDay,
       unlocked_at: new Date().toISOString(),
     });
-  } catch (e) { __DEV__ && console.warn('Badge sync failed:', e); }
+  } catch (e) { console.warn('Badge sync failed:', e); }
 }
 
 // ===== Daily Result Sync =====
@@ -125,7 +125,7 @@ export async function syncDailyResultToCloud(result: DailyResult): Promise<void>
       practice_date: result.date,
       created_at: new Date().toISOString(),
     });
-  } catch (e) { __DEV__ && console.warn('Daily result sync failed:', e); }
+  } catch (e) { console.warn('Daily result sync failed:', e); }
 }
 
 // ===== Document Upload to Supabase Storage =====
@@ -148,7 +148,7 @@ export async function uploadDocumentToStorage(fileUri: string, filename: string)
     if (error) throw error;
     return data.path;
   } catch (e) {
-    __DEV__ && console.warn('Document upload failed:', e);
+    console.warn('Document upload failed:', e);
     return null;
   }
 }
@@ -156,6 +156,40 @@ export async function uploadDocumentToStorage(fileUri: string, filename: string)
 export async function getDocumentUrl(path: string): Promise<string | null> {
   const { data } = await supabase.storage.from('documents').createSignedUrl(path, 3600);
   return data?.signedUrl || null;
+}
+
+// ===== Document Sync (metadata to DB) =====
+
+export async function syncDocumentToCloud(doc: UploadedDocument, storagePath: string | null): Promise<void> {
+  const userId = await getUserId();
+  if (!userId) return;
+  try {
+    await supabase.from('documents').upsert({
+      id: doc.id,
+      user_id: userId,
+      filename: doc.filename,
+      raw_text: doc.rawText.substring(0, 10000), // cap for DB storage
+      structured_extraction: doc.structuredExtraction,
+      summary: doc.summary,
+      document_type: doc.documentType,
+      document_subtype: doc.documentSubtype,
+      storage_path: storagePath,
+      uploaded_at: doc.uploadedAt,
+    });
+  } catch (e) { console.warn('Document sync failed:', e); }
+}
+
+export async function deleteDocumentFromCloud(docId: string): Promise<void> {
+  const userId = await getUserId();
+  if (!userId) return;
+  try {
+    // Get storage path before deleting record
+    const { data } = await supabase.from('documents').select('storage_path').eq('id', docId).single();
+    if (data?.storage_path) {
+      await supabase.storage.from('documents').remove([data.storage_path]);
+    }
+    await supabase.from('documents').delete().eq('id', docId);
+  } catch (e) { console.warn('Document delete failed:', e); }
 }
 
 // ===== Full Migration (one-time: AsyncStorage → Supabase) =====

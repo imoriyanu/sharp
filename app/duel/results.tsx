@@ -11,13 +11,12 @@ export default function DuelResultsScreen() {
     theirScore: string; theirInsight: string; theirName: string;
   }>();
 
-  // Fallback demo data
-  const question = p.question || "What's the hardest decision you've made this month?";
-  const yourScore = parseFloat(p.yourScore || '7.4');
-  const theirScore = parseFloat(p.theirScore || '6.2');
-  const yourInsight = p.yourInsight || 'Strong opening, tight structure.';
-  const theirInsight = p.theirInsight || 'Good example but buried the lesson.';
-  const theirName = p.theirName || 'Alex';
+  const question = p.question || '';
+  const yourScore = parseFloat(p.yourScore || '0');
+  const theirScore = parseFloat(p.theirScore || '0');
+  const yourInsight = p.yourInsight || '';
+  const theirInsight = p.theirInsight || '';
+  const theirName = p.theirName || 'Opponent';
   const youWin = yourScore > theirScore;
   const tie = yourScore === theirScore;
 

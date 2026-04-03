@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { ScoreReveal, FadeIn } from '../../src/components/Animations';
 import { SharpFox, ConfettiBurst, ProgressDots } from '../../src/components/Illustrations';
-import { playQuestionAudio, stopAudio } from '../../src/services/tts';
+import { playCoachingAudio, stopAudio } from '../../src/services/tts';
 
 export default function OnboardingResult() {
   const router = useRouter();
@@ -25,7 +25,7 @@ export default function OnboardingResult() {
     const timer = setTimeout(async () => {
       if (mountedRef.current && coachingInsight) {
         const spoken = `Nice work on your first try! Here's your coaching insight: ${coachingInsight}`;
-        await playQuestionAudio(spoken);
+        await playCoachingAudio(spoken);
       }
     }, 2500);
     return () => { mountedRef.current = false; clearTimeout(timer); stopAudio(); };

@@ -6,7 +6,7 @@ import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAud
 import * as Haptics from 'expo-haptics';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
-import { stopAudio, playQuestionAudio, buildNaturalScript } from '../../src/services/tts';
+import { stopAudio, playQuestionAudio, buildNaturalScript, getQuestionVoiceMode } from '../../src/services/tts';
 import { generateQuestion } from '../../src/services/scoring';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
@@ -21,6 +21,7 @@ export default function DailyChallengeScreen() {
   const [q, setQ] = useState<GeneratedQuestion | null>(null);
   const [state, setState] = useState<RecordingState>('idle');
   const [speaking, setSpeaking] = useState(false);
+  const [textOnly, setTextOnly] = useState(false);
   const [timerMax, setTimerMax] = useState(DEFAULT_TIMER);
   const [timeLeft, setTimeLeft] = useState(DEFAULT_TIMER);
   const [transcript, setTranscript] = useState('');
@@ -28,18 +29,27 @@ export default function DailyChallengeScreen() {
   const recorderRef = useRef<InstanceType<typeof AudioModule.AudioRecorder> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
+  const stoppingRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
+    abortRef.current = new AbortController();
     loadQuestion();
     return () => {
       mountedRef.current = false;
+      abortRef.current?.abort();
       stopAudio();
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (recorderRef.current) {
+        try { recorderRef.current.stop(); } catch {}
+        recorderRef.current = null;
+      }
     };
   }, []);
 
   async function loadQuestion() {
+    const signal = abortRef.current?.signal;
     try {
       // Check cache first — don't burn API credits
       const cached = await getCachedDailyQuestion();
@@ -51,24 +61,27 @@ export default function DailyChallengeScreen() {
         setTimeLeft(t);
         setState('ready');
         setSpeaking(true);
-        await playQuestionAudio(buildNaturalScript(cached.question));
-        if (mountedRef.current) setSpeaking(false);
+        const played = await playQuestionAudio(buildNaturalScript(cached.question), signal, getQuestionVoiceMode(cached.question));
+        if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
         return;
       }
 
       const [ctx, recentQuestions, sessionHistory, averageScores] = await Promise.all([
         getContext(), getRecentQuestions(), getRecentSessionHistory(), getAverageScores(),
       ]);
+      const documentExtractions = (ctx?.documents || []).map(d => d.structuredExtraction).filter(Boolean);
       const result = await generateQuestion({
         roleText: ctx?.roleText || '',
         currentCompany: ctx?.currentCompany || '',
         situationText: ctx?.situationText || '',
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+        notes: ctx?.notes || '',
         documents: ctx?.documents || [],
+        documentExtractions,
         recentQuestions,
         sessionHistory,
         averageScores: averageScores || undefined,
-      });
+      }, signal);
 
       // Cache for the day and track for variety
       await cacheDailyQuestion(result);
@@ -81,24 +94,30 @@ export default function DailyChallengeScreen() {
       setTimeLeft(t);
       setState('ready');
       setSpeaking(true);
-      await playQuestionAudio(buildNaturalScript(result));
-      if (mountedRef.current) setSpeaking(false);
-    } catch (e) {
+      const played = await playQuestionAudio(buildNaturalScript(result), signal, getQuestionVoiceMode(result));
+      if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       if (!mountedRef.current) return;
       const fallback: GeneratedQuestion = { question: "What's the hardest decision you've made this month, and what did you learn?", format: 'prompt', timerSeconds: 60, reasoning: '', targets: 'substance', difficulty: 5, contextUsed: [] };
       setQ(fallback);
       setState('ready');
       setSpeaking(true);
-      await playQuestionAudio(buildNaturalScript(fallback));
-      setSpeaking(false);
+      const played = await playQuestionAudio(buildNaturalScript(fallback), signal, getQuestionVoiceMode(fallback));
+      if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
     }
   }
 
   async function startRecording() {
+    stoppingRef.current = false;
     try {
       await stopAudio();
       const { granted } = await requestRecordingPermissionsAsync();
-      if (!granted) return;
+      if (!granted) {
+        setRetryReason('Microphone permission is required. Please enable it in Settings.');
+        setState('ready');
+        return;
+      }
       // Try configuring audio session with fallback modes
       let sessionReady = false;
       for (const mode of ['duckOthers', 'mixWithOthers'] as const) {
@@ -115,6 +134,7 @@ export default function DailyChallengeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       setTimeLeft(timerMax);
+      if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) { stopRecording(); return 0; }
@@ -129,21 +149,35 @@ export default function DailyChallengeScreen() {
   }
 
   async function stopRecording() {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (!recorderRef.current) return;
+    // Guard against double-calls (timer + manual tap)
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (!recorderRef.current) { stoppingRef.current = false; return; }
 
     setState('processing');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+    let uri: string | null = null;
     try {
       await recorderRef.current.stop();
-      const uri = recorderRef.current.uri;
+      uri = recorderRef.current.uri;
       recorderRef.current = null;
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    } catch (e) {
+      __DEV__ && console.error('Error stopping recorder:', e);
+      recorderRef.current = null;
+    }
 
+    try {
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    } catch {}
+
+    try {
       if (!uri) throw new Error('No recording URI');
 
       const { transcript: text } = await transcribeAudio(uri);
+      if (!mountedRef.current) return;
       setTranscript(text);
 
       // Validate — catch empty or too-short responses
@@ -154,21 +188,26 @@ export default function DailyChallengeScreen() {
           ? "I didn't catch anything. Check your microphone and try again."
           : "That was too short to score. Try giving a fuller answer — a few sentences at least.");
         setState('ready');
+        stoppingRef.current = false;
         return;
       }
 
       const [ctx, prevScores, insights] = await Promise.all([getContext(), getAverageScores(), getRecentInsights()]);
+      const docExtractions = (ctx?.documents || []).map(d => d.structuredExtraction).filter(Boolean);
       const result = await scoreAnswer({
         roleText: ctx?.roleText || '',
         currentCompany: ctx?.currentCompany || '',
         situationText: ctx?.situationText || '',
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+        notes: ctx?.notes || '',
+        documentExtractions: docExtractions,
         question: q?.question || '',
         transcript: text,
         previousScores: prevScores || undefined,
         recentInsights: insights,
       });
 
+      // Always save — even if user navigated away
       const today = new Date().toISOString().split('T')[0];
       await saveDailyResult({ score: result.overall, insight: result.coachingInsight, date: today, transcript: text });
       trackEvent(Events.DAILY_CHALLENGE_COMPLETED, { score: result.overall });
@@ -179,6 +218,9 @@ export default function DailyChallengeScreen() {
         turns: [{ id: generateId(), turnNumber: 1, question: q?.question || '', questionReasoning: '', questionTargets: 'concision', questionDifficulty: 5, transcript: text, recordingUri: uri, scores: result.scores, overall: result.overall, summary: result.summary, coachingInsight: result.coachingInsight, awarenessNote: result.awarenessNote, snippet: result.weakestSnippet }],
         createdAt: new Date().toISOString(),
       });
+
+      // Only navigate if still on this screen
+      if (!mountedRef.current) return;
 
       router.replace({
         pathname: '/daily/result',
@@ -194,8 +236,11 @@ export default function DailyChallengeScreen() {
       });
     } catch (e) {
       __DEV__ && console.error('Processing error:', e);
+      if (!mountedRef.current) return;
       setRetryReason('Something went wrong while scoring your answer. Please try again.');
       setState('ready');
+    } finally {
+      stoppingRef.current = false;
     }
   }
 
@@ -218,6 +263,9 @@ export default function DailyChallengeScreen() {
       <View style={st.container}>
         <ScrollView contentContainerStyle={st.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={st.topRow}>
+            <TouchableOpacity onPress={() => { stopAudio(); router.back(); }} hitSlop={12} activeOpacity={0.7}>
+              <Text style={st.backBtn}>← Back</Text>
+            </TouchableOpacity>
             <View style={st.badge}><Text style={st.badgeText}>Daily Challenge</Text></View>
             <View style={st.formatBadge}><Text style={st.formatText}>{formatLabel}</Text></View>
           </View>
@@ -245,11 +293,16 @@ export default function DailyChallengeScreen() {
             <Text style={st.question}>{q?.question || 'Loading your challenge...'}</Text>
           </FadeIn>
 
-          {/* TTS playback wave */}
+          {/* TTS playback wave or text-only badge */}
           {speaking && (
             <View style={st.speakingRow}>
               <AudioWaveBars active={true} color={colors.accent.primary} height={wp(32)} barCount={20} />
               <Text style={st.speakingText}>Sharp is speaking...</Text>
+            </View>
+          )}
+          {textOnly && !speaking && state === 'ready' && (
+            <View style={st.textOnlyBadge}>
+              <Text style={st.textOnlyText}>Text only mode</Text>
             </View>
           )}
 
@@ -287,11 +340,13 @@ export default function DailyChallengeScreen() {
         <View style={st.btnArea}>
           {state === 'ready' && !speaking && (
             <>
-              <TouchableOpacity style={st.btnReplay} onPress={async () => {
-                if (q) { setSpeaking(true); await playQuestionAudio(buildNaturalScript(q)); setSpeaking(false); }
-              }} activeOpacity={0.7}>
-                <Text style={st.btnReplayText}>🔊 Replay question</Text>
-              </TouchableOpacity>
+              {!textOnly && (
+                <TouchableOpacity style={st.btnReplay} onPress={async () => {
+                  if (q) { setSpeaking(true); const played = await playQuestionAudio(buildNaturalScript(q), undefined, getQuestionVoiceMode(q)); setSpeaking(false); if (!played) setTextOnly(true); }
+                }} activeOpacity={0.7}>
+                  <Text style={st.btnReplayText}>🔊 Replay question</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity style={st.btnMain} onPress={() => { setRetryReason(''); setTranscript(''); setTimeLeft(timerMax); startRecording(); }} activeOpacity={0.8}>
                 <Text style={st.btnMainText}>{retryReason ? '🎤 Try again' : `🎤 Start recording · ${timerMax}s`}</Text>
               </TouchableOpacity>
@@ -319,6 +374,7 @@ const st = StyleSheet.create({
   scrollContent: { padding: layout.screenPadding, paddingTop: wp(30), paddingBottom: wp(20) },
 
   topRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl, alignItems: 'center' },
+  backBtn: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.tertiary },
   badge: { backgroundColor: colors.daily.bg, borderRadius: radius.pill, paddingHorizontal: wp(12), paddingVertical: wp(5) },
   badgeText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.daily.text },
   formatBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(4) },
@@ -345,6 +401,8 @@ const st = StyleSheet.create({
 
   speakingRow: { alignItems: 'center', marginBottom: spacing.lg },
   speakingText: { fontSize: typography.size.xs, color: colors.accent.primary, fontWeight: typography.weight.semibold, marginTop: spacing.sm },
+  textOnlyBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(5), alignSelf: 'center', marginBottom: spacing.md },
+  textOnlyText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.text.muted },
 
   btnArea: { padding: layout.screenPadding, paddingBottom: wp(10), gap: spacing.sm },
   btnMain: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(16), width: '100%', alignItems: 'center', ...shadows.accent },

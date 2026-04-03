@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, FadeIn } from '../../src/components/Animations';
 import { generateQuestion } from '../../src/services/scoring';
-import { playQuestionAudio, stopAudio, buildNaturalScript } from '../../src/services/tts';
+import { playQuestionAudio, stopAudio, buildNaturalScript, getQuestionVoiceMode } from '../../src/services/tts';
 import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion, getCachedIndustryQuestion, cacheIndustryQuestion, clearIndustryQuestionCache, saveThreadState, clearThreadState, getRecentSessionHistory, getAverageScores } from '../../src/services/storage';
 import { isPremium, canRegenerate, trackRegenerateUsage, trackIndustryUsage, resetRegenCount } from '../../src/services/premium';
 import type { GeneratedQuestion } from '../../src/types';
@@ -17,22 +17,30 @@ export default function QuestionScreen() {
   const isIndustry = params.mode === 'industry';
   const [question, setQuestion] = useState<GeneratedQuestion | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [textOnly, setTextOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [regenLeft, setRegenLeft] = useState<number | null>(null);
   const mountedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
+    abortRef.current = new AbortController();
     resetRegenCount(); // Reset per-question regen counter
     const r = canRegenerate();
     setRegenLeft(r.limit - r.used);
     loadQuestion(false);
     if (isIndustry) trackIndustryUsage();
-    return () => { mountedRef.current = false; stopAudio(); };
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      stopAudio();
+    };
   }, []);
 
   async function loadQuestion(forceNew: boolean) {
+    const signal = abortRef.current?.signal;
     try {
       // Check cache first (unless forcing new)
       if (!forceNew) {
@@ -42,14 +50,13 @@ export default function QuestionScreen() {
           ? await getCachedThreadedQuestion()
           : await getCachedOneShotQuestion();
         if (cached) {
+          if (!mountedRef.current) return;
           setQuestion(cached);
           setLoading(false);
           setRegenerating(false);
-          if (mountedRef.current) {
-            setPlaying(true);
-            await playQuestionAudio(buildNaturalScript(cached));
-            if (mountedRef.current) setPlaying(false);
-          }
+          setPlaying(true);
+          const played = await playQuestionAudio(buildNaturalScript(cached), signal, getQuestionVoiceMode(cached));
+          if (mountedRef.current) { setPlaying(false); if (!played) setTextOnly(true); }
           return;
         }
       }
@@ -57,17 +64,20 @@ export default function QuestionScreen() {
       const [ctx, recentQuestions, sessionHistory, averageScores] = await Promise.all([
         getContext(), getRecentQuestions(), getRecentSessionHistory(), getAverageScores(),
       ]);
+      const documentExtractions = (ctx?.documents || []).map(d => d.structuredExtraction).filter(Boolean);
       const q = await generateQuestion({
         roleText: ctx?.roleText || '',
         currentCompany: ctx?.currentCompany || '',
         situationText: ctx?.situationText || '',
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+        notes: ctx?.notes || '',
         documents: ctx?.documents || [],
+        documentExtractions,
         recentQuestions,
         sessionHistory,
         averageScores: averageScores || undefined,
         ...(isIndustry ? { forceFormat: 'industry' } : {}),
-      });
+      }, signal);
       await addRecentQuestion(q.question);
 
       // Cache it — each mode has its own cache
@@ -80,9 +90,10 @@ export default function QuestionScreen() {
       setLoading(false);
       setRegenerating(false);
       setPlaying(true);
-      await playQuestionAudio(buildNaturalScript(q));
-      if (mountedRef.current) setPlaying(false);
-    } catch (e) {
+      const played = await playQuestionAudio(buildNaturalScript(q), signal, getQuestionVoiceMode(q));
+      if (mountedRef.current) { setPlaying(false); if (!played) setTextOnly(true); }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       __DEV__ && console.error('Question load error:', e);
       const fallback: GeneratedQuestion = { question: "Tell me about a project you're most proud of and why.", reasoning: '', targets: 'substance', difficulty: 5, contextUsed: [] };
       if (isIndustry) await cacheIndustryQuestion(fallback);
@@ -93,8 +104,8 @@ export default function QuestionScreen() {
       setLoading(false);
       setRegenerating(false);
       setPlaying(true);
-      await playQuestionAudio(buildNaturalScript(fallback));
-      if (mountedRef.current) setPlaying(false);
+      const played = await playQuestionAudio(buildNaturalScript(fallback), signal, getQuestionVoiceMode(fallback));
+      if (mountedRef.current) { setPlaying(false); if (!played) setTextOnly(true); }
     }
   }
 
@@ -104,6 +115,9 @@ export default function QuestionScreen() {
     if (!check.allowed) return;
     trackRegenerateUsage();
     setRegenLeft(check.limit - check.used - 1);
+    // Abort the old request and create a fresh controller for the new one
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
     await stopAudio();
     setRegenerating(true);
     await loadQuestion(true);
@@ -112,8 +126,8 @@ export default function QuestionScreen() {
   async function replay() {
     if (!question) return;
     setPlaying(true);
-    await playQuestionAudio(buildNaturalScript(question));
-    if (mountedRef.current) setPlaying(false);
+    const played = await playQuestionAudio(buildNaturalScript(question), abortRef.current?.signal, getQuestionVoiceMode(question));
+    if (mountedRef.current) { setPlaying(false); if (!played) setTextOnly(true); }
   }
 
   if (loading || regenerating) {
@@ -129,9 +143,12 @@ export default function QuestionScreen() {
       <View style={s.container}>
         <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={s.topRow}>
+            <TouchableOpacity onPress={() => { stopAudio(); router.back(); }} hitSlop={12} activeOpacity={0.7}>
+              <Text style={s.backBtn}>← Back</Text>
+            </TouchableOpacity>
             <Text style={s.tag}>{isThreaded ? 'Threaded Challenge' : isIndustry ? 'Industry Insight' : 'Sharp asks'}</Text>
             <TouchableOpacity onPress={regenerate} activeOpacity={0.7} style={[s.regenBtn, regenLeft === 0 && { opacity: 0.3 }]} disabled={regenLeft === 0}>
-              <Text style={s.regenText}>{!isPremium() ? '🔒 New question' : regenLeft === 0 ? 'No regens left' : `↻ New question (${regenLeft})`}</Text>
+              <Text style={s.regenText}>{!isPremium() ? '🔒 New question' : regenLeft === 0 ? 'No regens left' : `↻ New (${regenLeft})`}</Text>
             </TouchableOpacity>
           </View>
 
@@ -139,6 +156,11 @@ export default function QuestionScreen() {
             <View style={s.audioPill}>
               <AudioWaveBars active={true} color={colors.accent.primary} height={wp(36)} />
               <Text style={s.audioText}>Playing...</Text>
+            </View>
+          )}
+          {textOnly && !playing && (
+            <View style={s.textOnlyPill}>
+              <Text style={s.textOnlyText}>Text only mode</Text>
             </View>
           )}
 
@@ -225,9 +247,11 @@ export default function QuestionScreen() {
 
         {/* Pinned buttons */}
         <View style={s.btnArea}>
-          <TouchableOpacity style={s.ghostBtn} onPress={replay} activeOpacity={0.7}>
-            <Text style={s.ghostText}>🔊 Replay question</Text>
-          </TouchableOpacity>
+          {!textOnly && (
+            <TouchableOpacity style={s.ghostBtn} onPress={replay} activeOpacity={0.7}>
+              <Text style={s.ghostText}>🔊 Replay question</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={s.mainBtn}
             onPress={async () => {
@@ -253,11 +277,14 @@ const s = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { padding: layout.screenPadding, paddingBottom: spacing.md },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
+  backBtn: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.tertiary },
   tag: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 2 },
   regenBtn: { paddingVertical: wp(4), paddingHorizontal: wp(10) },
   regenText: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.accent.primary },
   audioPill: { flexDirection: 'row', alignItems: 'center', gap: wp(6), backgroundColor: colors.daily.bg, borderWidth: 1.5, borderColor: colors.daily.border, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(5), alignSelf: 'flex-start', marginBottom: spacing.lg },
   audioText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.accent.primary },
+  textOnlyPill: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(5), alignSelf: 'flex-start', marginBottom: spacing.lg },
+  textOnlyText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.text.muted },
   newsCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.lg, borderWidth: 1.5, borderColor: colors.borderLight, ...shadows.md },
   newsHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
   newsIcon: { fontSize: fp(18) },

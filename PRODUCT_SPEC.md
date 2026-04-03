@@ -1,500 +1,832 @@
-# Sharp AI — Complete Product Specification
+# Sharp AI — Product Specification
 
-> **Last updated:** 2026-03-25
-> **Version:** 2.1.0 (MVP+)
-> **Status:** Working prototype with onboarding, premium system, analytics, and full practice flows
-
----
+> **Last updated:** 2026-04-03
+> **Version:** 2.1.0
+> **Status:** Pre-production
 
 ## What Sharp Is
 
-Sharp trains people to speak clearly, concisely, and with substance — in every area of life. It's a communication coaching app powered by Claude AI, with real-time voice recording, transcription, 5-dimension scoring, and personalised feedback.
+Sharp trains professionals to speak clearly, concisely, and with substance under pressure. Users record spoken answers to AI-generated questions, receive instant scoring on 5 dimensions, and get coaching grounded in 8 communication science frameworks (never cited to users). The app coaches like a mentor who has read everything and quotes nothing.
 
-Coaching is invisibly grounded in frameworks from 8 communication science books (Pyramid Principle, Made to Stick, Radical Candor, Never Split the Difference, Crucial Conversations, Talk Like TED, NVC, Influence). The app NEVER cites book names — it coaches like a mentor who has read everything and quotes nothing.
-
-**Mascot:** Sharp the Fox — a terracotta fox with glasses, representing cleverness, clarity, and articulation.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React Native 0.81 + Expo SDK 54 (managed workflow) |
-| Navigation | Expo Router v6 (file-based) |
-| State | AsyncStorage (local-only, no remote DB in MVP) |
-| AI Intelligence | Claude Sonnet 4.6 via Anthropic API |
-| Transcription | Groq Whisper Large v3 Turbo |
-| Text-to-Speech | ElevenLabs (Turbo v2.5) + expo-speech fallback |
-| Recording | expo-audio (AudioRecorder) + afconvert/ffmpeg backend re-encode |
-| Playback | expo-audio (createAudioPlayer) with disk caching |
-| Backend | Node.js + Express on port 3001 |
-| Design System | Soft Dawn (warm cream light mode) |
+**Platform:** React Native / Expo (iOS primary, Android supported)
+**Backend:** Node.js + Express on Railway
+**AI Engine:** Claude Sonnet 4 (coaching/scoring), Groq Whisper (transcription), ElevenLabs (TTS)
+**Database:** Supabase PostgreSQL (RLS-secured)
+**Monetization:** RevenueCat (in-app subscriptions)
+**Analytics:** PostHog
 
 ---
 
-## Onboarding Flow (8 Screens)
+## App Identity
 
-### Mandatory first-launch experience. Users cannot skip to the main app.
-
-| # | Screen | What Happens | Collects |
-|---|--------|-------------|----------|
-| 1 | **Welcome** | Fox mascot + speech bubble: "Hey! I'm Sharp — your AI communication coach." Headline: "Communication powers everything." Three feature pills. CTA: "See how sharp you are" | Nothing |
-| 2 | **Name** | "What should we call you?" Fox reacts dynamically to input ("Nice to meet you, {name}! 👋"). Progress dots 1/4. | Display name → saved to UserProfile |
-| 3 | **Challenge Intro** | Fox listening. "Time to hear you speak!" Challenge card with question, 3 meta items (⏱️ 30s, 🎯 5 dimensions, 💡 AI coaching). "No wrong answers — just speak naturally." | Nothing |
-| 4 | **Recording** | 30-second recording. Question: "Tell me about yourself — who you are and what you do?" Wave bars + pulse dot during recording. Retry if < 5 words. | Audio recording → transcription |
-| 5 | **Results (Aha Moment)** | Confetti burst + celebrating fox. Animated score reveal. 4 dimension bars. "What you did well" ✅ card. Coaching insight 💡 (auto-spoken). Light improvement suggestion. | Session saved to history |
-| 6 | **Value Proposition** | "That was one question. Imagine doing this every day." 4 feature cards (Daily=Free, Deep Practice=Pro, Pressure Training=Pro, Sharp Summary=Pro). CTA: "Unlock Sharp Pro" or "Start free" | Nothing |
-| 7 | **Paywall** | Free vs Pro comparison table. Annual (recommended) + Monthly plans only (reduced choice). "Start 7-day free trial" CTA. "Maybe later" skip. | Plan selection (when IAP connected) |
-| 8 | **Welcome Home** | Pro: "You're Sharp Pro!" + celebrating fox + confetti. Free: "Welcome, {name}!" + happy fox. Quick tips card. "Let's go" → main app. | `sharp:onboarded = true` |
-
-### Onboarding Scoring
-- Uses dedicated `onboardingScoringPrompt` (softer, more encouraging)
-- +1 bias to structure, concision, substance (capped at 10)
-- Target score range: 5.0-7.0 (nobody scores below 4.0)
-- Frames everything as potential: "When you learn to X, you'll Y"
-- Awareness defaults to 7 (not relevant for self-introduction)
-
-### Anti-Churn Mechanics
-- Sunk cost by screen 5 (they've spoken, been scored, have data)
-- Name used throughout app ("Good afternoon, Moriyanu")
-- Score creates a gap to close ("You got 5.8 — Pro helps you get to 9")
-- Session saved to history (they already have data in the app)
-- Free users still get Daily Challenge (hook for return)
+| Field | Value |
+|-------|-------|
+| App Name | Sharp |
+| Slug | sharp-ai |
+| Version | 2.0.0 |
+| Bundle ID (iOS) | com.sharp.ai |
+| Bundle ID (Android) | com.sharp.ai |
+| Scheme | sharp |
+| UI Mode | Light only (Soft Dawn) |
+| Backend URL | https://sharp-production-2d7c.up.railway.app |
 
 ---
 
-## Premium System
+## Design System — Soft Dawn
 
-### Dev Flag
-`src/services/premium.ts` line 6: `DEV_PREMIUM_FLAG = true/false` — toggles between premium and free tier.
+Warm cream canvas, terracotta accent, sage green success. All values live in `src/constants/theme.ts`.
 
-**Currently set to: `false` (free tier)**
+**Palette:**
+- Background: `#FAF6F0` (cream), `#FFFFFF` (cards), `#F5F0E8` (inputs)
+- Text: `#2A1A0A` (primary), `#6A5A4A` (secondary), `#9A8A7A` (tertiary), `#B8A898` (muted)
+- Accent: `#C07050` (terracotta), `#FFF5EB` (light bg), `#F0DCC8` (border)
+- Success: `#5A9A5A` (sage green)
+- Error: `#C05050`
+- Score colours: `#2563EB` (9-10), `#3B82F6` (7-8.9), `#5A9A5A` (5-6.9), `#E8A838` (<5)
 
-### Plans
+**Typography:** System font. Weights 400 (body) / 600 (labels) / 700 (buttons) / 900 (headings/scores).
 
-| Plan | Price | Per Month | Savings | Notes |
-|------|-------|-----------|---------|-------|
-| 30-Day Pass | €19.99 one-time | €19.99 | — | No commitment |
-| Monthly | €12.99/mo | €12.99 | — | Anchor price |
-| Annual (recommended) | €95.88/yr | €7.99 | 38% | Default recommended |
-| 3-Year | €215.64/3yr | €5.99 | 54% | Best value, loyalty play |
-
-### Usage Limits
-
-| Feature | Free | Pro |
-|---------|------|-----|
-| Daily Challenge | Unlimited | Unlimited |
-| One Shot | 1/day | 5/day |
-| Threaded | 1/week | 5/day |
-| Practice Again (snippet) | Locked | 10/day |
-| Context & documents | Locked | Yes |
-| Sharp Summary & analytics | Locked | Yes |
-| Streak freeze | No | 1/week |
-
-### Gating Implementation
-- **Home screen:** Context card + Sharp Summary show 🔒 + PRO badge for free users → tap opens paywall
-- **Mode cards:** One Shot/Threaded check daily/weekly limits before navigating. Over limit → paywall
-- **Results screen:** "Practice the sharper version" shows 🔒 for free, remaining count for pro, greyed at 0
-- **Coaching screen:** Practice button locked for free. Shows remaining + greys at limit for pro
-- **Session detail:** "Practice again" locked for free. Shows remaining for pro
-- **Usage tracked:** Daily counts in AsyncStorage, auto-reset each day. Weekly threaded for free resets Monday
-
-### Paywall Screens
-- **Full paywall** (`/premium`): All 4 plans, 7 features comparison, restore purchase, legal text
-- **Onboarding paywall** (`/onboarding/paywall`): Simplified — only Annual + Monthly, comparison table, 7-day trial CTA
+**Border Radius:** 8 (sm), 12 (md), 16 (lg), 22 (xl), 999 (pill).
 
 ---
 
-## Fox Mascot — Sharp the Fox
+## Navigation Structure
 
-### Visual Design
-- Terracotta body (#C07050) with cream belly/face (#F5E6D0)
-- Triangular pointed ears with inner ear detail (#E8A070)
-- **Glasses** — dark frames (#3A2A1A) with two rounded lenses, bridge connecting them, subtle blue tint
-- Dark eyes with white highlight dots (inside glasses)
-- Small dark nose, U-shaped smile mouth
-- Front paws in darker terracotta (#A05A3A)
-- Tail with cream stripe tip
+### Tab Bar (3 tabs)
+1. **Home** — Main hub, daily challenge, practice modes, context, recent sessions
+2. **History** — Searchable archive of all past sessions
+3. **Settings** — Profile, preferences, account, subscription
 
-### Animations
-- **Gentle bounce** — whole body floats ±3% vertically (2.8s cycle)
-- **Tail wag** — oscillates -10° to +15° with pauses (faster when celebrating)
-- **Eye blink** — random interval every 3-5 seconds (eyes squish to thin line for 150ms)
-- **Celebrating sparkles** — ✨⭐ emojis near head when celebrating
-
-### 4 Expressions
-- **happy** — standard smile, both eyes open
-- **thinking** — small circle mouth (not smile), both eyes open
-- **celebrating** — right eye squints, sparkles appear, faster tail wag
-- **listening** — happy smile, attentive posture
-
-### Where Fox Appears
-- All 8 onboarding screens (different expressions per screen)
-- Loading screen (thinking expression + notepad with animated pencil)
-- Welcome/result screens
+### Stack Routes
+```
+app/
+├── (tabs)/           Home, History, Settings
+├── onboarding/       Hook → Name → Sign In → Challenge Intro → Recording → Result → Value Prop → Paywall → Welcome
+├── daily/            Challenge → Result
+├── one-shot/         Question → Recording → Results → Coaching
+├── threaded/         Follow-Up → Debrief
+├── duel/             Create → Accept → Waiting → Results
+├── context/          Setup → Documents
+├── analytics/        Progress dashboard
+├── premium/          Paywall & feature showcase
+├── session/[id]      Session replay
+├── streak/           Badge journey
+├── auth/             Sign in modal
+└── privacy/          Privacy policy
+```
 
 ---
 
-## Scoring System (5 Dimensions, 1-10)
+## Onboarding Flow (8 screens)
 
-| Dimension | Weight | What It Measures |
-|-----------|--------|------------------|
-| Structure | 25% | Clear flow, leads with point, logical progression |
-| Substance | 30% | Specific examples, metrics, real details vs generic fluff |
-| Concision | 20% | Every word earns its place, no rambling |
-| Filler Words | 15% | 10 = zero fillers, -1 per 2 fillers detected |
-| Awareness | 10% | Industry/context knowledge (defaults to 7 if N/A) |
+### Screen 1: Hook (`/onboarding`)
+- SharpFox mascot with speech bubble
+- Value proposition: "Sharp trains you to speak with substance"
+- Feature pills with staggered fade-in animations
+- CTA: "See how sharp you are"
 
-### Progression-Aware Scoring
-- Claude sees average scores from last 10 sessions
-- Celebrates improvement: "your structure went from 4.2 to 6.8"
-- Only flags regression if 2+ points below average
-- Encouraging for beginners (<5 sessions), raises bar for experienced (10+)
+### Screen 2: Name Entry (`/onboarding/name`)
+- Text input (max 30 chars)
+- SharpFox with dynamic greeting bubble
+- Saves display name to local storage
 
-### Recurring Pattern Detection
-- Last 5 coaching insights passed to Claude with each scoring request
-- Calls out recurring weaknesses: "I've mentioned this before — you're still hedging"
-- Celebrates fixed patterns: "You did that today — that's real progress"
-- Never repeats the exact same insight
+### Screen 3: Sign In (`/onboarding/signin`)
+- Apple Sign In button (iOS)
+- Email/password form (sign up or sign in)
+- Email verification flow if needed
+- "Skip for now" option (bypasses auth)
 
-### Positive-First Feedback
-- Every response includes separate `positives` and `improvements` fields
-- Results show green "What went well" ✅ card before neutral "To work on" 🎯 card
-- Auto-spoken feedback leads with praise
-- Even a 3/10 answer gets genuine positive feedback
+### Screen 4: Challenge Intro (`/onboarding/challenge-intro`)
+- Prepares user for first assessment
+- Question preview: "Tell me about yourself — who you are and what you do"
+- Shows what will be scored (5 dimensions)
+- Reassurance: "No wrong answers — just speak naturally"
+- CTA: "I'm ready"
 
-### Empty/Short Response Handling
-- < 5 words → retry screen with tips, no API credits wasted
-- Shows what was heard (if anything)
-- Tips: "Speak for 15-20 seconds", "Start with your main point", "Use specific examples"
-- "Try again" button restarts recording
+### Screen 5: Recording (`/onboarding/recording`)
+- 30-second timer
+- Audio waveform animation
+- Record/stop controls
+- Transcription on completion
+
+### Screen 6: Result (`/onboarding/result`)
+- Animated score reveal (ring fills up, numbers count)
+- 5-dimension breakdown with progress bars
+- Positives, improvements, coaching insight
+- Auto-plays coaching via TTS (2.5s delay)
+
+### Screen 7: Value Prop (`/onboarding/value`)
+- 4 feature cards with free/pro badges:
+  - Daily Challenge (free)
+  - Deep Practice (pro)
+  - Pressure Training (pro)
+  - Sharp Summary (pro)
+- Coming soon tease: Duels, Conversations
+- CTA: "Unlock Sharp Pro" or "Start with free plan"
+
+### Screen 8: Paywall → Welcome
+- RevenueCat paywall modal (skippable)
+- Welcome screen with tips card
+- Confetti if pro purchased
+- CTA: "Let's go!" → main app
 
 ---
 
 ## Practice Modes
 
-### 1. Daily Challenge (Fully Working)
+### 1. Daily Challenge (Free)
+**Purpose:** Build a daily communication habit with a single question.
 
-- **Timer:** Dynamic 45-120 seconds (set by AI based on complexity)
-- **5 question formats** with natural mix:
-  - **Prompt** (~30%): Simple, direct. 45-60s.
-  - **Context** (~25%): About your actual life/work. 60-90s.
-  - **Roleplay** (~25%): Vivid scenes with names, stakes. 90-120s.
-  - **Briefing** (~10%): Background facts → act on them. 60-90s.
-  - **Pressure** (~10%): Tense moments, high stakes. 60-90s.
-- **Rich scenarios:** Every roleplay/briefing includes specific names, events, dialogue, stakes
-- **Natural TTS:** Greeting + contextual transition + question (ElevenLabs with device fallback)
-- **Audio caching:** Question audio cached to disk. TTS replay costs zero API calls.
-- **Question caching:** Today's question cached by date in AsyncStorage. Re-opening loads instantly.
-- **Recent tracking:** Last 20 questions stored. Claude avoids repeating themes/categories.
+**Flow:**
+1. Home screen shows "Daily Challenge" hero card
+2. Tap → question loads (cached per calendar day, shared across all users)
+3. Sharp reads the question aloud (TTS) or displays text-only
+4. User records a 60-second response
+5. Audio transcribed → scored on 5 dimensions
+6. Result screen: score ring, coaching insight, communication tip, suggested angles
+7. Streak updates automatically
 
-### 2. One Shot (Fully Working)
+**Question Formats:** Prompt, Roleplay, Briefing, Pressure, Context
+- Roleplay: includes situation card ("Here's what I want you to do...")
+- Briefing: includes background card ("Here's some context...")
+- Pressure: includes high-stakes scenario
+- Context: draws from user's uploaded documents/role
 
-- **Same question engine** as Daily Challenge
-- **Full results dashboard** with animated score reveal, staggered fade-ins
-- **Model Answer** — complete 9/10 answer built FROM their response, spoken via TTS
-- **Snippet Coaching** — listen to model → record version → similarity feedback → retry
-- **Practice gated by premium** — free users see paywall, pro users see remaining count
+**Key Details:**
+- Same question for all users each day (enables duels)
+- Never paywalled (core free feature + viral growth via duels)
+- Fallback question if API fails
+- Minimum 5 words required for scoring
+- TTS with fallback to text-only mode
 
-### 3. Threaded Challenge (Partially Working)
+### 2. One Shot (Premium, 5/day)
+**Purpose:** Full 90-second scored session with comprehensive coaching.
 
-- **4 turns** of escalating pressure with follow-ups referencing user's words
-- Turn 1: Initial → Turn 2: Probing → Turn 3: Pressing → Turn 4: Pressure
-- **Debrief:** UI complete with placeholder data
+**Flow:**
+1. Home → One Shot card (premium gate)
+2. Question screen: AI-generated question using user's context
+3. Difficulty indicator (1-10 dot scale)
+4. "New question" button (2 regenerates per question)
+5. Record 90-second response
+6. Full scoring + coaching result:
+   - 5-dimension scores with progress bars
+   - What Went Well / To Work On
+   - Coaching insight (one tactical takeaway)
+   - Model answer (what a 9/10 sounds like — listenable)
+   - Communication tip
+   - Suggested angles (alternative approaches)
+   - Filler words analysis (count + specific fillers)
+   - Suggested reading
+   - "Why this question" (collapsible)
+7. "Practice the Sharper Version" → coaching drill
 
-### 4. Sharp Duels (Coming Soon — UI Complete)
+**Coaching Drill** (`/one-shot/coaching`):
+- Isolates weakest snippet from response
+- Shows: original (with problems) → sharper rewrite (with explanation)
+- User listens to model version → records their own attempt
+- Similarity scoring (word overlap vs model)
+- Tiered feedback: >80% "Nailed it", 50-80% "Good attempt", <50% "Try again"
+- Limited daily retries (10/day)
 
-- Coming Soon modal with feature list + "Notify me" button
-- Screens built: Create, Accept, Waiting, Results (data stubbed)
+### 3. Threaded Challenge (Premium, 5/day)
+**Purpose:** 4-turn escalating pressure drill simulating real conversations.
+
+**Flow:**
+1. Home → Threaded card (premium gate)
+2. Question screen (same as One Shot, mode=threaded)
+3. Record first response (90s)
+4. No scoring on turns 1-3 — goes directly to follow-up
+5. Follow-up screen shows:
+   - Chat thread (all previous Q&A in bubbles)
+   - Sharp's reaction to last answer
+   - Next pressure question
+   - Pressure level badge (Probing → Pressing → Pressure)
+   - Progress dots (turn N of 4)
+6. User records follow-up answer
+7. Repeats for turns 2-3
+8. After turn 4 → Debrief:
+   - Overall thread score (0-10)
+   - Trajectory badge (Improving / Held Steady / Declining)
+   - 5 threaded dimensions: Communication Clarity, Handling Pressure, Conciseness, Substance, Consistency
+   - Turn-by-turn analysis (score changes + notes)
+   - Strongest moment (turn # + quote)
+   - Weakest snippet (with rewrite)
+   - Dodged questions (if any)
+   - Full conversation transcript
+
+**Follow-up Intelligence:**
+- Reads entire conversation history, not just last answer
+- Finds contradictions, unsupported claims, vagueness
+- Connects dots across turns
+- Probes documents if user claims something but can't articulate
+- Escalating pressure: depth → clarity → challenge → perspective → stakes → accountability
+
+### 4. Industry Insight (Premium, 5/day)
+**Purpose:** Practice answering questions about real-world news relevant to your role.
+
+**Flow:**
+1. Home → Industry card (requires premium + context setup)
+2. Question screen with "Industry Briefing" section:
+   - News icon + TLDR of current event
+   - Real article links (tappable, opens browser)
+   - Google search terms
+3. Standard One Shot recording + scoring flow
+
+**News Research:**
+- Backend runs agentic search: Claude generates 4 search queries
+- Google News RSS scraping in parallel
+- Deduplication → 20 unique articles
+- Claude selects most relevant + generates practice question
+
+### 5. Sharp Duels (Free, Never Paywalled)
+**Purpose:** Async 1v1 competition — the viral growth mechanic.
+
+**Flow:**
+1. Player 1 completes Daily Challenge → gets share link
+2. Player 2 opens link → records same question
+3. Both answers scored independently
+4. Results screen: side-by-side comparison
+   - Winner banner (green/red/tie)
+   - Two-column score comparison
+   - Both coaching insights shown
+   - "Listen to their answer" option
+   - Rematch / Share buttons
+
+**Key Details:**
+- Uses the same daily question (enables fair comparison)
+- Async — no real-time requirement
+- Status: pending → completed → expired
+- Never paywalled (viral growth loop)
 
 ---
 
-## Sharp Summary & Progress Analytics (Fully Working)
+## Scoring System
 
-### Sharp Summary (30-second spoken review)
-- Claude analyses all session data and generates a natural, spoken progress summary
-- Auto-plays on opening analytics screen
-- References specific numbers: "your substance went from 4.0 to 5.8"
-- Ends with ONE specific focus area
-- Requires 2+ sessions (empty state below threshold)
-- **Locked for free users** — PRO badge, taps to paywall
+### 5 Dimensions (1-10 each)
 
-### Analytics Screen
-- **Key stats grid:** Total sessions, streak, best score, sessions this week
-- **Score trend chart:** Bar chart of last 15 scores, color-coded
-- **Dimension breakdown:** 5 dimensions with bars, averages, change arrows (↑↓)
-- **Focus area:** AI-recommended dimension
-- **Highlights:** 3-4 bullet-point achievements
-- **Filler word trend:** Early vs recent comparison
-- **Recent coaching insights:** Last 3 insights
+| Dimension | Weight | What It Measures |
+|-----------|--------|------------------|
+| Structure | 25% | Clear flow, leads with point, logical progression |
+| Concision | 20% | Every word earning its place, no rambling |
+| Substance | 30% | Specific examples, real details, not generic fluff |
+| Filler Words | 15% | Um, uh, like, basically, sort of (10 = zero fillers) |
+| Awareness | 10% | Industry/company knowledge (defaults to 7 when irrelevant) |
 
----
+### Score Calibration
+- 1-3: Poor (stream of consciousness, entirely vague, major rambling)
+- 4-5: Below average (messy, shallow, unfocused)
+- 6-7: Decent (mostly tight, reasonable structure)
+- 8-9: Strong (clear arc, rich specifics, efficient)
+- 10: Exceptional (perfectly crafted, not a word wasted)
 
-## Streak & Badges System (Fully Working)
+### Progress Scoring
+- < 3 sessions: No adjustment, trend = "new"
+- Improving vs average: +0.5 max boost (never inflates bad scores)
+- Declining: No penalty beyond raw score
+- Never boosts if raw < 4
+- Trend calculated from recent 3 vs older average
 
-### 15 Badge Milestones (up to 365 days)
+### Coaching Principles (Invisible to Users)
+Grounded in 8 books, never cited:
+- **Pyramid Principle**: Lead with conclusion then support. Rule of three.
+- **Made to Stick**: Simple beats complex. Unexpected sticks. Stories > abstractions.
+- **Radical Candor**: Care personally, challenge directly. Name behavior, state impact.
+- **Never Split the Difference**: Tactical empathy. Labelling. Calibrated questions.
+- **Crucial Conversations**: Make it safe. Shared meaning. STATE your path.
+- **Talk Like TED**: 18-minute rule. Sensory details. Novelty.
+- **Nonviolent Communication**: Observations not evaluations. Feelings, needs, requests.
+- **Influence**: Reciprocity. Contrast principle. Social proof.
 
-| Day | Badge | Emoji | Description |
-|-----|-------|-------|-------------|
-| 1 | First Step | 🌱 | Completed your first day |
-| 3 | Building Momentum | 🔥 | 3 days in a row |
-| 5 | Finding Your Voice | 🎯 | 5 days consistent |
-| 7 | One Week Sharp | ⚡ | A full week of practice |
-| 10 | Double Digits | 💪 | 10 days of commitment |
-| 14 | Two Weeks Strong | 🏔️ | Halfway to mastery |
-| 21 | Habit Formed | 🧠 | They say it takes 21 days |
-| 30 | Sharp Speaker | 👑 | 30 days. You earned this. |
-| 45 | Committed | 💎 | This is who you are now |
-| 60 | Two Months Sharp | 🔱 | 60 days of consistent practice |
-| 90 | Quarter Master | 🏆 | A full quarter. Respect. |
-| 120 | Unstoppable | ⭐ | Most people never get here |
-| 180 | Half Year Hero | 🌟 | Communication is your superpower |
-| 270 | Nine Month Wonder | 🎖️ | You outwork everyone |
-| 365 | Year of Sharp | 🏅 | Legendary |
-
-### Streak Freeze (Anti-Churn)
-- 1 free freeze per week (resets Monday)
-- Auto-activates if you miss a day — streak preserved
-- Frozen days show ❄️ in journey grid
-- Visible in streak screen stats row
-
-### Streak Screen
-- Hero card: current streak + badge + stats (best/badges earned/freeze status)
-- Freeze info card
-- Next badge teaser with progress bar
-- Dynamic journey grid (extends based on streak)
-- Two sections: "First 30 Days" and "The Long Game"
+### Anti-Repetition Rules
+- Must quote user's exact words (no generic "good effort")
+- Cross-references recent coaching insights to avoid repeating
+- If recurring weakness: explicitly references pattern
+- If user fixed previous issue: celebrates the improvement
 
 ---
 
-## User Profile & Context
+## Context & Personalisation
 
-### Profile (Settings)
-- Display name (editable inline)
-- Avatar (pick from device photo library)
-- Plan status: Free or Sharp Pro with PRO badge
-- Home screen greeting: "Good afternoon" (line 1) + "Moriyanu" (line 2, large)
+### User Context (4 fields)
+1. **What you do** — Role, title, responsibilities
+2. **Where you are** — Current company, team
+3. **What's coming up** — Upcoming situation (interview, presentation, review)
+4. **Where you're headed** — Dream role, aspiration, career goal
 
-### Context Setup (Premium Only)
-- 4 fields with emoji icons: Role 👤, Company 🏢, Situation 🎯, Dream role ✨
-- Progress indicator (N/4 fields)
-- Document list with type classification chips
-- File picker for PDF/DOCX/TXT/MD
-- **Locked for free users** — shows 🔒, taps to paywall
+### Voice Setup
+- Interactive voice-guided onboarding (SharpFox asks conversational questions)
+- Sharp speaks each question via TTS → user records answer → transcribed and saved
+- Fallback to text input if TTS unavailable
+- Can redo voice setup anytime
+
+### Extra Notes
+- Freeform text field (max 1000 chars)
+- For specific requests, things to avoid, context that doesn't fit fields
+- Treated as direct instructions in prompt
+
+### Documents (Premium)
+Upload PDF, DOCX, TXT, MD (max 10MB). Automatically classified:
+
+| Type | Colour | Examples |
+|------|--------|----------|
+| Identity | Blue `#4080C0` | CV, resume, LinkedIn profile |
+| Aspiration | Purple `#8B7EC8` | Job description, promotion criteria |
+| Evidence | Green `#5A9A5A` | Project brief, performance review |
+| Preparation | Terracotta `#C07050` | Meeting agenda, talking points |
+
+**Extraction:** Claude parses each document and extracts:
+- Key projects, metrics, skills
+- Expectations, timeline, role details
+- Gaps (claims vs evidence)
+- Coaching usage angles (for One Shot, Threaded, rewrites)
+
+Documents directly influence question generation and scoring.
+
+---
+
+## Gamification
+
+### Streak System
+- Tracks consecutive days with at least one session
+- Streak freezes: 1 available per week, auto-used if missed yesterday
+- Weekly freeze reset on Mondays
+- Streak history stored as date array
+
+### Badge Milestones (15 badges)
+
+| Day | Badge | Emoji |
+|-----|-------|-------|
+| 1 | First Step | 🌱 |
+| 3 | Building Momentum | 🔥 |
+| 5 | Finding Your Voice | 🎯 |
+| 7 | One Week Sharp | ⚡ |
+| 10 | Double Digits | 💪 |
+| 14 | Two Weeks Strong | 🏔️ |
+| 21 | Habit Formed | 🧠 |
+| 30 | Sharp Speaker | 👑 |
+| 45 | Committed | 💎 |
+| 60 | Two Months Sharp | 🔱 |
+| 90 | Quarter Master | 🏆 |
+| 120 | Unstoppable | ⭐ |
+| 180 | Half Year Hero | 🌟 |
+| 270 | Nine Month Wonder | 🎖️ |
+| 365 | Year of Sharp | 🏅 |
+
+### Badge Journey Screen
+- Visual timeline of all badges (locked + unlocked)
+- Current position highlighted
+- Next milestone with days remaining
+
+---
+
+## Premium Model
+
+### Free Tier
+- Unlimited Daily Challenges
+- Unlimited Sharp Duels
+- Basic scoring (5 dimensions)
+- Streak tracking + badges
+
+### Sharp Pro
+
+| Feature | Limit |
+|---------|-------|
+| One Shot sessions | 5/day |
+| Threaded challenges | 5/day |
+| Industry questions | 5/day |
+| Practice Again (coaching drill) | 10/day |
+| Question regenerates | 2/question |
+| Model answers | Unlimited |
+| Context + documents | Full access |
+| Sharp Summary (analytics) | Full access |
+| Streak freeze | 1/week |
+
+### Pricing
+- **Annual:** £119.99/year (recommended, ~44% savings)
+- **Monthly:** £17.99/month
+
+### Paywall UX
+- Anchor card: "A single session with a communication coach costs £150-500. Sharp Pro gives you unlimited AI coaching for less than the price of lunch."
+- 8 feature cards with descriptions
+- Radio button plan selection (Annual/Monthly/Free)
+- RevenueCat handles real App Store pricing when configured
+- Restore purchases link for existing subscribers
+- Legal text re auto-renewal
+
+---
+
+## Analytics Dashboard (Premium)
+
+### Sharp Summary
+- AI-generated 30-second spoken progress review
+- Auto-plays on screen load
+- Cached per session count (invalidates on new session)
+- Includes: highlights, focus area, encouragement
+
+### Stats Grid
+- Total sessions, current streak, best score, sessions this week
+
+### Score Trend Chart
+- Last 15 sessions as colour-coded bar chart
+- X-axis: Oldest → Most recent
+
+### Dimension Breakdown
+- 5 dimensions with progress bars
+- Last-5 average + change delta (if 5+ sessions)
+
+### Filler Words Trend
+- Early vs Recent comparison
+- Improvement/decline messaging
+
+### Recent Coaching
+- Last 5 coaching insights from all sessions
 
 ---
 
 ## Audio System
 
-### Recording (expo-audio)
-- `AudioModule.AudioRecorder` with `RecordingPresets.HIGH_QUALITY`
-- Outputs M4A on iOS (with problematic `chnl` box)
-- Base64 encoded and sent to backend
-- Backend pipeline: `afconvert` M4A → WAV (macOS native) → `ffmpeg` WAV → MP3 (16kHz, mono, 64kbps)
-- Groq transcribes the clean MP3
+### Text-to-Speech (ElevenLabs)
+5 voice modes with different delivery styles:
 
-### Playback (expo-audio + ElevenLabs)
-- `createAudioPlayer` for ElevenLabs MP3 playback
-- Audio cached to disk by text hash — replay costs zero
-- Device speech (expo-speech) as automatic fallback
-- Natural script builder: greetings + transitions based on question format
+| Mode | Use Case | Style |
+|------|----------|-------|
+| Question | Reading practice questions | Natural, conversational |
+| Coaching | Feedback and insights | Warm, slower, considered |
+| Model | Expert sample answers | Crisp, authoritative |
+| Follow-up | Threaded pressure questions | Assertive, interviewer energy |
+| Briefing | Industry/news context | Measured, news-anchor clarity |
 
-### State Management
-- Generation-based cancellation (`playbackGeneration` counter)
-- Global `AudioGuard` in root layout — stops all audio on every route change
-- `mountedRef` in every practice screen — prevents state updates after unmount
-- No audio can leak between screens
+**Fallback:** Text-only mode if ElevenLabs unavailable. Fallback to on-device Speech API.
 
----
+### Natural Script Builder
+- Greetings vary by time of day ("Good morning...", "Afternoon question for you...")
+- Transitions adapt to question format
+- Roleplay: "Here's what I want you to do. [situation] [question]"
+- Briefing: "Here's some context. [background] Now, [question]"
 
-## Animations & Components
+### Audio Management
+- Single player instance (prevents overlaps)
+- Generation counter prevents stale callbacks
+- Audio cached locally by text+mode hash
+- `stopAudio()` called on every navigation
+- Audio guard in root layout stops playback on route change
 
-### Fox Mascot (`src/components/Illustrations.tsx`)
-- `SharpFox` — full-body animated fox with glasses, blinking, tail wag
-- `SpeechBubble` — two variants (default white, accent terracotta)
-- `ProgressDots` — active/current/inactive with elongated active dot
-- `ConfettiBurst` — 20 particles in brand colors, staggered spring launch
-- `FeatureCard` — slide-in card with emoji + title + chip + description
-
-### Animation Components (`src/components/Animations.tsx`)
-- `LoadingScreen` — Fox (thinking) + notepad with animated pencil + bouncing dots
-- `AudioWaveBars` — 24-bar wave visualiser for recording/playback
-- `PulseDot` — breathing red dot for recording indicator
-- `FadeIn` — slide-up fade with staggered delays
-- `ScoreReveal` — animated score counter with spring bounce
-- `SkeletonLoader` — shimmer placeholder
+### Recording
+- High-quality preset via expo-audio
+- Handles microphone permissions with fallback modes
+- Validates transcript: minimum 5 words
+- Error messages for empty/short responses with tips
 
 ---
 
-## Backend API (9 Endpoints)
+## Authentication
 
-| Endpoint | Method | Purpose | Model | Tokens |
-|----------|--------|---------|-------|--------|
-| `/api/health` | GET | Health check | — | — |
-| `/api/question/generate` | POST | Generate practice question | Claude | 800 |
-| `/api/score` | POST | Score + feedback + model answer | Claude | 1500 |
-| `/api/score` (isOnboarding) | POST | Soft scoring for first-time users | Claude | 1500 |
-| `/api/threaded/follow-up` | POST | Generate follow-up question | Claude | 400 |
-| `/api/threaded/debrief` | POST | Thread-level analysis | Claude | 2000 |
-| `/api/progress/summary` | POST | AI progress summary | Claude | 600 |
-| `/api/transcribe` | POST | Base64 audio → afconvert → ffmpeg → Groq | Groq | — |
-| `/api/tts` | GET | Text → ElevenLabs audio stream | ElevenLabs | — |
-| `/api/document/parse` | POST | Document classification (stubbed) | Claude | 1000 |
+### Methods
+- **Apple Sign In** (iOS only, one-tap)
+- **Email/Password** (6+ char password, email verification)
+
+### Provider
+Supabase Auth with PostgreSQL-backed session management.
+
+### Flow
+1. Sign up → email verification → session created
+2. Supabase trigger auto-creates: profiles, streaks, user_context rows
+3. On sign-in: RevenueCat user identified, local data migrated to cloud
+4. Session persisted in AsyncStorage, auto-refreshed
+
+### Auth Context
+- Wraps entire app via `AuthProvider`
+- Monitors `onAuthStateChange` events
+- Exposes: user, isAuthenticated, isLoading
+- Sign-out resets RevenueCat identity
 
 ---
 
-## What's Fully Working
+## Cloud Sync
 
-- ✅ 8-screen onboarding with fox mascot, recording challenge, paywall
-- ✅ Daily Challenge (5 formats, dynamic timing, caching, TTS, streak)
-- ✅ One Shot (question → record → score → model answer → coaching)
-- ✅ Threaded (turns 1-3 with follow-ups, recording, scoring)
-- ✅ 5-dimension scoring with progression awareness + recurring patterns
-- ✅ Positive-first feedback (positives → improvements → insight)
-- ✅ Model answers (built from user's response, spoken via TTS)
-- ✅ Snippet coaching with practice recording + similarity feedback
-- ✅ ElevenLabs TTS with caching + device fallback + natural script builder
-- ✅ Groq Whisper transcription via base64 + afconvert + ffmpeg
-- ✅ Streak system with 15 badges (up to 365 days) + streak freeze
-- ✅ Sharp Summary (30-second AI-spoken progress review)
-- ✅ Progress analytics (score trends, dimension breakdown, filler tracking)
-- ✅ Premium system (4 plans, usage tracking, feature gating, paywall)
-- ✅ Session history with full detail view + audio playback
-- ✅ User profile (name, avatar, plan status)
-- ✅ Context setup with progress indicator (premium only)
-- ✅ Professional animations (fox loading, wave bars, fade-ins, score reveal)
-- ✅ Audio state management (generation-based, mounted refs, global guard)
-- ✅ Empty/short response handling (retry screen with tips)
-- ✅ Question variety (12+ categories, 5 formats, recent tracking, context-aware)
-- ✅ Responsive UI (wp/fp scaling to all screen sizes)
-- ✅ Fox mascot with glasses, blinking, tail wag, 4 expressions
+### Strategy
+Local-first (AsyncStorage is source of truth) with background sync to Supabase.
 
-## What's Stubbed / Coming Soon
+### What Syncs
+- Profile (display name, avatar, premium status)
+- Context (role, company, situation, dream role)
+- Sessions + all turns (scores, transcripts, coaching)
+- Streak (current, longest, freezes)
+- Badges (unlocked milestones)
+- Daily results (score, insight, date)
+- Documents (metadata to DB, files to Supabase Storage)
 
-- ⚠️ Threaded debrief (UI done, placeholder data)
-- ⚠️ Document upload parsing (picker works, API not connected)
-- ⚠️ Settings preferences (toggles don't persist)
-- ⚠️ Session export
-- ⚠️ In-app purchases (paywall UI complete, no payment processing — uses dev flag)
-- 🔜 Sharp Duels (UI complete, coming soon modal, not integrated)
-- 🔜 Conversation Practice (real-time voice AI)
-- 🔜 User authentication + cloud sync (see ARCHITECTURE_PLAN.md)
-- 🔜 Push notifications for daily reminders
-- 🔜 RevenueCat integration for real subscriptions
+### Migration
+One-time migration on first sign-in: all local data → Supabase.
+- Profile, context, streak, badges, daily results synced first
+- Then up to 50 full sessions (largest dataset, done last)
+
+### Error Handling
+All sync functions log errors in production (console.warn). Failures never block the UI — local data remains intact.
+
+---
+
+## Push Notifications
+
+### Registration
+- Requests permission on app load (after auth)
+- Stores Expo push token to Supabase profiles table
+- Android: Creates 'coaching' channel with vibration
+
+### Engagement Nudges
+Runs daily at 8 PM UTC via server-side cron:
+- **Streak at risk** (1 day, streak > 3): "Your N-day streak is at risk. 60 seconds to keep it alive."
+- **2 days inactive**: "Quick check-in. Your streak is waiting."
+- **3+ days inactive**: Claude generates personalised nudge using name, days away, streak, best score
+
+### Pagination
+Processes users in batches of 100 to prevent OOM on large user bases.
+
+---
+
+## Database Schema
+
+### Tables
+
+**profiles** — User account data
+```
+id (UUID PK), display_name, avatar_url, is_premium, onboarding_complete,
+push_token, created_at, updated_at
+```
+
+**user_context** — Career/goal information
+```
+user_id (UUID PK), role_text, current_company, situation_text,
+dream_role_and_company, updated_at
+```
+
+**sessions** — Practice sessions
+```
+id (TEXT PK), user_id (UUID FK), type, scenario, created_at
+INDEX: idx_sessions_user (user_id, created_at DESC)
+```
+
+**turns** — Individual responses within a session
+```
+id (TEXT PK), session_id (TEXT FK cascade), user_id (UUID FK),
+turn_number, question, transcript, model_answer,
+scores (JSONB), overall (NUMERIC 3,1),
+summary, positives, improvements, coaching_insight, communication_tip,
+snippet (JSONB), filler_words_found (TEXT[]), filler_count, created_at
+```
+
+**streaks** — Habit tracking
+```
+user_id (UUID PK), current_streak, longest_streak,
+last_session_date (DATE), freezes_available, updated_at
+```
+
+**badges** — Achievements
+```
+user_id (UUID FK), badge_day (INT), unlocked_at
+PK: (user_id, badge_day)
+```
+
+**daily_results** — Daily practice summary
+```
+id (TEXT PK), user_id (UUID FK), score (NUMERIC 3,1),
+insight, practice_date (DATE), created_at
+```
+
+**documents** — User-uploaded files
+```
+id (TEXT PK), user_id (UUID FK), filename, raw_text,
+structured_extraction (JSONB), summary, document_type,
+document_subtype, storage_path, uploaded_at
+INDEX: idx_documents_user (user_id)
+```
+
+**usage** — Feature usage tracking
+```
+user_id (UUID FK), usage_date (DATE), one_shots, threaded,
+practice_again, threaded_this_week, week_start (DATE)
+PK: (user_id, usage_date)
+```
+
+All tables have Row Level Security (RLS) — users can only access their own data.
+
+**Relationships:**
+```
+auth.users (Supabase managed)
+├── profiles (1:1)
+├── user_context (1:1)
+├── sessions (1:N)
+│   └── turns (1:N)
+├── streaks (1:1)
+├── badges (1:N)
+├── daily_results (1:N)
+├── documents (1:N)
+└── usage (1:N)
+```
+
+---
+
+## Backend API Endpoints
+
+| Method | Endpoint | Rate Limit | Purpose |
+|--------|----------|------------|---------|
+| GET | /api/health | — | Service status (which APIs configured) |
+| GET | /api/usage | — | Daily API usage stats + cost estimation |
+| POST | /api/question/generate | 10/min | Generate practice question from context |
+| POST | /api/score | 10/min | Score transcript on 5 dimensions + coaching |
+| POST | /api/threaded/follow-up | 10/min | Generate pressure follow-up question |
+| POST | /api/threaded/debrief | 10/min | Analyse completed threaded challenge |
+| POST | /api/progress/summary | 5/min | Generate spoken progress summary |
+| POST | /api/transcribe | 10/min | Transcribe audio via Groq Whisper |
+| GET | /api/tts | 20/min | ElevenLabs voice generation (streaming MP3) |
+| POST | /api/document/extract-text | — | Extract text from PDF/DOCX/TXT |
+| POST | /api/document/parse | — | Classify + extract structured data from document |
+| POST | /api/notifications/register | — | Store push token |
+| POST | /api/notifications/engagement-check | — | Daily engagement nudge cron |
+| POST | /api/webhooks/revenuecat | — | Purchase event webhook |
+| POST | /api/waitlist | — | Store waitlist email |
+| GET | /api/waitlist/count | — | Waitlist count |
+
+---
+
+## Key Data Types
+
+```typescript
+// Sessions
+type SessionType = 'daily_30' | 'one_shot' | 'threaded' | 'duel'
+type RecordingState = 'idle' | 'ready' | 'recording' | 'processing' | 'complete'
+
+// Questions
+type QuestionFormat = 'roleplay' | 'prompt' | 'briefing' | 'pressure' | 'context' | 'industry'
+type QuestionTarget = 'structure' | 'concision' | 'substance' | 'pressure_handling'
+                    | 'self_advocacy' | 'technical_clarity' | 'awareness'
+
+// Documents
+type DocumentType = 'identity' | 'aspiration' | 'evidence' | 'preparation'
+
+// Premium
+type PlanId = 'free' | 'monthly' | 'annual'
+```
+
+---
+
+## Animated Components
+
+| Component | Use |
+|-----------|-----|
+| PulseDot | Breathing dot during recording |
+| AudioWaveBars | 24 animated bars for playback/recording |
+| SkeletonLoader | Shimmer loading placeholder |
+| LoadingScreen | Fox + notepad with bouncing dots |
+| FadeIn | Fade + slide-up entrance (configurable delay) |
+| ScoreReveal | Animated counter 0 → final score with spring scale |
+
+---
+
+## Quality Assurance
+
+### Coaching Quality Gate
+Non-blocking background evaluation of every coaching output:
+- **Specificity:** Does it quote user's exact words?
+- **Actionability:** Does it tell exactly what to change?
+- **Novelty:** Is it fresh and specific to THIS answer?
+- **Model Answer Quality:** Does it sound like the user but sharper?
+- **Score Calibration:** Do scores match the rubric?
+
+Logs quality score + improvement suggestions without blocking the response.
+
+---
+
+## External Integrations
+
+| Service | Purpose |
+|---------|---------|
+| Supabase | Auth, PostgreSQL database, file storage, RLS |
+| Railway | Backend hosting (Node.js/Express) |
+| Anthropic (Claude) | All AI intelligence (scoring, coaching, questions) |
+| Groq (Whisper) | Audio transcription |
+| ElevenLabs | Text-to-speech (5 voice modes) |
+| RevenueCat | In-app purchase management |
+| PostHog | Event analytics + feature flags |
+| Expo Notifications | Push notifications |
+| Google News RSS | Industry question research |
+
+---
+
+## Analytics Events
+
+```
+APP_OPENED, ONBOARDING_STARTED, ONBOARDING_COMPLETED
+SESSION_STARTED, SESSION_COMPLETED
+QUESTION_GENERATED, QUESTION_REGENERATED
+RECORDING_STARTED, RECORDING_COMPLETED, RECORDING_FAILED
+DAILY_CHALLENGE_STARTED, DAILY_CHALLENGE_COMPLETED
+THREADED_STARTED, THREADED_COMPLETED
+INDUSTRY_QUESTION_VIEWED
+PAYWALL_VIEWED, PURCHASE_STARTED, PURCHASE_COMPLETED
+CONTEXT_SETUP_COMPLETED, DOCUMENT_UPLOADED
+DUEL_CREATED, DUEL_ACCEPTED
+STREAK_UPDATED, BADGE_UNLOCKED, MODEL_ANSWER_LISTENED
+```
+
+---
+
+## Permissions
+
+**iOS:**
+- Microphone: "Sharp needs microphone access to record and analyse your spoken answers."
+
+**Android:**
+- `RECORD_AUDIO`
+- `MODIFY_AUDIO_SETTINGS`
+
+---
+
+## Build Profiles (EAS)
+
+| Profile | Distribution | Notes |
+|---------|-------------|-------|
+| Development | Internal | Dev client enabled, non-simulator |
+| Preview | Internal | Staging build for testers |
+| Production | Store | Auto-increment version |
+
+All profiles use the same Supabase, API, analytics, and RevenueCat configurations.
+
+---
+
+## Commands
+
+```bash
+# Start app
+npx expo start
+
+# Start backend
+cd backend && node server.js
+
+# Type check
+npx tsc --noEmit
+
+# Build iOS (production)
+eas build --platform ios --profile production
+
+# Build Android (production)
+eas build --platform android --profile production
+
+# Build preview (internal testing)
+eas build --platform ios --profile preview
+
+# Install Expo package
+npx expo install <package-name>
+
+# Clear Metro cache
+npx expo start --clear
+```
 
 ---
 
 ## File Structure
 
 ```
-sharp-v2/
-├── app/
-│   ├── (tabs)/             # Tab navigator
-│   │   ├── index.tsx       # Home (greeting, streak, modes, context)
-│   │   ├── history.tsx     # Session list with type icons
-│   │   ├── settings.tsx    # Profile, plan, preferences
-│   │   └── _layout.tsx     # Tab bar config
-│   ├── onboarding/         # 8-screen onboarding flow
-│   │   ├── index.tsx       # Welcome (fox + speech bubble)
-│   │   ├── name.tsx        # Name entry (fox reacts)
-│   │   ├── challenge-intro.tsx # Challenge setup (fox listening)
-│   │   ├── recording.tsx   # 30s recording (wave bars)
-│   │   ├── result.tsx      # Score reveal (confetti + fox celebrating)
-│   │   ├── value.tsx       # Feature cards (pro/free)
-│   │   ├── paywall.tsx     # Plan selection (annual + monthly)
-│   │   └── welcome.tsx     # Welcome home (fox happy/celebrating)
-│   ├── daily/              # Daily Challenge
-│   │   ├── challenge.tsx   # Question + recording + dynamic timer
-│   │   └── result.tsx      # Score + feedback + badge unlock
-│   ├── one-shot/           # One Shot + Threaded
-│   │   ├── question.tsx    # Question display + TTS + difficulty
-│   │   ├── recording.tsx   # Timer + wave bars + retry handling
-│   │   ├── results.tsx     # Score + model answer + coaching CTA
-│   │   └── coaching.tsx    # Snippet practice with recording
-│   ├── threaded/           # Threaded-specific
-│   │   ├── follow-up.tsx   # Follow-up between turns
-│   │   └── debrief.tsx     # Thread analysis (stubbed)
-│   ├── analytics/          # Progress analytics
-│   │   └── index.tsx       # Sharp Summary + charts + dimensions
-│   ├── streak/             # Badge system
-│   │   └── index.tsx       # Journey grid + badge collection
-│   ├── premium/            # Paywall
-│   │   └── index.tsx       # All 4 plans + features + pricing
-│   ├── session/            # Session replay
-│   │   └── [id].tsx        # Turn detail + audio playback
-│   ├── context/            # User context (premium)
-│   │   ├── setup.tsx       # 4 fields + documents
-│   │   └── documents.tsx   # File picker
-│   ├── duel/               # Duels (stubbed)
-│   ├── coming-soon/        # Feature teasers
-│   │   ├── conversation.tsx
-│   │   ├── analytics.tsx
-│   │   └── duels.tsx
-│   └── _layout.tsx         # Root stack + AudioGuard + OnboardingGate
-├── src/
-│   ├── constants/
-│   │   ├── theme.ts        # Colors, typography, spacing, shadows, wp/fp
-│   │   └── badges.ts       # 15 streak badges
-│   ├── components/
-│   │   ├── Animations.tsx  # LoadingScreen (fox+notepad), AudioWaveBars, PulseDot, FadeIn, ScoreReveal
-│   │   └── Illustrations.tsx # SharpFox, SpeechBubble, ProgressDots, ConfettiBurst, FeatureCard
-│   ├── types/
-│   │   └── index.ts        # All TypeScript types (45+ interfaces)
-│   └── services/
-│       ├── api.ts          # HTTP client (apiPost, apiGet, apiUpload)
-│       ├── storage.ts      # AsyncStorage CRUD (onboarding, profile, sessions, streak, progress, cache)
-│       ├── scoring.ts      # Claude API (question, score, follow-up, debrief, summary)
-│       ├── transcription.ts # Base64 audio upload to backend
-│       ├── tts.ts          # ElevenLabs playback + caching + natural script builder
-│       └── premium.ts      # Plans, limits, usage tracking, dev flag
-├── backend/
-│   ├── server.js           # Express server (9 API routes, afconvert + ffmpeg transcoding)
-│   ├── prompts/
-│   │   └── index.js        # 6 Claude prompts (question, scoring, onboarding scoring, follow-up, debrief, doc parsing)
-│   ├── package.json
-│   └── .env                # API keys (gitignored)
-├── PRODUCT_SPEC.md         # This file
-├── ARCHITECTURE_PLAN.md    # Cloud migration plan (auth, DB, sync, RevenueCat)
-├── CLAUDE.md               # Development instructions
-├── package.json
-├── app.json
-└── tsconfig.json
+app/                          # Expo Router screens
+├── (tabs)/                   # Tab navigator (Home, History, Settings)
+├── daily/                    # Daily 30 flow
+├── one-shot/                 # One Shot flow (shared recording screen)
+├── threaded/                 # Threaded Challenge
+├── duel/                     # Sharp Duels
+├── context/                  # Context setup + documents
+├── analytics/                # Progress dashboard
+├── premium/                  # Paywall
+├── onboarding/               # 8-screen onboarding
+├── auth/                     # Sign in modal
+├── session/[id]              # Session detail
+├── streak/                   # Badge journey
+└── _layout.tsx               # Root Stack layout
+
+src/
+├── constants/
+│   ├── theme.ts              # ALL colours, typography, spacing, radius
+│   └── badges.ts             # 15 streak badge definitions
+├── components/
+│   └── Animations.tsx        # PulseDot, AudioWaveBars, FadeIn, ScoreReveal, LoadingScreen
+├── context/
+│   └── AuthContext.tsx        # Auth provider (Supabase session management)
+├── types/index.ts            # ALL TypeScript types
+└── services/
+    ├── api.ts                # HTTP client (apiPost, apiGet, apiUpload, getTtsUrl)
+    ├── storage.ts            # AsyncStorage CRUD for all data
+    ├── scoring.ts            # generateQuestion, scoreAnswer, generateFollowUp, generateDebrief
+    ├── transcription.ts      # Groq/Whisper via backend
+    ├── tts.ts                # ElevenLabs + device fallback (5 voice modes)
+    ├── auth.ts               # Apple Sign In + email/password
+    ├── premium.ts            # RevenueCat integration + usage limits
+    ├── sync.ts               # Supabase cloud sync (all data types)
+    ├── supabase.ts           # Supabase client (with noop proxy fallback)
+    ├── notifications.ts      # Expo push notifications
+    ├── revenuecat.ts         # RevenueCat SDK wrapper
+    └── analytics.ts          # PostHog event tracking
+
+backend/
+├── server.js                 # Express server, 16 API routes
+├── prompts/index.js          # All Claude prompts (7 prompt types)
+└── .env                      # API keys (never commit)
 ```
-
----
-
-## Environment Variables
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-GROQ_API_KEY=gsk_...
-ELEVENLABS_API_KEY=sk_...
-ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
-PORT=3001
-```
-
-## Commands
-
-```bash
-npx expo start              # Start frontend
-cd backend && node server.js # Start backend
-npx tsc --noEmit            # Type check
-npx expo export --platform ios # Build check
-```
-
-## Key Design Decisions
-
-1. **No database in MVP** — AsyncStorage only. Ship fast, validate, add Supabase later.
-2. **Duels never paywalled** — viral growth mechanic (when implemented).
-3. **Positive feedback first** — always find something good, even in weak answers.
-4. **Model answers built from user's response** — not generic. Keeps what was good.
-5. **Dynamic timing** — AI decides 45-120s per question based on complexity.
-6. **afconvert + ffmpeg on backend** — expo-audio M4A has chnl box ffmpeg can't parse; afconvert (macOS native) handles it, then ffmpeg compresses to MP3 for Groq.
-7. **Generation-based audio cancellation** — prevents ghost playback across screens.
-8. **Question caching by date** — daily question cached, TTS cached to disk. Minimises API costs.
-9. **Recurring pattern detection** — last 5 insights passed to Claude for continuity.
-10. **Premium dev flag** — instant toggle between free/pro for development.
-11. **Onboarding scores soft** — dedicated prompt with +1 bias, targets 5.0-7.0 range.
-12. **Fox mascot as brand identity** — appears in loading, onboarding, creates emotional connection.
-13. **Value before commitment** — users complete a challenge and see scores before sign-up/payment.

@@ -6,7 +6,7 @@ import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAud
 import * as Haptics from 'expo-haptics';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
-import { playQuestionAudio, stopAudio } from '../../src/services/tts';
+import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { isPremium, canPracticeAgain, trackPracticeAgainUsage } from '../../src/services/premium';
 
@@ -48,7 +48,7 @@ export default function CoachingScreen() {
     setPracticeRemaining(prev => Math.max(0, (prev || 1) - 1));
     setPracticeState('listening_model');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await playQuestionAudio(rewrite);
+    await playModelAudio(rewrite);
     if (mountedRef.current) setPracticeState('ready');
   }
 
@@ -107,7 +107,7 @@ export default function CoachingScreen() {
       setPracticeState('done');
 
       // Speak the feedback only if still on screen
-      if (mountedRef.current) await playQuestionAudio(fb);
+      if (mountedRef.current) await playCoachingAudio(fb);
     } catch (e) {
       __DEV__ && console.error('Practice recording error:', e);
       if (mountedRef.current) setPracticeState('ready');
@@ -116,7 +116,7 @@ export default function CoachingScreen() {
 
   async function listenToModel() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await playQuestionAudio(rewrite);
+    await playModelAudio(rewrite);
   }
 
   async function retryPractice() {
@@ -130,7 +130,7 @@ export default function CoachingScreen() {
     setUserAttempt('');
     setFeedback('');
     setPracticeState('listening_model');
-    await playQuestionAudio(rewrite);
+    await playModelAudio(rewrite);
     if (mountedRef.current) setPracticeState('ready');
   }
 

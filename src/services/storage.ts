@@ -1,11 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature } from '../types';
+import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature, UploadedDocument } from '../types';
 import { STREAK_BADGES } from '../constants/badges';
-import { syncProfileToCloud, syncContextToCloud, syncSessionToCloud, syncStreakToCloud, syncBadgeToCloud, syncDailyResultToCloud, migrateLocalToCloud } from './sync';
+import { syncProfileToCloud, syncContextToCloud, syncSessionToCloud, syncStreakToCloud, syncBadgeToCloud, syncDailyResultToCloud, migrateLocalToCloud, uploadDocumentToStorage, syncDocumentToCloud, deleteDocumentFromCloud } from './sync';
 
 function safeParse<T>(json: string | null, fallback: T): T {
   if (!json) return fallback;
   try { return JSON.parse(json); } catch { return fallback; }
+}
+
+function localDateStr(date: Date = new Date()): string {
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
 }
 
 function syncQuietly(fn: Promise<any>, label: string): void {
@@ -93,12 +97,35 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
 
 export async function getContext(): Promise<UserContext | null> {
   const raw = await AsyncStorage.getItem(KEYS.CONTEXT);
-  return safeParse<UserContext | null>(raw, null);
+  const ctx = safeParse<UserContext | null>(raw, null);
+  if (ctx && ctx.notes === undefined) ctx.notes = '';
+  return ctx;
 }
 
 export async function saveContext(context: UserContext): Promise<void> {
   await AsyncStorage.setItem(KEYS.CONTEXT, JSON.stringify(context));
   syncQuietly(syncContextToCloud(context), 'context');
+}
+
+// ===== Documents =====
+
+export async function addDocument(doc: UploadedDocument, fileUri?: string): Promise<void> {
+  const ctx = await getContext() || { roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '', notes: '', documents: [] };
+  ctx.documents = [...ctx.documents, doc];
+  await AsyncStorage.setItem(KEYS.CONTEXT, JSON.stringify(ctx));
+  syncQuietly(syncContextToCloud(ctx), 'context');
+  // Upload file to storage + sync metadata to DB in background
+  const storagePath = fileUri ? await uploadDocumentToStorage(fileUri, doc.filename) : null;
+  syncQuietly(syncDocumentToCloud(doc, storagePath), 'document');
+}
+
+export async function removeDocument(docId: string): Promise<void> {
+  const ctx = await getContext();
+  if (!ctx) return;
+  ctx.documents = ctx.documents.filter(d => d.id !== docId);
+  await AsyncStorage.setItem(KEYS.CONTEXT, JSON.stringify(ctx));
+  syncQuietly(syncContextToCloud(ctx), 'context');
+  syncQuietly(deleteDocumentFromCloud(docId), 'document-delete');
 }
 
 // ===== Sessions =====
@@ -162,14 +189,14 @@ export async function getStreakData(): Promise<StreakData> {
 
 export async function updateStreak(): Promise<StreakUpdateResult> {
   const streak = await getStreak();
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
 
   if (streak.lastSessionDate === today) {
     return { ...streak, newBadge: null };
   }
 
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-  const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0];
+  const yesterday = localDateStr(new Date(Date.now() - 86400000));
+  const twoDaysAgo = localDateStr(new Date(Date.now() - 2 * 86400000));
 
   if (streak.lastSessionDate === yesterday) {
     // Consecutive day — extend streak
@@ -192,7 +219,7 @@ export async function updateStreak(): Promise<StreakUpdateResult> {
   if (now.getDay() === 1) { // Monday
     const lastMonday = new Date(now);
     lastMonday.setDate(lastMonday.getDate() - 7);
-    const recentFreezes = streak.freezesUsed.filter(d => d > lastMonday.toISOString().split('T')[0]);
+    const recentFreezes = streak.freezesUsed.filter(d => d > localDateStr(lastMonday));
     streak.freezesUsed = recentFreezes;
     streak.freezesAvailable = 1; // 1 free freeze per week
   }
@@ -233,7 +260,7 @@ export async function getDailyLastDate(): Promise<string | null> {
 
 export async function hasCompletedDailyToday(): Promise<boolean> {
   const lastDate = await getDailyLastDate();
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   return lastDate === today;
 }
 
@@ -252,7 +279,7 @@ export async function getDailyHistory(): Promise<DailyResult[]> {
 
 export async function getBestScoreThisWeek(): Promise<number> {
   const history = await getDailyHistory();
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+  const weekAgo = localDateStr(new Date(Date.now() - 7 * 86400000));
   const thisWeek = history.filter(d => d.date >= weekAgo);
   return thisWeek.length > 0 ? Math.max(...thisWeek.map(d => d.score)) : 0;
 }
@@ -314,7 +341,7 @@ export async function getRecentSessionHistory(): Promise<{
     if (full?.turns.length) {
       const last = full.turns[full.turns.length - 1];
       const dims = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
-      const weakest = dims.reduce((a, b) => (last.scores[a] < last.scores[b] ? a : b));
+      const weakest = dims.reduce((a, b) => ((last.scores[a] ?? 0) < (last.scores[b] ?? 0) ? a : b), 'structure' as typeof dims[number]);
       history.push({
         question: last.question.slice(0, 100),
         transcript: last.transcript.slice(0, 150),
@@ -381,8 +408,8 @@ export async function getProgressData(): Promise<ProgressData> {
   const sessions = await getSessions();
   const streak = await getStreak();
   const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
-  const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000).toISOString().split('T')[0];
+  const weekAgo = localDateStr(new Date(now.getTime() - 7 * 86400000));
+  const twoWeeksAgo = localDateStr(new Date(now.getTime() - 14 * 86400000));
 
   // Load full session details for score dimensions
   const fullSessions: { scores: any; overall: number; date: string; type: string; insight: string }[] = [];
@@ -446,7 +473,9 @@ export async function getProgressData(): Promise<ProgressData> {
     : null;
 
   // Biggest improvement dimension
-  const worstToFirst = dimensionTrends.reduce((a, b) => a.change > b.change ? a : b).dimension;
+  const worstToFirst = dimensionTrends.length > 0
+    ? dimensionTrends.reduce((a, b) => a.change > b.change ? a : b).dimension
+    : 'structure';
 
   // Filler word trend
   const earlyFillers = first5.length > 0 ? first5.reduce((a, s) => a + (s.scores?.fillerWords || 0), 0) / first5.length : 0;
@@ -475,13 +504,13 @@ export async function getCachedDailyQuestion(): Promise<{ date: string; question
   if (!raw) return null;
   const cached = safeParse<{ date: string; question: any } | null>(raw, null);
   if (!cached) return null;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   if (cached.date === today) return cached;
   return null;
 }
 
 export async function cacheDailyQuestion(question: any): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   await AsyncStorage.setItem(KEYS.DAILY_QUESTION_CACHE, JSON.stringify({ date: today, question }));
 }
 

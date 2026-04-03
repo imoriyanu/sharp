@@ -18,27 +18,29 @@ const realClient: SupabaseClient | null = isConfigured
     })
   : null;
 
-// Safe default that works for both sync and async access patterns:
-// - supabase.auth.getSession()         → Promise { data: { session: null }, error: null }
-// - supabase.auth.getUser()            → Promise { data: { user: null }, error: null }
-// - supabase.auth.onAuthStateChange()  → { data: { subscription: { unsubscribe: () => {} } } }
-// - supabase.from('x').upsert({})      → Promise { data: null, error: null }
-const NOOP_RESULT = {
-  data: {
-    session: null,
-    user: null,
-    subscription: { unsubscribe: () => {} },
-  },
-  error: null,
-  // Make it thenable so it works with both await and .then()
-  then: (resolve: any) => resolve ? resolve(NOOP_RESULT) : Promise.resolve(NOOP_RESULT),
+// Safe noop client when Supabase is not configured.
+// Every method call returns a resolved promise with { data: null/empty, error: null }.
+const NOOP_DATA = {
+  session: null,
+  user: null,
+  subscription: { unsubscribe: () => {} },
 };
 
 function createNoopProxy(): any {
-  return new Proxy(function () {}, {
-    get: () => createNoopProxy(),
-    apply: () => NOOP_RESULT,
-  });
+  const handler: ProxyHandler<any> = {
+    get(_target, prop) {
+      // Make the proxy thenable so `await` works — resolve with noop result once (no recursion)
+      if (prop === 'then') {
+        return (resolve: any) => resolve ? resolve({ data: NOOP_DATA, error: null }) : undefined;
+      }
+      // Return a callable proxy for chaining: supabase.from('x').upsert({}).eq(...)
+      return createNoopProxy();
+    },
+    apply() {
+      return createNoopProxy();
+    },
+  };
+  return new Proxy(function () {}, handler);
 }
 
 export const supabase: SupabaseClient = realClient || createNoopProxy();

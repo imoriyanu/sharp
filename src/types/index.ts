@@ -1,6 +1,6 @@
 // ===== Premium / Subscription =====
 
-export type PlanId = 'free' | 'pass_30' | 'monthly' | 'annual' | 'max_monthly' | 'max_annual';
+export type PlanId = 'free' | 'monthly' | 'annual';
 
 export interface PremiumPlan {
   id: PlanId;
@@ -41,6 +41,7 @@ export interface UserContext {
   currentCompany: string;
   situationText: string;
   dreamRoleAndCompany: string;
+  notes: string;
   documents: UploadedDocument[];
 }
 

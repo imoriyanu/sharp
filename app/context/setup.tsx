@@ -1,13 +1,14 @@
 import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { FadeIn, AudioWaveBars, PulseDot, LoadingScreen } from '../../src/components/Animations';
 import { SharpFox, SpeechBubble } from '../../src/components/Illustrations';
-import { getContext, saveContext } from '../../src/services/storage';
+import { getContext, saveContext, removeDocument } from '../../src/services/storage';
 import { playQuestionAudio, stopAudio } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { isPremium } from '../../src/services/premium';
@@ -15,10 +16,10 @@ import { trackEvent, Events } from '../../src/services/analytics';
 import type { UserContext } from '../../src/types';
 
 const FIELDS = [
-  { key: 'roleText' as const, question: "Tell me about yourself. What do you do? Whether you're working, studying, building something, or preparing for your next move — I'd love to know.", label: 'Your Role', emoji: '👤', placeholder: 'e.g. Product manager, final-year student, freelance designer, between roles' },
-  { key: 'currentCompany' as const, question: "Where are you right now? A company, university, your own project — anything works.", label: 'Company / Organisation', emoji: '🏢', placeholder: 'e.g. Stripe, University of Manchester, self-employed, exploring' },
-  { key: 'situationText' as const, question: "What are you preparing for right now? An interview, a promotion, a presentation, exams, a pitch? Tell me what's coming up.", label: 'Your Situation', emoji: '🎯', placeholder: 'e.g. Graduate interviews next month, staff promotion panel, investor pitch' },
-  { key: 'dreamRoleAndCompany' as const, question: "If you could have any role at any company, what would it be?", label: 'Dream Role', emoji: '✨', placeholder: 'e.g. Engineering Manager at Anthropic, founder of my own startup' },
+  { key: 'roleText' as const, question: "So, what's your thing? Are you working somewhere, studying, building something on the side? Just give me the gist.", label: 'What you do', emoji: '👤', placeholder: 'e.g. Product manager, final-year student, freelance designer, between roles' },
+  { key: 'currentCompany' as const, question: "And where's that? Could be a company, a uni, your own project — wherever you spend your days.", label: 'Where you are', emoji: '🏢', placeholder: 'e.g. Stripe, University of Manchester, self-employed, exploring' },
+  { key: 'situationText' as const, question: "What's on the horizon for you? Anything you're gearing up for — interviews, a promotion, a big presentation, something else?", label: 'What\'s coming up', emoji: '🎯', placeholder: 'e.g. Graduate interviews next month, staff promotion panel, investor pitch' },
+  { key: 'dreamRoleAndCompany' as const, question: "Last one — if you could fast-forward and land anywhere, where would that be? Dream role, dream company, whatever comes to mind.", label: 'Where you\'re headed', emoji: '✨', placeholder: 'e.g. Engineering Manager at Anthropic, founder of my own startup' },
 ];
 
 type ContextKey = typeof FIELDS[number]['key'];
@@ -34,12 +35,13 @@ function filledCount(ctx: UserContext): number {
 
 export default function ContextSetupScreen() {
   const router = useRouter();
-  const [ctx, setCtx] = useState<UserContext>({ roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '', documents: [] });
+  const [ctx, setCtx] = useState<UserContext>({ roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '', notes: '', documents: [] });
   const [loaded, setLoaded] = useState(false);
   const [mode, setMode] = useState<'overview' | 'voice' | 'edit'>('overview');
   const [voiceStep, setVoiceStep] = useState(0);
   const [recState, setRecState] = useState<RecState>('idle');
   const [editingField, setEditingField] = useState<ContextKey | null>(null);
+  const [editingNotes, setEditingNotes] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const recorderRef = useRef<InstanceType<typeof AudioModule.AudioRecorder> | null>(null);
   const mountedRef = useRef(true);
@@ -58,6 +60,13 @@ export default function ContextSetupScreen() {
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
 
+  // Reload context when returning from documents screen
+  useFocusEffect(useCallback(() => {
+    if (loaded) {
+      getContext().then(c => { if (c) setCtx(c); });
+    }
+  }, [loaded]));
+
   // Voice mode: speak when step changes
   useEffect(() => {
     if (mode === 'voice' && loaded) speakQuestion();
@@ -66,9 +75,12 @@ export default function ContextSetupScreen() {
   async function speakQuestion() {
     if (voiceStep >= FIELDS.length) return;
     setRecState('speaking');
-    const greeting = voiceStep === 0 ? "Let's set up your context. Whether you're working, studying, or building something new — I'll ask a few questions so I can tailor your practice. Just speak naturally. " : '';
-    await playQuestionAudio(greeting + FIELDS[voiceStep].question);
-    if (mountedRef.current) setRecState('ready');
+    const greeting = voiceStep === 0 ? "Hey! I just need to know a bit about you so I can make your practice actually relevant. Four quick questions — just talk to me like you would a friend. " : '';
+    const played = await playQuestionAudio(greeting + FIELDS[voiceStep].question);
+    if (mountedRef.current) {
+      // If TTS failed, skip straight to ready state so user can type/record
+      setRecState('ready');
+    }
   }
 
   async function startRecording() {
@@ -114,10 +126,15 @@ export default function ContextSetupScreen() {
         setRecState('ready');
         return;
       }
-      const key = mode === 'voice' ? FIELDS[voiceStep].key : editingField;
-      if (key) {
-        setCtx(prev => ({ ...prev, [key]: trimmed }));
+      if (editingNotes) {
+        setCtx(prev => ({ ...prev, notes: prev.notes ? `${prev.notes} ${trimmed}` : trimmed }));
         setHasChanges(true);
+      } else {
+        const key = mode === 'voice' ? FIELDS[voiceStep].key : editingField;
+        if (key) {
+          setCtx(prev => ({ ...prev, [key]: trimmed }));
+          setHasChanges(true);
+        }
       }
       setRecState('idle');
       setEditingField(null);
@@ -269,15 +286,21 @@ export default function ContextSetupScreen() {
 
             return (
               <FadeIn key={field.key}>
-                <View style={[s.fieldCard, isEditing && s.fieldCardActive]}>
+                <TouchableOpacity
+                  style={[s.fieldCard, isEditing && s.fieldCardActive, !value && !isEditing && s.fieldCardEmpty]}
+                  onPress={() => !isEditing && setEditingField(field.key)}
+                  activeOpacity={isEditing ? 1 : 0.7}
+                >
                   <View style={s.fieldHeader}>
                     <View style={s.fieldLabelRow}>
                       <Text style={s.fieldEmoji}>{field.emoji}</Text>
                       <Text style={s.fieldLabel}>{field.label}</Text>
                     </View>
-                    {value && !isEditing && (
+                    {value && !isEditing ? (
                       <View style={s.filledBadge}><Text style={s.filledText}>✓</Text></View>
-                    )}
+                    ) : !value && !isEditing ? (
+                      <Text style={s.fieldTapHint}>Tap to add</Text>
+                    ) : null}
                   </View>
 
                   {isEditing ? (
@@ -290,6 +313,7 @@ export default function ContextSetupScreen() {
                         placeholder={field.placeholder}
                         placeholderTextColor={colors.text.muted}
                         autoFocus
+                        maxLength={500}
                       />
                       <View style={s.fieldActions}>
                         <TouchableOpacity style={s.fieldVoiceBtn} onPress={() => { setEditingField(field.key); startRecording(); }} activeOpacity={0.7}>
@@ -300,22 +324,18 @@ export default function ContextSetupScreen() {
                         </TouchableOpacity>
                       </View>
                     </View>
+                  ) : value ? (
+                    <Text style={s.fieldValue} numberOfLines={3}>{value}</Text>
                   ) : (
-                    <TouchableOpacity onPress={() => setEditingField(field.key)} activeOpacity={0.7}>
-                      {value ? (
-                        <Text style={s.fieldValue}>{value}</Text>
-                      ) : (
-                        <Text style={s.fieldPlaceholder}>{field.placeholder}</Text>
-                      )}
-                    </TouchableOpacity>
+                    <Text style={s.fieldPlaceholder}>{field.placeholder}</Text>
                   )}
-                </View>
+                </TouchableOpacity>
               </FadeIn>
             );
           })}
 
           {/* Recording overlay for voice-in-field */}
-          {recState === 'recording' && editingField && (
+          {recState === 'recording' && (editingField || editingNotes) && (
             <View style={s.voiceOverlay}>
               <AudioWaveBars active={true} color={colors.recording} height={wp(36)} barCount={20} />
               <View style={s.recBadge}><PulseDot size={wp(8)} /><Text style={s.recText}>RECORDING</Text></View>
@@ -325,23 +345,70 @@ export default function ContextSetupScreen() {
             </View>
           )}
 
+          {/* Extra Notes */}
+          <View style={s.notesSection}>
+            <Text style={s.docsTitle}>Extra Notes</Text>
+            <Text style={s.notesHint}>Anything else Sharp should know — specific requests, things to focus on, topics to avoid, context that doesn't fit above.</Text>
+            {editingNotes ? (
+              <View style={s.notesEditArea}>
+                <TextInput
+                  style={s.notesInput}
+                  multiline
+                  value={ctx.notes}
+                  onChangeText={t => { setCtx(prev => ({ ...prev, notes: t })); setHasChanges(true); }}
+                  placeholder="e.g. I tend to ramble when nervous, push me on concision. I have a board presentation on Friday about Q1 results. Don't ask me about my previous company."
+                  placeholderTextColor={colors.text.muted}
+                  autoFocus
+                  maxLength={1000}
+                />
+                <View style={s.notesActions}>
+                  <TouchableOpacity style={s.fieldVoiceBtn} onPress={() => { setEditingField(null); setEditingNotes(true); startRecording(); }} activeOpacity={0.7}>
+                    <Text style={s.fieldVoiceBtnText}>🎤</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.fieldDoneBtn} onPress={() => setEditingNotes(false)} activeOpacity={0.7}>
+                    <Text style={s.fieldDoneBtnText}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[s.notesCard, !ctx.notes && s.fieldCardEmpty]}
+                onPress={() => setEditingNotes(true)}
+                activeOpacity={0.7}
+              >
+                {ctx.notes ? (
+                  <Text style={s.fieldValue}>{ctx.notes}</Text>
+                ) : (
+                  <Text style={s.fieldPlaceholder}>Tap to add notes...</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+
           {/* Documents */}
           <View style={s.docsSection}>
             <Text style={s.docsTitle}>Documents</Text>
-            <Text style={s.docsHint}>
-              Share anything that helps us understand you better — a CV, job description, project brief, university coursework, or pitch deck. The more we know, the sharper your practice gets.
-            </Text>
-            {ctx.documents.length > 0 ? (
-              ctx.documents.map(doc => (
-                <View key={doc.id} style={s.docRow}>
-                  <View style={s.docInfo}>
-                    <Text style={s.docName}>{doc.filename}</Text>
-                    <Text style={s.docType}>{doc.documentType}</Text>
-                  </View>
+            {ctx.documents.length > 0 ? ctx.documents.map(doc => (
+              <View key={doc.id} style={s.docRow}>
+                <View style={s.docInfo}>
+                  <Text style={s.docName} numberOfLines={1}>{doc.filename}</Text>
+                  <Text style={s.docType}>{doc.documentType}</Text>
                 </View>
-              ))
-            ) : (
-              <Text style={s.docsEmpty}>No documents yet</Text>
+                <TouchableOpacity
+                  onPress={() => Alert.alert('Remove document?', `${doc.filename} will be removed from your context.`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Remove', style: 'destructive', onPress: async () => {
+                      await removeDocument(doc.id);
+                      setCtx(prev => ({ ...prev, documents: prev.documents.filter(d => d.id !== doc.id) }));
+                    }},
+                  ])}
+                  hitSlop={8}
+                >
+                  <Text style={s.docRemove}>×</Text>
+                </TouchableOpacity>
+              </View>
+            )) : (
+              <Text style={s.docsEmpty}>No documents yet. Upload your CV, job descriptions, or project briefs to get personalised questions.</Text>
             )}
             <TouchableOpacity style={s.addDocBtn} onPress={() => router.push('/context/documents')} activeOpacity={0.7}>
               <Text style={s.addDocBtnText}>+ Add document</Text>
@@ -387,19 +454,21 @@ const s = StyleSheet.create({
   completionText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted },
 
   // Field cards
-  fieldCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.md, borderWidth: 1.5, borderColor: 'transparent', ...shadows.sm },
-  fieldCardActive: { borderColor: colors.accent.primary, ...shadows.accent },
-  fieldHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+  fieldCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.sm, borderWidth: 1.5, borderColor: 'transparent', ...shadows.sm },
+  fieldCardActive: { borderColor: colors.accent.primary, ...shadows.accent, marginBottom: spacing.md },
+  fieldCardEmpty: { borderStyle: 'dashed' as const, borderColor: colors.borderLight, backgroundColor: colors.bg.primary },
+  fieldHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
   fieldLabelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   fieldEmoji: { fontSize: fp(14) },
   fieldLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.text.primary },
   filledBadge: { width: wp(20), height: wp(20), borderRadius: wp(10), backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center' },
   filledText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.inverse },
+  fieldTapHint: { fontSize: fp(10), color: colors.text.muted },
   fieldValue: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20) },
   fieldPlaceholder: { fontSize: typography.size.sm, color: colors.text.muted, fontStyle: 'italic' },
 
-  fieldEditArea: { gap: spacing.sm },
-  fieldInput: { backgroundColor: colors.bg.tertiary, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20), minHeight: wp(60) },
+  fieldEditArea: { gap: spacing.sm, marginTop: spacing.xs },
+  fieldInput: { backgroundColor: colors.bg.tertiary, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20), minHeight: wp(60), maxHeight: wp(120) },
   fieldActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   fieldVoiceBtn: { backgroundColor: colors.bg.tertiary, borderRadius: radius.md, width: wp(36), height: wp(36), alignItems: 'center', justifyContent: 'center' },
   fieldVoiceBtnText: { fontSize: fp(16) },
@@ -409,13 +478,22 @@ const s = StyleSheet.create({
   // Voice overlay
   voiceOverlay: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xl },
 
+  // Notes
+  notesSection: { marginTop: spacing.lg, marginBottom: spacing.md },
+  notesHint: { fontSize: typography.size.xs, color: colors.text.tertiary, lineHeight: fp(18), marginBottom: spacing.md },
+  notesEditArea: { gap: spacing.sm },
+  notesInput: { backgroundColor: colors.bg.tertiary, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20), minHeight: wp(80), maxHeight: wp(160), textAlignVertical: 'top' as const },
+  notesActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+  notesCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, ...shadows.sm },
+
   // Documents
   docsSection: { marginTop: spacing.lg, marginBottom: spacing.md },
   docsTitle: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.md },
-  docRow: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, ...shadows.sm },
-  docInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  docName: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.primary, flex: 1 },
+  docRow: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', ...shadows.sm },
+  docInfo: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  docName: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.primary, flex: 1, marginRight: spacing.sm },
   docType: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.accent.primary, textTransform: 'uppercase' as const },
+  docRemove: { fontSize: fp(18), color: colors.text.muted, paddingLeft: spacing.sm },
   docsHint: { fontSize: typography.size.xs, color: colors.text.tertiary, lineHeight: fp(18), marginBottom: spacing.md },
   docsEmpty: { fontSize: typography.size.sm, color: colors.text.muted, fontStyle: 'italic', marginBottom: spacing.md },
   addDocBtn: { borderWidth: 1.5, borderColor: colors.accent.border, borderStyle: 'dashed', borderRadius: radius.lg, paddingVertical: wp(12), alignItems: 'center' },

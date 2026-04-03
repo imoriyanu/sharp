@@ -1,13 +1,16 @@
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { LoadingScreen, FadeIn, AudioWaveBars } from '../../src/components/Animations';
-import { playQuestionAudio, stopAudio } from '../../src/services/tts';
-import { getProgressData, getContext, type ProgressData } from '../../src/services/storage';
+import { playCoachingAudio, stopAudio } from '../../src/services/tts';
+import { getProgressData, getContext, getSessions, type ProgressData } from '../../src/services/storage';
 import { generateProgressSummary } from '../../src/services/scoring';
 import { isPremium } from '../../src/services/premium';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const SUMMARY_CACHE_KEY = 'sharp:summary_cache';
 
 const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words', awareness: 'Awareness' };
 
@@ -23,48 +26,77 @@ export default function AnalyticsScreen() {
   const [summary, setSummary] = useState<{ spokenSummary: string; highlights: string[]; focusArea: string; encouragement: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [speaking, setSpeaking] = useState(false);
+  const mountedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    let mounted = true;
-    loadData(mounted);
-    return () => { mounted = false; stopAudio(); };
+    mountedRef.current = true;
+    abortRef.current = new AbortController();
+    loadData();
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      stopAudio();
+    };
   }, []);
 
-  async function loadData(mounted: boolean) {
+  async function loadData() {
     const progress = await getProgressData();
-    if (!mounted) return;
+    if (!mountedRef.current) return;
     setData(progress);
 
     if (progress.totalSessions >= 2) {
       try {
-        const ctx = await getContext();
-        if (!mounted) return;
-        const result = await generateProgressSummary({
-          progressData: progress,
-          roleText: ctx?.roleText || '',
-          currentCompany: ctx?.currentCompany || '',
-        });
-        if (!mounted) return;
+        // Check cache — skip the HTTP request if session count hasn't changed
+        const cached = await AsyncStorage.getItem(SUMMARY_CACHE_KEY);
+        let result: { spokenSummary: string; highlights: string[]; focusArea: string; encouragement: string };
+
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.sessionCount === progress.totalSessions) {
+            result = parsed.summary;
+          } else {
+            result = await fetchAndCacheSummary(progress);
+          }
+        } else {
+          result = await fetchAndCacheSummary(progress);
+        }
+
+        if (!mountedRef.current) return;
         setSummary(result);
         setLoading(false);
         setSpeaking(true);
-        await playQuestionAudio(result.spokenSummary);
-        if (mounted) setSpeaking(false);
-      } catch (e) {
+        await playCoachingAudio(result.spokenSummary, abortRef.current?.signal);
+        if (mountedRef.current) setSpeaking(false);
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return;
         __DEV__ && console.error('Summary error:', e);
-        if (mounted) setLoading(false);
+        if (mountedRef.current) setLoading(false);
       }
     } else {
       setLoading(false);
     }
   }
 
+  async function fetchAndCacheSummary(progress: ProgressData) {
+    const ctx = await getContext();
+    if (!mountedRef.current) throw new DOMException('Unmounted', 'AbortError');
+    const result = await generateProgressSummary({
+      progressData: progress,
+      roleText: ctx?.roleText || '',
+      currentCompany: ctx?.currentCompany || '',
+    }, abortRef.current?.signal);
+    // Cache with session count so it invalidates on next session
+    await AsyncStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify({ sessionCount: progress.totalSessions, summary: result }));
+    return result;
+  }
+
   async function playSummary() {
     if (!summary) return;
     if (speaking) { stopAudio(); setSpeaking(false); return; }
     setSpeaking(true);
-    await playQuestionAudio(summary.spokenSummary);
-    setSpeaking(false);
+    await playCoachingAudio(summary.spokenSummary);
+    if (mountedRef.current) setSpeaking(false);
   }
 
   if (loading) {

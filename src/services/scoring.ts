@@ -96,8 +96,9 @@ export async function generateQuestion(context: UserContext & {
   sessionHistory?: any[];
   averageScores?: any;
   recentQuestions?: string[];
-}): Promise<GeneratedQuestion> {
-  return apiPost('/question/generate', context);
+  documentExtractions?: any[];
+}, signal?: AbortSignal): Promise<GeneratedQuestion> {
+  return apiPost('/question/generate', context, signal);
 }
 
 export async function scoreAnswer(params: {
@@ -105,6 +106,7 @@ export async function scoreAnswer(params: {
   currentCompany: string;
   situationText: string;
   dreamRoleAndCompany: string;
+  notes?: string;
   documentExtractions?: any[];
   question: string;
   transcript: string;
@@ -119,21 +121,29 @@ export async function generateFollowUp(params: {
   currentCompany: string;
   situationText: string;
   dreamRoleAndCompany: string;
+  notes?: string;
+  documentExtractions?: any[];
   originalQuestion: string;
   previousTranscripts: { turn: number; question: string; transcript: string; scores: any }[];
   turnNumber: number;
 }): Promise<FollowUp> {
-  // Backend prompt expects `turns` not `previousTranscripts`
-  const { previousTranscripts, ...rest } = params;
-  return apiPost('/threaded/follow-up', { ...rest, turns: previousTranscripts, question: params.originalQuestion, transcript: previousTranscripts[previousTranscripts.length - 1]?.transcript || '' });
+  const { previousTranscripts, originalQuestion, ...rest } = params;
+  const lastTranscript = previousTranscripts[previousTranscripts.length - 1]?.transcript || '';
+  return apiPost('/threaded/follow-up', {
+    ...rest,
+    turns: previousTranscripts,
+    originalQuestion,
+    question: originalQuestion,
+    transcript: lastTranscript,
+  });
 }
 
 export async function generateProgressSummary(params: {
   progressData: any;
   roleText: string;
   currentCompany: string;
-}): Promise<{ spokenSummary: string; highlights: string[]; focusArea: string; encouragement: string }> {
-  return apiPost('/progress/summary', params);
+}, signal?: AbortSignal): Promise<{ spokenSummary: string; highlights: string[]; focusArea: string; encouragement: string }> {
+  return apiPost('/progress/summary', params, signal);
 }
 
 export async function generateDebrief(params: {
@@ -141,6 +151,9 @@ export async function generateDebrief(params: {
   currentCompany: string;
   situationText: string;
   dreamRoleAndCompany: string;
+  notes?: string;
+  documentExtractions?: any[];
+  scenario?: string;
   turns: { turn: number; question: string; transcript: string; scores: any }[];
 }): Promise<ThreadDebrief> {
   return apiPost('/threaded/debrief', params);

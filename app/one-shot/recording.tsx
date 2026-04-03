@@ -28,6 +28,7 @@ export default function RecordingScreen() {
   const recorderRef = useRef<InstanceType<typeof AudioModule.AudioRecorder> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  const stoppingRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -35,11 +36,16 @@ export default function RecordingScreen() {
     return () => {
       mountedRef.current = false;
       stopAudio();
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (recorderRef.current) {
+        try { recorderRef.current.stop(); } catch {}
+        recorderRef.current = null;
+      }
     };
   }, []);
 
   async function startRecording() {
+    stoppingRef.current = false;
     try {
       await stopAudio();
       const { granted } = await requestRecordingPermissionsAsync();
@@ -88,18 +94,31 @@ export default function RecordingScreen() {
   }
 
   async function stopRecording() {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (!recorderRef.current) return;
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (!recorderRef.current) { stoppingRef.current = false; return; }
     setIsRecording(false);
     setProcessing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+    let uri: string | null = null;
     try {
       await recorderRef.current.stop();
-      const uri = recorderRef.current.uri;
+      uri = recorderRef.current.uri;
       recorderRef.current = null;
-      if (!uri) throw new Error('No URI');
+    } catch (e) {
+      __DEV__ && console.error('Error stopping recorder:', e);
+      recorderRef.current = null;
+    }
+
+    try {
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    } catch {}
+
+    try {
+      if (!uri) throw new Error('No URI');
 
       const { transcript } = await transcribeAudio(uri);
       setLiveTranscript(transcript);
@@ -117,6 +136,7 @@ export default function RecordingScreen() {
       }
 
       const ctx = await getContext();
+      const documentExtractions = (ctx?.documents || []).map(d => d.structuredExtraction).filter(Boolean);
 
       // ===== THREADED MODE: skip scoring, go directly to follow-up or debrief =====
       if (params.mode === 'threaded') {
@@ -132,7 +152,7 @@ export default function RecordingScreen() {
 
         if (turnNumber >= MAX_TURNS) {
           // Final turn — generate debrief
-          setProcessingMsg('Analysing the full exchange...');
+          if (mountedRef.current) setProcessingMsg('Analysing the full exchange...');
           await trackThreadedUsage();
           await clearThreadedQuestionCache();
 
@@ -141,12 +161,13 @@ export default function RecordingScreen() {
             currentCompany: ctx?.currentCompany || '',
             situationText: ctx?.situationText || '',
             dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+            notes: ctx?.notes || '',
+            documentExtractions,
+            scenario: thread.originalQuestion,
             turns: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
           });
 
-          if (!mountedRef.current) return;
-
-          // Save as session
+          // Always save the session — even if user navigated away
           await saveSession({
             id: generateId(), type: 'threaded', scenario: thread.originalQuestion.slice(0, 50),
             turns: thread.turns.map(t => ({
@@ -161,6 +182,9 @@ export default function RecordingScreen() {
 
           await clearThreadState();
 
+          // Only navigate if still on this screen
+          if (!mountedRef.current) return;
+
           router.replace({
             pathname: '/threaded/debrief',
             params: {
@@ -170,13 +194,15 @@ export default function RecordingScreen() {
           });
         } else {
           // Not final — generate follow-up
-          setProcessingMsg('Sharp is thinking about your response...');
+          if (mountedRef.current) setProcessingMsg('Sharp is thinking about your response...');
 
           const followUp = await generateFollowUp({
             roleText: ctx?.roleText || '',
             currentCompany: ctx?.currentCompany || '',
             situationText: ctx?.situationText || '',
             dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+            notes: ctx?.notes || '',
+            documentExtractions,
             originalQuestion: thread.originalQuestion,
             previousTranscripts: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
             turnNumber: turnNumber + 1,
@@ -206,13 +232,13 @@ export default function RecordingScreen() {
         currentCompany: ctx?.currentCompany || '',
         situationText: ctx?.situationText || '',
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+        notes: ctx?.notes || '',
+        documentExtractions,
         question: params.question || '',
         transcript,
         previousScores: prevScores || undefined,
         recentInsights: insights,
       });
-
-      if (!mountedRef.current) return;
 
       // Compute progress score from history
       const recentScores: number[] = [];
@@ -230,6 +256,25 @@ export default function RecordingScreen() {
       trackEvent(Events.SESSION_COMPLETED, { mode: params.mode, score: result.overall });
       await Promise.all([clearOneShotQuestionCache(), clearIndustryQuestionCache()]);
       await trackOneShotUsage();
+
+      // Always save the session — even if user navigated away
+      await saveSession({
+        id: generateId(), type: 'one_shot', scenario: (params.question || '').slice(0, 50),
+        turns: [{
+          id: generateId(), turnNumber: 1, question: params.question || '',
+          questionReasoning: params.reasoning || '', questionTargets: 'substance' as const, questionDifficulty: 5,
+          transcript, recordingUri: uri, scores: result.scores, overall: result.overall,
+          summary: result.summary, coachingInsight: result.coachingInsight,
+          awarenessNote: result.awarenessNote, snippet: result.weakestSnippet,
+          positives: result.positives, improvements: result.improvements,
+          communicationTip: result.communicationTip, fillerWordsFound: result.fillerWordsFound,
+          fillerCount: result.fillerCount,
+        }],
+        createdAt: new Date().toISOString(),
+      });
+
+      // Only navigate if still on this screen
+      if (!mountedRef.current) return;
 
       router.replace({
         pathname: '/one-shot/results',
@@ -264,8 +309,11 @@ export default function RecordingScreen() {
       });
     } catch (e) {
       __DEV__ && console.error('Processing error:', e);
+      if (!mountedRef.current) return;
       setProcessing(false);
       setRetryReason('Something went wrong while scoring your answer. Please try again.');
+    } finally {
+      stoppingRef.current = false;
     }
   }
 
@@ -301,21 +349,41 @@ export default function RecordingScreen() {
             <Text style={s.retryTip}>• Use specific examples where possible</Text>
           </View>
           <TouchableOpacity style={s.retryBtn} onPress={() => { setRetryReason(''); setLiveTranscript(''); setTimeLeft(TIMER_SECONDS); startRecording(); }} activeOpacity={0.8}>
-            <Text style={s.retryBtnText}>🎤 Try again</Text>
+            <Text style={s.retryBtnText}>🎤 Record again</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.retryGhost} onPress={() => router.back()} activeOpacity={0.7}>
-            <Text style={s.retryGhostText}>Back to question</Text>
+            <Text style={s.retryGhostText}>← Back to question</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.retryGhost} onPress={() => router.replace('/(tabs)')} activeOpacity={0.7}>
+            <Text style={[s.retryGhostText, { color: colors.text.muted }]}>Go home</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
+  async function cancelRecording() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (recorderRef.current) {
+      try { await recorderRef.current.stop(); } catch {}
+      recorderRef.current = null;
+    }
+    setIsRecording(false);
+    router.back();
+  }
+
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.container}>
         <FadeIn>
-          <Text style={s.questionRef} numberOfLines={2}>"{params.question}"</Text>
+          <View style={s.topRow}>
+            <Text style={s.questionRef} numberOfLines={2}>"{params.question}"</Text>
+            {isRecording && (
+              <TouchableOpacity onPress={cancelRecording} hitSlop={12} activeOpacity={0.7}>
+                <Text style={s.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </FadeIn>
 
         <View style={s.center}>
@@ -340,7 +408,7 @@ export default function RecordingScreen() {
 
         {isRecording && (
           <TouchableOpacity style={s.stopBtn} onPress={stopRecording} activeOpacity={0.8}>
-            <View style={s.stopSq} /><Text style={s.stopText}>Stop recording</Text>
+            <View style={s.stopSq} /><Text style={s.stopText}>Done — score my answer</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -351,7 +419,9 @@ export default function RecordingScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.primary },
   container: { flex: 1, padding: layout.screenPadding },
-  questionRef: { fontSize: typography.size.sm, color: colors.text.muted, lineHeight: fp(16), paddingBottom: spacing.md, borderBottomWidth: 1.5, borderBottomColor: colors.borderLight, marginBottom: spacing.xxl },
+  topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1.5, borderBottomColor: colors.borderLight, marginBottom: spacing.xxl },
+  questionRef: { fontSize: typography.size.sm, color: colors.text.muted, lineHeight: fp(16), flex: 1 },
+  cancelText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.tertiary },
   center: { alignItems: 'center' },
   timer: { fontSize: fp(64), fontWeight: typography.weight.black, color: colors.text.primary, letterSpacing: -3, marginBottom: spacing.sm },
   recBadge: { flexDirection: 'row', alignItems: 'center', gap: wp(5), backgroundColor: colors.feedback.negativeBg, borderWidth: 1.5, borderColor: colors.feedback.negativeBorder, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(4), marginBottom: spacing.xl },

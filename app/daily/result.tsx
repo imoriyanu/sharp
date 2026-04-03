@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, getScoreColor, wp, fp } from '../../src/constants/theme';
 import { ScoreReveal, FadeIn } from '../../src/components/Animations';
-import { playQuestionAudio, stopAudio } from '../../src/services/tts';
+import { playCoachingAudio, stopAudio } from '../../src/services/tts';
 import { getStreak, getBestScoreThisWeek } from '../../src/services/storage';
 import type { StreakBadge } from '../../src/types';
 
@@ -24,13 +24,14 @@ export default function DailyResultScreen() {
   const [streak, setStreak] = useState(0);
   const [bestWeek, setBestWeek] = useState(0);
   const [speakingInsight, setSpeakingInsight] = useState(false);
+  const [textOnly, setTextOnly] = useState(false);
 
   useEffect(() => {
     getStreak().then(s => setStreak(s.currentStreak));
     getBestScoreThisWeek().then(setBestWeek);
     if (insight) {
       setSpeakingInsight(true);
-      playQuestionAudio(insight).then(() => setSpeakingInsight(false));
+      playCoachingAudio(insight).then((played) => { setSpeakingInsight(false); if (!played) setTextOnly(true); });
     }
     return () => { stopAudio(); };
   }, []);
@@ -69,12 +70,15 @@ export default function DailyResultScreen() {
         {insight ? (
           <FadeIn delay={300}>
             <TouchableOpacity style={s.insightCard} onPress={() => {
+              if (textOnly) return;
               if (speakingInsight) { stopAudio(); setSpeakingInsight(false); }
-              else { setSpeakingInsight(true); playQuestionAudio(insight).then(() => setSpeakingInsight(false)); }
-            }} activeOpacity={0.7}>
+              else { setSpeakingInsight(true); playCoachingAudio(insight).then((played) => { setSpeakingInsight(false); if (!played) setTextOnly(true); }); }
+            }} activeOpacity={textOnly ? 1 : 0.7}>
               <View style={s.insightHeader}>
                 <Text style={s.insightEmoji}>💡</Text>
-                <Text style={s.insightListen}>{speakingInsight ? '⏸ Pause' : '🔊 Listen'}</Text>
+                {textOnly
+                  ? <View style={s.textOnlyBadge}><Text style={s.textOnlyText}>Text only mode</Text></View>
+                  : <Text style={s.insightListen}>{speakingInsight ? '⏸ Pause' : '🔊 Listen'}</Text>}
               </View>
               <Text style={s.insightText}>{insight}</Text>
             </TouchableOpacity>
@@ -150,6 +154,8 @@ const s = StyleSheet.create({
   insightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   insightEmoji: { fontSize: fp(14) },
   insightListen: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.accent.primary },
+  textOnlyBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
+  textOnlyText: { fontSize: fp(9), fontWeight: typography.weight.semibold, color: colors.text.muted },
   insightText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22), fontWeight: typography.weight.bold },
 
   tipCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm },

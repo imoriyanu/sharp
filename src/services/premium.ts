@@ -1,6 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+import { initRevenueCat, checkEntitlement, isRevenueCatConfigured } from './revenuecat';
 import type { PlanId, PremiumPlan, UsageLimits } from '../types';
+
+function localDateStr(date: Date = new Date()): string {
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+}
 
 // ===== Premium State =====
 // Production-ready: reads premium status from AsyncStorage (set by purchase flow)
@@ -13,20 +18,14 @@ let _premiumCached: boolean | null = null;
 let _planIdCached: PlanId | null = null;
 
 export const PLANS: PremiumPlan[] = [
-  { id: 'annual', name: 'Annual', price: '£119.99', period: '/year', perMonth: '£10/mo', savings: 'Save 50%', recommended: true, badge: 'Best value' },
-  { id: 'monthly', name: 'Monthly', price: '£20', period: '/month', perMonth: '£20/mo' },
-  { id: 'pass_30', name: 'Sprint Pass', price: '£30', period: 'one-time', perMonth: '£30 once', badge: '30 days · No auto-renew' },
-];
-
-export const MAX_PLANS: PremiumPlan[] = [
-  { id: 'max_annual', name: 'Max Annual', price: '£384', period: '/year', perMonth: '£32/mo', savings: 'Save 20%', recommended: true, badge: 'Best value' },
-  { id: 'max_monthly', name: 'Max Monthly', price: '£40', period: '/month', perMonth: '£40/mo' },
+  { id: 'annual', name: 'Annual', price: '£119.99', period: '/year', perMonth: '£10/mo', savings: 'Save 44%', recommended: true, badge: 'Best value' },
+  { id: 'monthly', name: 'Monthly', price: '£17.99', period: '/month', perMonth: '£17.99/mo' },
 ];
 
 export const FREE_LIMITS: UsageLimits = {
-  oneShotsPerDay: 1,
+  oneShotsPerDay: 0,
   threadedPerDay: 0,
-  threadedPerWeek: 1,
+  threadedPerWeek: 0,
   practiceAgainPerDay: 0,
   industryPerDay: 0,
   regeneratesPerDay: 0,
@@ -47,17 +46,6 @@ export const PREMIUM_LIMITS: UsageLimits = {
   canPracticeSnippet: true,
 };
 
-export const MAX_LIMITS: UsageLimits = {
-  oneShotsPerDay: 20,
-  threadedPerDay: 20,
-  threadedPerWeek: 999,
-  practiceAgainPerDay: 20,
-  industryPerDay: 20,
-  regeneratesPerDay: 2,
-  canAddContext: true,
-  canViewSummary: true,
-  canPracticeSnippet: true,
-};
 
 // Synchronous checks — use cached values (loaded at app start)
 export function isPremium(): boolean {
@@ -65,7 +53,7 @@ export function isPremium(): boolean {
 }
 
 export function isMax(): boolean {
-  return _planIdCached === 'max_monthly' || _planIdCached === 'max_annual';
+  return false;
 }
 
 export function getCurrentPlanId(): PlanId {
@@ -98,7 +86,33 @@ export async function checkPremiumStatus(): Promise<boolean> {
 
 // Call this on app start to hydrate the synchronous cache
 export async function initPremium(): Promise<void> {
+  // 1. Init RevenueCat SDK
+  await initRevenueCat();
+  // 2. Read local cache first (fast, synchronous after this)
   await checkPremiumStatus();
+  // 3. Sync with RevenueCat if configured (source of truth)
+  await syncFromRevenueCat();
+}
+
+// Sync premium status from RevenueCat — call on init and app foreground
+export async function syncFromRevenueCat(): Promise<void> {
+  if (!isRevenueCatConfigured()) return;
+  try {
+    const hasPro = await checkEntitlement();
+    if (hasPro && !_premiumCached) {
+      // RevenueCat says premium but local cache doesn't — activate
+      // Detect plan from entitlement product ID
+      const { getDetectedPlanId } = await import('./revenuecat');
+      const planId = await getDetectedPlanId();
+      await setPremiumStatus(planId);
+    } else if (!hasPro && _premiumCached) {
+      // Subscription expired/cancelled — revoke locally
+      await clearPremiumStatus();
+    }
+  } catch (e) {
+    // Network error — trust the local cache, don't revoke
+    __DEV__ && console.warn('RevenueCat sync failed, trusting local cache:', e);
+  }
 }
 
 // Set premium status (called after successful purchase)
@@ -124,13 +138,11 @@ export async function clearPremiumStatus(): Promise<void> {
 }
 
 export function getLimits(): UsageLimits {
-  if (isMax()) return MAX_LIMITS;
   if (isPremium()) return PREMIUM_LIMITS;
   return FREE_LIMITS;
 }
 
 export function getPlanName(): string {
-  if (isMax()) return 'Sharp Pro Max';
   if (isPremium()) return 'Sharp Pro';
   return 'Free';
 }
@@ -160,7 +172,7 @@ interface DailyUsage {
 async function getUsage(): Promise<DailyUsage> {
   try {
     const raw = await AsyncStorage.getItem(USAGE_KEY);
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     const weekStart = getWeekStart();
 
     if (raw) {
@@ -177,7 +189,7 @@ async function getUsage(): Promise<DailyUsage> {
 
     return { date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0, practiceAgain: 0, threadedThisWeek: 0, weekStart };
   } catch {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     return { date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0, practiceAgain: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
   }
 }
@@ -185,8 +197,9 @@ async function getUsage(): Promise<DailyUsage> {
 function getWeekStart(): string {
   const now = new Date();
   const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(now.getFullYear(), now.getMonth(), diff).toISOString().split('T')[0];
+  const daysToMonday = day === 0 ? 6 : day - 1;
+  const monday = new Date(now.getTime() - daysToMonday * 86400000);
+  return localDateStr(monday);
 }
 
 async function saveUsage(usage: DailyUsage): Promise<void> {

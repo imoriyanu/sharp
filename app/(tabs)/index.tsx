@@ -1,6 +1,6 @@
 import { View, Text, ScrollView, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
@@ -29,7 +29,14 @@ export default function HomeScreen() {
   const [threadedLeft, setThreadedLeft] = useState<number | null>(null);
   const [industryLeft, setIndustryLeft] = useState<number | null>(null);
 
-  useFocusEffect(useCallback(() => { trackScreen('Home'); checkPremiumStatus(); loadData(); loadUsage(); }, []));
+  const loadingRef = useRef(false);
+  useFocusEffect(useCallback(() => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    trackScreen('Home');
+    checkPremiumStatus();
+    Promise.all([loadData(), loadUsage()]).finally(() => { loadingRef.current = false; });
+  }, []));
 
   async function loadUsage() {
     const [os, th, ind] = await Promise.all([canDoOneShot(), canDoThreaded(), canDoIndustry()]);
@@ -123,40 +130,39 @@ export default function HomeScreen() {
           <View style={st.practiceGrid}>
             {/* Row 1: One Shot + Threaded */}
             <View style={st.practiceRow}>
-              <TouchableOpacity style={[st.modeCard, oneShotLeft === 0 && st.modeCardDimmed]} onPress={async () => {
+              <TouchableOpacity style={[st.modeCard, !isPremium() ? st.modeCardLocked : oneShotLeft === 0 && st.modeCardDimmed]} onPress={async () => {
+                if (!isPremium()) { router.push('/premium'); return; }
                 const check = await canDoOneShot();
                 if (check.allowed) router.push('/one-shot/question');
-                else if (!isPremium()) router.push('/premium');
-                // Pro users: card is dimmed, "Limit reached" shown — no action needed
-              }} activeOpacity={oneShotLeft === 0 && isPremium() ? 1 : 0.7}>
+              }} activeOpacity={0.7}>
                 <View style={st.modeIconWrap}><Text style={st.modeIcon}>⚡</Text></View>
                 <Text style={st.modeTitle}>One Shot</Text>
                 <Text style={st.modeDesc}>Full scored session</Text>
                 <View style={st.modeDurBadge}>
-                  <Text style={st.modeDur}>{oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left today` : oneShotLeft === 0 ? 'Limit reached' : '2-3 min'}</Text>
+                  <Text style={st.modeDur}>{!isPremium() ? 'Pro' : oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left today` : oneShotLeft === 0 ? 'Limit reached' : '2-3 min'}</Text>
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity style={[st.modeCard, threadedLeft === 0 && st.modeCardDimmed]} onPress={async () => {
+              <TouchableOpacity style={[st.modeCard, !isPremium() ? st.modeCardLocked : threadedLeft === 0 && st.modeCardDimmed]} onPress={async () => {
+                if (!isPremium()) { router.push('/premium'); return; }
                 const check = await canDoThreaded();
                 if (check.allowed) router.push('/one-shot/question?mode=threaded');
-                else if (!isPremium()) router.push('/premium');
-              }} activeOpacity={threadedLeft === 0 && isPremium() ? 1 : 0.7}>
+              }} activeOpacity={0.7}>
                 <View style={[st.modeIconWrap, st.modeIconThreaded]}><Text style={st.modeIcon}>⚓</Text></View>
                 <Text style={st.modeTitle}>Threaded</Text>
                 <Text style={st.modeDesc}>3 follow-ups</Text>
                 <View style={st.modeDurBadge}>
-                  <Text style={st.modeDur}>{threadedLeft !== null && threadedLeft > 0 ? `${threadedLeft} left` : threadedLeft === 0 ? 'Limit reached' : '5-8 min'}</Text>
+                  <Text style={st.modeDur}>{!isPremium() ? 'Pro' : threadedLeft !== null && threadedLeft > 0 ? `${threadedLeft} left` : threadedLeft === 0 ? 'Limit reached' : '5-8 min'}</Text>
                 </View>
               </TouchableOpacity>
             </View>
 
-            {/* Row 2: Industry (Pro + context only) + Conversations */}
+            {/* Row 2: Industry */}
+            {(isPremium() || true) && (
             <View style={st.practiceRow}>
               {isPremium() && (context?.currentCompany || context?.roleText) ? (
                 <TouchableOpacity style={[st.modeCard, industryLeft === 0 && st.modeCardDimmed]} onPress={async () => {
                   const check = await canDoIndustry();
                   if (check.allowed) router.push('/one-shot/question?mode=industry');
-                  // Pro users: card is dimmed — no paywall
                 }} activeOpacity={industryLeft === 0 ? 1 : 0.7}>
                   <View style={[st.modeIconWrap, st.modeIconIndustry]}><Text style={st.modeIcon}>📰</Text></View>
                   <Text style={st.modeTitle}>Industry</Text>
@@ -179,18 +185,13 @@ export default function HomeScreen() {
                   <View style={[st.modeIconWrap, st.modeIconIndustry]}><Text style={st.modeIcon}>📰</Text></View>
                   <Text style={st.modeTitle}>Industry</Text>
                   <Text style={st.modeDesc}>Real-world topics</Text>
-                  <View style={st.proBadgeSm}><Text style={st.proBadgeSmText}>PRO</Text></View>
+                  <View style={st.modeDurBadge}>
+                    <Text style={st.modeDur}>Pro</Text>
+                  </View>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity style={[st.modeCard, st.modeCardLocked]} onPress={() => router.push('/coming-soon/conversation')} activeOpacity={0.7}>
-                <View style={[st.modeIconWrap, { backgroundColor: colors.bg.tertiary }]}><Text style={st.modeIcon}>💬</Text></View>
-                <Text style={st.modeTitle}>Convo</Text>
-                <Text style={st.modeDesc}>Live practice</Text>
-                <View style={st.modeDurBadge}>
-                  <Text style={st.modeDur}>Coming soon</Text>
-                </View>
-              </TouchableOpacity>
             </View>
+            )}
           </View>
         </FadeIn>
 

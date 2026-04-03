@@ -1,27 +1,97 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
+import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
-import { PLANS } from '../../src/services/premium';
+import { PLANS, setPremiumStatus } from '../../src/services/premium';
+import { getOfferings, purchasePackage, restorePurchases, isRevenueCatConfigured } from '../../src/services/revenuecat';
 
 const COMPARE = [
   { feature: 'Daily Challenge', free: 'Unlimited', pro: 'Unlimited' },
-  { feature: 'One Shot sessions', free: '1/day', pro: '5/day' },
-  { feature: 'Threaded practice', free: '1/week', pro: '5/day' },
-  { feature: 'Model answers & coaching', free: 'Limited', pro: 'Full access' },
+  { feature: 'Sharp Duels', free: 'Unlimited', pro: 'Unlimited' },
+  { feature: 'One Shot sessions', free: '—', pro: '5/day' },
+  { feature: 'Threaded practice', free: '—', pro: '5/day' },
+  { feature: 'Industry questions', free: '—', pro: '5/day' },
+  { feature: 'Context & documents', free: '—', pro: '✓' },
+  { feature: 'Model answers', free: '—', pro: '✓' },
 ];
 
 export default function OnboardingPaywall() {
   const router = useRouter();
-  // Only show Annual (recommended) and Monthly during onboarding
-  const annual = PLANS.find(p => p.id === 'annual')!;
-  const monthly = PLANS.find(p => p.id === 'monthly')!;
+  const [selected, setSelected] = useState<'annual' | 'monthly'>('annual');
+  const [purchasing, setPurchasing] = useState(false);
+  const [packages, setPackages] = useState<{ monthly?: any; annual?: any }>({});
+  const rcEnabled = isRevenueCatConfigured();
+
+  useEffect(() => {
+    if (rcEnabled) {
+      getOfferings().then(offering => {
+        if (!offering) return;
+        const pkgs: typeof packages = {};
+        for (const pkg of offering.availablePackages) {
+          if (pkg.packageType === 'MONTHLY') pkgs.monthly = pkg;
+          else if (pkg.packageType === 'ANNUAL') pkgs.annual = pkg;
+        }
+        setPackages(pkgs);
+      });
+    }
+  }, []);
+
+  const annualPlan = PLANS.find(p => p.id === 'annual') || PLANS[0];
+  const monthlyPlan = PLANS.find(p => p.id === 'monthly') || PLANS[1] || PLANS[0];
+
+  // Use real prices when available
+  const annualPrice = packages.annual ? packages.annual.product.priceString : annualPlan.price;
+  const annualPerMonth = packages.annual ? `${packages.annual.product.currencyCode} ${(packages.annual.product.price / 12).toFixed(2)}/mo` : annualPlan.perMonth;
+  const monthlyPrice = packages.monthly ? `${packages.monthly.product.priceString}/mo` : monthlyPlan.perMonth;
+
+  async function handlePurchase() {
+    const planId = selected;
+    const pkg = planId === 'monthly' ? packages.monthly : packages.annual;
+
+    if (!rcEnabled || !pkg) {
+      // Dev/testing fallback
+      setPurchasing(true);
+      const expiresAt = planId === 'monthly'
+        ? new Date(Date.now() + 31 * 86400000).toISOString()
+        : new Date(Date.now() + 365 * 86400000).toISOString();
+      await setPremiumStatus(planId, expiresAt);
+      router.replace('/onboarding/welcome');
+      return;
+    }
+
+    setPurchasing(true);
+    try {
+      const { success } = await purchasePackage(pkg);
+      if (success) {
+        await setPremiumStatus(planId);
+        router.replace('/onboarding/welcome');
+      } else {
+        setPurchasing(false);
+      }
+    } catch (e: any) {
+      setPurchasing(false);
+      Alert.alert('Purchase failed', e?.message || 'Something went wrong. Please try again.');
+    }
+  }
+
+  async function handleRestore() {
+    const planId = await restorePurchases();
+    if (planId) {
+      await setPremiumStatus(planId);
+      Alert.alert('Restored', 'Your subscription has been restored.', [
+        { text: 'OK', onPress: () => router.replace('/onboarding/welcome') },
+      ]);
+    } else {
+      Alert.alert('No subscription found', 'We couldn\'t find an active subscription for this Apple ID.');
+    }
+  }
 
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity onPress={() => router.replace('/onboarding/welcome')} style={s.closeBtn}>
+        <TouchableOpacity onPress={() => !purchasing && router.replace('/onboarding/welcome')} style={s.closeBtn}>
           <Text style={s.close}>×</Text>
         </TouchableOpacity>
 
@@ -51,33 +121,39 @@ export default function OnboardingPaywall() {
           </View>
         </FadeIn>
 
-        {/* Plans — only 2 during onboarding */}
+        {/* Annual plan */}
         <FadeIn delay={400}>
-          <TouchableOpacity style={[s.planCard, s.planRecommended]} activeOpacity={0.7}>
+          <TouchableOpacity style={[s.planCard, selected === 'annual' && s.planRecommended]} onPress={() => setSelected('annual')} activeOpacity={0.7} disabled={purchasing}>
             <View style={s.recBadge}><Text style={s.recBadgeText}>Recommended</Text></View>
             <View style={s.planTop}>
-              <Text style={s.planName}>{annual.name}</Text>
-              <Text style={s.planSavings}>{annual.savings}</Text>
+              <Text style={s.planName}>{annualPlan.name}</Text>
+              <Text style={s.planSavings}>{annualPlan.savings}</Text>
             </View>
-            <Text style={s.planPrice}>{annual.perMonth}</Text>
-            <Text style={s.planBilled}>€95.88 billed yearly</Text>
+            <Text style={s.planPrice}>{annualPerMonth}</Text>
+            <Text style={s.planBilled}>{annualPrice} billed yearly</Text>
           </TouchableOpacity>
         </FadeIn>
 
+        {/* Monthly plan */}
         <FadeIn delay={500}>
-          <TouchableOpacity style={s.planCard} activeOpacity={0.7}>
-            <Text style={s.planName}>{monthly.name}</Text>
-            <Text style={s.planPrice}>{monthly.perMonth}</Text>
+          <TouchableOpacity style={[s.planCard, selected === 'monthly' && s.planRecommended]} onPress={() => setSelected('monthly')} activeOpacity={0.7} disabled={purchasing}>
+            <Text style={s.planName}>{monthlyPlan.name}</Text>
+            <Text style={s.planPrice}>{monthlyPrice}</Text>
           </TouchableOpacity>
         </FadeIn>
 
+        {/* CTA */}
         <FadeIn delay={600}>
-          <TouchableOpacity style={s.trialBtn} activeOpacity={0.8}>
-            <Text style={s.trialText}>Start 7-day free trial</Text>
+          <TouchableOpacity style={[s.trialBtn, purchasing && { opacity: 0.6 }]} onPress={handlePurchase} activeOpacity={0.8} disabled={purchasing}>
+            {purchasing ? <ActivityIndicator color={colors.text.inverse} /> : <Text style={s.trialText}>Get {selected === 'annual' ? 'Annual' : 'Monthly'}</Text>}
           </TouchableOpacity>
         </FadeIn>
 
-        <TouchableOpacity onPress={() => router.replace('/onboarding/welcome')}>
+        <TouchableOpacity onPress={handleRestore} disabled={purchasing}>
+          <Text style={s.restoreText}>Restore purchases</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => !purchasing && router.replace('/onboarding/welcome')} disabled={purchasing}>
           <Text style={s.skipText}>Maybe later</Text>
         </TouchableOpacity>
 
@@ -124,6 +200,7 @@ const s = StyleSheet.create({
   trialBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(16), alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.lg, ...shadows.accent },
   trialText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse },
 
+  restoreText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary, textAlign: 'center', paddingVertical: spacing.md },
   skipText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.muted, textAlign: 'center', paddingVertical: spacing.md },
 
   legal: { fontSize: fp(9), color: colors.text.muted, lineHeight: fp(14), textAlign: 'center', marginTop: spacing.lg, paddingHorizontal: spacing.lg },

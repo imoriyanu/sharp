@@ -1,7 +1,7 @@
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Speech from 'expo-speech';
 import { getTtsUrl } from './api';
+import type { VoiceMode } from './api';
 import type { GeneratedQuestion } from '../types';
 
 // ===== Playback State =====
@@ -11,35 +11,51 @@ let currentPlayer: ReturnType<typeof createAudioPlayer> | null = null;
 let playbackGeneration = 0; // Incremented on every stop/play — stale callbacks check this
 let isPlaying = false;
 
-// Cache: text hash → local file URI
+// Cache: text+mode hash → local file URI
 const audioCache = new Map<string, string>();
 
-function hashText(text: string): number {
+function hashText(text: string, mode: VoiceMode = 'question'): string {
   let h = 0;
-  for (let i = 0; i < text.length; i++) h = ((h << 5) - h + text.charCodeAt(i)) | 0;
-  return Math.abs(h);
+  const key = `${mode}:${text}`;
+  for (let i = 0; i < key.length; i++) h = ((h << 5) - h + key.charCodeAt(i)) | 0;
+  return String(Math.abs(h));
 }
 
-async function downloadAndCache(text: string, gen: number): Promise<string | null> {
-  const key = hashText(text);
-  const cached = audioCache.get(String(key));
+async function downloadAndCache(text: string, mode: VoiceMode, gen: number, signal?: AbortSignal): Promise<string | null> {
+  const key = hashText(text, mode);
+  const cached = audioCache.get(key);
   if (cached) {
     const info = await FileSystem.getInfoAsync(cached);
     if (info.exists) return cached;
-    audioCache.delete(String(key));
+    audioCache.delete(key);
   }
 
   // Check if we've been cancelled during cache lookup
-  if (gen !== playbackGeneration) return null;
+  if (gen !== playbackGeneration || signal?.aborted) return null;
 
-  const url = getTtsUrl(text);
+  const url = getTtsUrl(text, mode);
   const filename = `${FileSystem.cacheDirectory}tts_${key}.mp3`;
 
   try {
-    const download = await FileSystem.downloadAsync(url, filename);
-    if (gen !== playbackGeneration) return null; // Cancelled during download
-    if (download.status !== 200) return null;
-    audioCache.set(String(key), filename);
+    // Race the download against the abort signal so we bail immediately on navigation
+    const downloadPromise = FileSystem.downloadAsync(url, filename);
+    let result: Awaited<typeof downloadPromise>;
+
+    if (signal) {
+      const abortPromise = new Promise<null>((resolve) => {
+        if (signal.aborted) { resolve(null); return; }
+        signal.addEventListener('abort', () => resolve(null), { once: true });
+      });
+      const raced = await Promise.race([downloadPromise, abortPromise]);
+      if (!raced) return null; // Aborted
+      result = raced;
+    } else {
+      result = await downloadPromise;
+    }
+
+    if (gen !== playbackGeneration || signal?.aborted) return null;
+    if (result.status !== 200) return null;
+    audioCache.set(key, filename);
     return filename;
   } catch {
     return null;
@@ -56,44 +72,44 @@ export async function stopAudio(): Promise<void> {
     try { currentPlayer.release(); } catch {}
     currentPlayer = null;
   }
-  try { Speech.stop(); } catch {}
 }
 
-// ===== Play — downloads, caches, plays with ElevenLabs, NO fallback mid-sentence =====
+// ===== Play — downloads, caches, plays with ElevenLabs =====
+// Returns true if audio played successfully, false if ElevenLabs failed (text-only mode)
 
-export async function playQuestionAudio(text: string): Promise<void> {
+export async function playQuestionAudio(text: string, signal?: AbortSignal, mode: VoiceMode = 'question'): Promise<boolean> {
   await stopAudio();
   const gen = playbackGeneration;
   isPlaying = true;
 
   try {
     await setAudioModeAsync({ playsInSilentMode: true });
-    if (gen !== playbackGeneration) return; // Cancelled
+    if (gen !== playbackGeneration || signal?.aborted) return false;
 
-    const localUri = await downloadAndCache(text, gen);
-    if (gen !== playbackGeneration || !localUri) {
-      // Download failed or cancelled — try device TTS only if still current
-      if (gen === playbackGeneration) await playDeviceTTSGuarded(text, gen);
-      return;
+    const localUri = await downloadAndCache(text, mode, gen, signal);
+    if (gen !== playbackGeneration || signal?.aborted) { isPlaying = false; return false; }
+    if (!localUri) {
+      // ElevenLabs failed — don't fall back to device voice, just return false
+      isPlaying = false;
+      return false;
     }
 
     const player = createAudioPlayer(localUri);
-    if (gen !== playbackGeneration) { try { player.release(); } catch {} return; }
+    if (gen !== playbackGeneration) { try { player.release(); } catch {} isPlaying = false; return false; }
 
     currentPlayer = player;
 
-    return new Promise<void>((resolve) => {
+    return new Promise<boolean>((resolve) => {
       const done = () => {
         if (currentPlayer === player) {
           try { player.release(); } catch {}
           currentPlayer = null;
         }
         isPlaying = false;
-        resolve();
+        resolve(true);
       };
 
       player.addListener('playbackStatusUpdate', (status: any) => {
-        // Only finish if we're still the active generation
         if (gen !== playbackGeneration) { done(); return; }
         if (status.didJustFinish) done();
       });
@@ -101,32 +117,29 @@ export async function playQuestionAudio(text: string): Promise<void> {
       player.play();
     });
   } catch {
-    if (gen === playbackGeneration) await playDeviceTTSGuarded(text, gen);
+    isPlaying = false;
+    return false;
   }
 }
 
-// ===== Device TTS — guarded against stale playback =====
+// ===== Convenience wrappers for voice modes =====
 
-async function playDeviceTTSGuarded(text: string, gen: number): Promise<void> {
-  if (gen !== playbackGeneration) return;
-  return new Promise((resolve) => {
-    Speech.speak(text, {
-      language: 'en-US',
-      rate: 0.9,
-      pitch: 1.0,
-      onDone: () => { isPlaying = false; resolve(); },
-      onStopped: () => { isPlaying = false; resolve(); },
-      onError: () => { isPlaying = false; resolve(); },
-    });
-  });
+export async function playCoachingAudio(text: string, signal?: AbortSignal): Promise<boolean> {
+  return playQuestionAudio(text, signal, 'coaching');
 }
 
-// Keep the public export for direct device TTS usage
-export async function playDeviceTTS(text: string): Promise<void> {
-  await stopAudio();
-  const gen = playbackGeneration;
-  return playDeviceTTSGuarded(text, gen);
+export async function playModelAudio(text: string, signal?: AbortSignal): Promise<boolean> {
+  return playQuestionAudio(text, signal, 'model');
 }
+
+export async function playFollowUpAudio(text: string, signal?: AbortSignal): Promise<boolean> {
+  return playQuestionAudio(text, signal, 'followup');
+}
+
+export async function playBriefingAudio(text: string, signal?: AbortSignal): Promise<boolean> {
+  return playQuestionAudio(text, signal, 'briefing');
+}
+
 
 export function isAudioPlaying(): boolean {
   return isPlaying;
@@ -177,4 +190,12 @@ export function buildNaturalScript(q: GeneratedQuestion): string {
   }
   // Simple prompt — keep it light
   return `${greeting} ${pick(intros)} ${q.question}`;
+}
+
+// Returns the voice mode appropriate for a question format
+export function getQuestionVoiceMode(q: GeneratedQuestion): VoiceMode {
+  const format = q.format || 'prompt';
+  if (format === 'briefing' || format === 'industry') return 'briefing';
+  if (format === 'pressure') return 'followup';
+  return 'question';
 }

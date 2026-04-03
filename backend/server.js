@@ -7,7 +7,10 @@ const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const Groq = require('groq-sdk');
 const prompts = require('./prompts');
+const { PDFParse } = require('pdf-parse');
+const mammoth = require('mammoth');
 
+const { createClient } = require('@supabase/supabase-js');
 const log = process.env.NODE_ENV === 'production' ? () => {} : console.log.bind(console);
 const logError = console.error.bind(console); // always log errors
 const isProd = process.env.NODE_ENV === 'production';
@@ -26,6 +29,11 @@ for (const key of REQUIRED_KEYS) {
   }
 }
 
+// Supabase admin client (for webhook server-side updates)
+const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : null;
+
 const app = express();
 
 // Security headers
@@ -39,7 +47,7 @@ app.use(cors({
   origin: (origin, cb) => {
     // Allow requests with no origin (mobile apps, curl)
     if (!origin) return cb(null, true);
-    if (ALLOWED_ORIGINS.some(o => origin.startsWith(o))) return cb(null, true);
+    if (ALLOWED_ORIGINS.some(o => origin === o || origin.startsWith(o + '/'))) return cb(null, true);
     cb(new Error('Not allowed by CORS'));
   },
 }));
@@ -105,7 +113,7 @@ function resetUsageIfNewDay() {
 
 const MAX_TRANSCRIPT = 50000;
 const MAX_QUESTION = 2000;
-const MAX_TTS_TEXT = 1000;
+const MAX_TTS_TEXT = 3000;
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024; // 15MB
 
 function sanitizeString(str, maxLen) {
@@ -207,6 +215,67 @@ app.get('/api/usage', (req, res) => {
   });
 });
 
+// ===== Helper: Call Claude with Tool Use =====
+
+async function callClaudeWithTools(systemPrompt, userMessage, tools, maxIterations = 5) {
+  resetUsageIfNewDay();
+  const messages = [{ role: 'user', content: userMessage }];
+
+  for (let i = 0; i < maxIterations; i++) {
+    apiUsage.anthropic.calls++;
+    try {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        system: systemPrompt,
+        messages,
+        tools,
+      });
+
+      if (response.usage) {
+        apiUsage.anthropic.inputTokens += response.usage.input_tokens || 0;
+        apiUsage.anthropic.outputTokens += response.usage.output_tokens || 0;
+      }
+
+      // Check if Claude wants to use tools
+      const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+      const textBlocks = response.content.filter(b => b.type === 'text');
+
+      if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
+        // No more tool calls — extract final text/JSON
+        const text = textBlocks.map(b => b.text).join('');
+        const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        try { return JSON.parse(cleaned); } catch {
+          const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+          if (jsonMatch) try { return JSON.parse(jsonMatch[0]); } catch {}
+          return { text: cleaned };
+        }
+      }
+
+      // Execute tool calls in parallel
+      const toolResults = await Promise.all(toolUseBlocks.map(async (block) => {
+        const result = await executeTool(block.name, block.input);
+        return { type: 'tool_result', tool_use_id: block.id, content: typeof result === 'string' ? result : JSON.stringify(result) };
+      }));
+
+      // Continue the conversation
+      messages.push({ role: 'assistant', content: response.content });
+      messages.push({ role: 'user', content: toolResults });
+    } catch (e) {
+      apiUsage.anthropic.errors++;
+      throw e;
+    }
+  }
+  throw new Error('Max tool iterations reached');
+}
+
+async function executeTool(name, input) {
+  switch (name) {
+    case 'search_news': return await searchGoogleNews(input.query);
+    default: return `Unknown tool: ${name}`;
+  }
+}
+
 // ===== Agentic News Research for Industry Questions =====
 
 async function searchGoogleNews(query) {
@@ -240,62 +309,36 @@ async function searchGoogleNews(query) {
 }
 
 async function agentResearchNews(context) {
-  // Step 1: Claude decides what's interesting to search based on full user context
-  const planPrompt = `You are a research agent for Sharp, a communication training app. Your job is to decide what industry news would be most interesting and relevant for this specific user.
+  // Fast approach: Claude picks 4 queries, we search in parallel, return results
+  const planPrompt = `You are a research agent. Generate 4 DIVERSE news search queries for this user.
 
-USER CONTEXT:
-- Role: ${context.roleText || 'Not specified'}
-- Company: ${context.currentCompany || 'Not specified'}
-- Situation: ${context.situationText || 'Not specified'}
-- Dream role: ${context.dreamRoleAndCompany || 'Not specified'}
-- Documents: ${context.documentExtractions?.length > 0 ? 'Has uploaded professional docs' : 'None'}
+Role: ${context.roleText || 'Not specified'}
+Company: ${context.currentCompany || 'Not specified'}
+Situation: ${context.situationText || 'Not specified'}
 
-PREVIOUS QUESTIONS THEY'VE SEEN (avoid similar topics):
-${(context.recentQuestions || []).slice(0, 5).map(q => `- "${q}"`).join('\n') || 'None yet'}
+Previous questions (avoid similar): ${(context.recentQuestions || []).slice(0, 5).map(q => `"${q}"`).join(', ') || 'None'}
 
-Think about what would be GENUINELY interesting for this person to discuss:
-- What are their company's biggest competitors doing right now?
-- What regulatory changes affect their industry?
-- What technology shifts could disrupt their role?
-- What are the career trends in their field?
-- What controversial decisions are companies in their space making?
-- What surprising data or research relates to their work?
-
-Generate 4 DIVERSE search queries. Each should target a DIFFERENT angle:
-1. One about their specific company or direct competitor
-2. One about a broader industry trend or disruption
-3. One about regulation, policy, or market dynamics in their space
-4. One wildcard — something unexpected that connects to their role
-
-Return ONLY valid JSON:
-{
-  "queries": ["<search query 1>", "<search query 2>", "<search query 3>", "<search query 4>"],
-  "reasoning": "<1 sentence on why these are interesting for this person>"
-}`;
+Return ONLY JSON: { "queries": ["query1", "query2", "query3", "query4"] }`;
 
   try {
-    const plan = await callClaude(planPrompt, 300);
-    if (!plan?.queries || !Array.isArray(plan.queries)) return [];
+    const plan = await callClaude(planPrompt, 200);
+    if (!plan?.queries?.length) return [];
 
-    // Step 2: Execute the searches in parallel
+    // Search all 4 in parallel — fast
     const results = await Promise.all(
       plan.queries.slice(0, 4).map(q => searchGoogleNews(q))
     );
 
-    // Combine, dedupe, and label with which query produced them
-    const labeled = [];
-    plan.queries.forEach((query, i) => {
-      (results[i] || []).forEach(item => {
-        labeled.push({ ...item, searchAngle: query });
-      });
-    });
-
-    // Dedupe by title
+    // Combine, dedupe, label
     const seen = new Set();
-    const unique = labeled.filter(item => {
-      if (seen.has(item.title)) return false;
-      seen.add(item.title);
-      return true;
+    const unique = [];
+    plan.queries.forEach((query, i) => {
+      for (const item of (results[i] || [])) {
+        if (!seen.has(item.title)) {
+          seen.add(item.title);
+          unique.push({ ...item, searchAngle: query });
+        }
+      }
     });
 
     return unique.slice(0, 20);
@@ -349,8 +392,29 @@ app.post('/api/score', async (req, res) => {
     req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
     const promptFn = req.body.isOnboarding ? prompts.onboardingScoringPrompt : prompts.scoringPrompt;
     const prompt = promptFn(req.body);
+
+    // Score the answer
     const result = await callClaude(prompt, 2000);
+
+    // Return immediately — quality gate runs in background for future improvement
     res.json(result);
+
+    // Background: quality gate evaluation (non-blocking, logs only)
+    // This data will feed the coaching memory system in a future update
+    try {
+      const evalPrompt = prompts.scoreEvaluationPrompt({
+        question: req.body.question,
+        transcript: req.body.transcript,
+        scoringResult: result,
+      });
+      const evaluation = await callClaude(evalPrompt, 400);
+      const quality = evaluation?.qualityScore || 10;
+      if (quality < 7) {
+        log(`[Quality Gate] Score ${quality}/10 for question: "${req.body.question.slice(0, 50)}..." — Fixes: ${evaluation.fixes?.slice(0, 100)}`);
+      }
+    } catch {
+      // Non-blocking — silently ignore
+    }
   } catch (error) {
     sendError(res, 500, error, 'Scoring');
   }
@@ -527,6 +591,48 @@ app.post('/api/transcribe', async (req, res) => {
   }
 });
 
+// ===== Document Text Extraction =====
+
+app.post('/api/document/extract-text', async (req, res) => {
+  try {
+    const { fileBase64, filename } = req.body;
+    if (!fileBase64 || !filename) {
+      return res.status(400).json({ error: 'fileBase64 and filename are required' });
+    }
+
+    const buffer = Buffer.from(fileBase64, 'base64');
+    if (buffer.length > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: 'File too large (max 10MB)' });
+    }
+
+    const ext = filename.toLowerCase().split('.').pop();
+    let rawText = '';
+
+    if (ext === 'pdf') {
+      const parser = new PDFParse({ data: buffer, verbosity: 0 });
+      await parser.load();
+      const result = await parser.getText();
+      rawText = result.text;
+    } else if (ext === 'docx') {
+      const result = await mammoth.extractRawText({ buffer });
+      rawText = result.value;
+    } else if (ext === 'txt' || ext === 'md' || ext === 'markdown') {
+      rawText = buffer.toString('utf-8');
+    } else {
+      return res.status(400).json({ error: `Unsupported file type: .${ext}. Use PDF, DOCX, TXT, or MD.` });
+    }
+
+    rawText = rawText.trim();
+    if (!rawText || rawText.length < 20) {
+      return res.status(400).json({ error: 'Could not extract meaningful text from this file. It may be scanned or image-based.' });
+    }
+
+    res.json({ rawText });
+  } catch (error) {
+    sendError(res, 500, error, 'Document text extraction');
+  }
+});
+
 // ===== Document Parsing =====
 
 app.post('/api/document/parse', async (req, res) => {
@@ -581,11 +687,96 @@ app.get('/api/waitlist/count', (req, res) => {
   }
 });
 
+// ===== RevenueCat Webhook =====
+
+app.post('/api/webhooks/revenuecat', async (req, res) => {
+  try {
+    // Validate authorization header
+    const authHeader = req.headers['authorization'];
+    const expectedToken = process.env.REVENUECAT_WEBHOOK_SECRET;
+    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const event = req.body?.event;
+    if (!event) return res.status(400).json({ error: 'No event' });
+
+    const appUserId = event.app_user_id;
+    const eventType = event.type;
+
+    log(`RevenueCat webhook: ${eventType} for user ${appUserId || 'unknown'}`);
+
+    if (!supabase) {
+      log('RevenueCat webhook: Supabase not configured, skipping DB update');
+      return res.json({ ok: true });
+    }
+
+    // Only process events that change subscription status
+    const activateEvents = ['INITIAL_PURCHASE', 'RENEWAL', 'PRODUCT_CHANGE', 'UNCANCELLATION'];
+    const deactivateEvents = ['EXPIRATION', 'BILLING_ISSUE'];
+
+    if (activateEvents.includes(eventType) && appUserId) {
+      await supabase.from('profiles').update({
+        is_premium: true,
+        updated_at: new Date().toISOString(),
+      }).eq('id', appUserId);
+    } else if (deactivateEvents.includes(eventType) && appUserId) {
+      await supabase.from('profiles').update({
+        is_premium: false,
+        updated_at: new Date().toISOString(),
+      }).eq('id', appUserId);
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, 500, error, 'RevenueCat webhook');
+  }
+});
+
 // ===== Text-to-Speech (ElevenLabs) =====
+
+// Voice modes — different settings for different coaching contexts
+const VOICE_MODES = {
+  // Default: natural, conversational — for questions and general speech
+  question: {
+    stability: 0.6,
+    similarity_boost: 0.75,
+    style: 0.2,
+    use_speaker_boost: true,
+  },
+  // Coaching: warmer, slower, more considered — for feedback and insights
+  coaching: {
+    stability: 0.75,
+    similarity_boost: 0.8,
+    style: 0.1,
+    use_speaker_boost: true,
+  },
+  // Model answer: crisp, authoritative — demonstrating sharp communication
+  model: {
+    stability: 0.7,
+    similarity_boost: 0.85,
+    style: 0.3,
+    use_speaker_boost: true,
+  },
+  // Follow-up / pressure: slightly more assertive — interviewer energy
+  followup: {
+    stability: 0.55,
+    similarity_boost: 0.7,
+    style: 0.35,
+    use_speaker_boost: true,
+  },
+  // Briefing: measured, news-anchor clarity
+  briefing: {
+    stability: 0.8,
+    similarity_boost: 0.8,
+    style: 0.15,
+    use_speaker_boost: true,
+  },
+};
 
 app.get('/api/tts', async (req, res) => {
   try {
-    const { text } = req.query;
+    const { text, mode } = req.query;
     if (!text) {
       return res.status(400).json({ error: 'No text provided' });
     }
@@ -601,9 +792,10 @@ app.get('/api/tts', async (req, res) => {
     apiUsage.elevenlabs.characters += String(text).length;
 
     const voiceId = process.env.ELEVENLABS_VOICE_ID;
+    const voiceSettings = VOICE_MODES[mode] || VOICE_MODES.question;
 
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
       {
         method: 'POST',
         headers: {
@@ -613,12 +805,8 @@ app.get('/api/tts', async (req, res) => {
         body: JSON.stringify({
           text: text,
           model_id: 'eleven_turbo_v2_5',
-          voice_settings: {
-            stability: 0.6,
-            similarity_boost: 0.75,
-            style: 0.2,
-            use_speaker_boost: true,
-          },
+          voice_settings: voiceSettings,
+          optimize_streaming_latency: 3,
         }),
       }
     );
@@ -629,7 +817,7 @@ app.get('/api/tts', async (req, res) => {
       throw new Error(`ElevenLabs error: ${error}`);
     }
 
-    // Stream audio back to client with error handling
+    // Stream audio back to client
     res.set({
       'Content-Type': 'audio/mpeg',
       'Transfer-Encoding': 'chunked',
@@ -666,6 +854,159 @@ app.use((req, res, next) => {
   next();
 });
 
+// ===== Push Notifications =====
+
+// Register a push token
+app.post('/api/notifications/register', async (req, res) => {
+  try {
+    const { token, userId } = req.body;
+    if (!token || !userId) return res.status(400).json({ error: 'token and userId required' });
+    if (!supabase) return res.json({ ok: true }); // No Supabase = skip silently
+
+    await supabase.from('profiles').update({
+      push_token: token,
+      updated_at: new Date().toISOString(),
+    }).eq('id', userId);
+
+    res.json({ ok: true });
+  } catch (error) {
+    sendError(res, 500, error, 'Push token registration');
+  }
+});
+
+// Send a push notification via Expo's push service
+async function sendPushNotification(pushToken, title, body, data = {}) {
+  try {
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: pushToken,
+        sound: 'default',
+        title,
+        body,
+        data,
+      }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Engagement check — called by cron or manually to nudge inactive users
+app.post('/api/notifications/engagement-check', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
+
+    // Find users with push tokens who haven't had a session recently (paginated)
+    const PAGE_SIZE = 100;
+    let offset = 0;
+    let totalChecked = 0;
+    let nudged = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, display_name, push_token')
+        .not('push_token', 'is', null)
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (!profiles?.length) { hasMore = false; break; }
+      if (profiles.length < PAGE_SIZE) hasMore = false;
+      offset += PAGE_SIZE;
+      totalChecked += profiles.length;
+
+    for (const profile of profiles) {
+      if (!profile.push_token) continue;
+
+      // Check their last session
+      const { data: sessions } = await supabase
+        .from('sessions')
+        .select('created_at, type')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const lastSession = sessions?.[0];
+      const daysSince = lastSession
+        ? Math.floor((Date.now() - new Date(lastSession.created_at).getTime()) / (1000 * 60 * 60 * 24))
+        : 999;
+
+      if (daysSince < 1) continue; // Active today, skip
+
+      // Check their streak
+      const { data: streakData } = await supabase
+        .from('streaks')
+        .select('current_streak')
+        .eq('user_id', profile.id)
+        .single();
+
+      const streak = streakData?.current_streak || 0;
+
+      // Check their best score
+      const { data: bestTurn } = await supabase
+        .from('turns')
+        .select('overall')
+        .eq('user_id', profile.id)
+        .order('overall', { ascending: false })
+        .limit(1);
+
+      const bestScore = bestTurn?.[0]?.overall || 0;
+
+      // Generate personalized nudge
+      let title = '';
+      let body = '';
+
+      if (streak > 3 && daysSince === 1) {
+        // Streak at risk — urgent
+        title = `Your ${streak}-day streak is at risk`;
+        body = 'One quick Daily Challenge keeps it alive. 60 seconds is all it takes.';
+      } else if (daysSince >= 3) {
+        // Been away — generate with Claude for personalization
+        try {
+          const nudgePrompt = `Generate a SHORT, personalized push notification to re-engage a communication training app user.
+
+Their name: ${profile.display_name || 'there'}
+Days since last practice: ${daysSince}
+Their streak before going quiet: ${streak} days
+Their best score ever: ${bestScore.toFixed(1)}/10
+
+Rules:
+- Be warm, not guilt-trippy
+- Reference a specific stat if impressive (streak, best score)
+- Under 100 characters for the body
+- Make them want to open the app
+
+Return ONLY JSON: { "title": "...", "body": "..." }`;
+          const nudge = await callClaude(nudgePrompt, 100);
+          title = nudge?.title || 'Sharp misses you';
+          body = nudge?.body || 'Your communication skills don\'t build themselves. One session?';
+        } catch {
+          title = 'Sharp misses you';
+          body = 'Your communication skills don\'t build themselves. One quick session?';
+        }
+      } else if (daysSince >= 2) {
+        title = 'Quick check-in';
+        body = streak > 0
+          ? `Your ${streak}-day streak is waiting. 60 seconds to keep it going.`
+          : 'One Daily Challenge today? It only takes 60 seconds.';
+      } else {
+        continue; // Not inactive enough to nudge
+      }
+
+      const sent = await sendPushNotification(profile.push_token, title, body, { type: 'engagement_nudge' });
+      if (sent) nudged++;
+    }
+    } // end while (hasMore)
+
+    res.json({ checked: totalChecked, nudged });
+  } catch (error) {
+    sendError(res, 500, error, 'Engagement check');
+  }
+});
+
 // ===== Start Server =====
 
 const PORT = process.env.PORT || 3001;
@@ -683,6 +1024,35 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`    ${configured ? '✓' : '✗'} ${name}`);
   });
   console.log('');
+
+  // ===== Cron: Engagement Check — runs daily at 8 PM UTC =====
+  function scheduleEngagementCheck() {
+    const now = new Date();
+    const target = new Date(now);
+    target.setUTCHours(20, 0, 0, 0); // 8 PM UTC (~8 PM UK, ~3 PM ET)
+    if (target <= now) target.setDate(target.getDate() + 1); // Already past today, schedule tomorrow
+    const delay = target.getTime() - now.getTime();
+
+    setTimeout(async () => {
+      console.log('[CRON] Running engagement check...');
+      try {
+        const response = await fetch(`http://localhost:${PORT}/api/notifications/engagement-check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        const result = await response.json();
+        console.log(`[CRON] Engagement check done: ${result.checked} checked, ${result.nudged} nudged`);
+      } catch (e) {
+        console.error('[CRON] Engagement check failed:', e.message);
+      }
+      // Schedule the next one
+      scheduleEngagementCheck();
+    }, delay);
+
+    console.log(`  Engagement check scheduled in ${Math.round(delay / 1000 / 60)} minutes (8 PM UTC daily)`);
+  }
+  scheduleEngagementCheck();
 });
 
 // ===== Graceful Shutdown =====

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   avatar_url TEXT,
   is_premium BOOLEAN DEFAULT false,
   onboarding_complete BOOLEAN DEFAULT false,
+  push_token TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -136,6 +137,26 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Documents
+CREATE TABLE IF NOT EXISTS public.documents (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  raw_text TEXT,
+  structured_extraction JSONB,
+  summary TEXT,
+  document_type TEXT NOT NULL,
+  document_subtype TEXT,
+  storage_path TEXT,
+  uploaded_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_documents_user ON public.documents(user_id);
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "own_documents" ON public.documents FOR ALL USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Usage tracking (run this if not already created)
 CREATE TABLE IF NOT EXISTS public.usage (

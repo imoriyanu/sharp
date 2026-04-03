@@ -8,11 +8,23 @@ import { hasOnboarded, clearStaleThread } from '../src/services/storage';
 import { initPremium } from '../src/services/premium';
 import { initErrorTracking } from '../src/services/errorTracking';
 import { initAnalytics, trackEvent, Events } from '../src/services/analytics';
-import { AuthProvider } from '../src/context/AuthContext';
+import { registerForPushNotifications, savePushToken } from '../src/services/notifications';
+import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
 function AudioGuard() {
   const pathname = usePathname();
   useEffect(() => { stopAudio(); }, [pathname]);
+  return null;
+}
+
+function PushRegistration() {
+  const { user } = useAuth();
+  useEffect(() => {
+    if (!user?.id) return;
+    registerForPushNotifications().then(token => {
+      if (token) savePushToken(token, user.id);
+    });
+  }, [user?.id]);
   return null;
 }
 
@@ -46,6 +58,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <AudioGuard />
       <AuthProvider>
+      <PushRegistration />
       <OnboardingGate>
         <Stack
           screenOptions={{
@@ -73,16 +86,12 @@ export default function RootLayout() {
           <Stack.Screen name="threaded/follow-up" />
           <Stack.Screen name="threaded/debrief" />
           <Stack.Screen name="context/setup" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="context/documents" options={{ presentation: 'modal' }} />
           <Stack.Screen name="duel/create" options={{ presentation: 'modal' }} />
           <Stack.Screen name="duel/accept" options={{ presentation: 'modal' }} />
           <Stack.Screen name="duel/waiting" options={{ presentation: 'modal' }} />
           <Stack.Screen name="duel/results" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="coming-soon/conversation" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="coming-soon/analytics" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="coming-soon/duels" options={{ presentation: 'modal' }} />
           <Stack.Screen name="analytics/index" options={{ animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="premium/index" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="premium/index" options={{ presentation: 'formSheet', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="streak/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="auth/signin" options={{ presentation: 'modal' }} />
           <Stack.Screen name="session/[id]" />
