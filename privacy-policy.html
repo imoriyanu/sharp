@@ -51,6 +51,14 @@
             margin-bottom: 12px;
         }
 
+        h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #3A2A1A;
+            margin-top: 20px;
+            margin-bottom: 8px;
+        }
+
         p {
             font-size: 15px;
             color: #3A2A1A;
@@ -86,6 +94,30 @@
             color: #7A6A5A;
         }
 
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 12px;
+            background-color: #FAF6F0;
+            border-bottom: 2px solid #F0DCC8;
+            font-weight: 700;
+            color: #3A2A1A;
+            font-size: 13px;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #F5F0E8;
+            color: #3A2A1A;
+            vertical-align: top;
+        }
+
         .footer {
             margin-top: 40px;
             padding-top: 24px;
@@ -112,94 +144,325 @@
             h2 {
                 font-size: 18px;
             }
+
+            table {
+                font-size: 13px;
+            }
+
+            th, td {
+                padding: 8px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Privacy Policy</h1>
-        <p class="effective-date">Effective Date: March 28, 2026</p>
+        <p class="effective-date">Effective Date: April 5, 2026</p>
 
-        <p>Sharp AI ("Sharp," "we," "our," or "us") provides a communication training application (the "App") designed to help professionals improve how they speak under pressure. This Privacy Policy explains how we collect, use, and protect your information when you use the App.</p>
+        <p>Sharp AI ("Sharp," "we," "our," or "us") provides a communication training application (the "App") designed to help professionals improve how they speak under pressure. This Privacy Policy explains how we collect, use, store, and protect your information when you use the App.</p>
 
         <p>By using Sharp, you agree to the practices described in this Privacy Policy. If you do not agree, please do not use the App.</p>
 
+        <!-- ===== 1. INFORMATION WE COLLECT ===== -->
+
         <h2>1. Information We Collect</h2>
 
-        <p><strong>Information you provide voluntarily.</strong> Sharp may ask you to enter contextual information such as your role, company, or industry to personalize coaching feedback. You are never required to provide this information, and it is stored locally on your device only.</p>
+        <h3>a) Account Information</h3>
+        <p>When you sign in with Apple Sign In, we receive your Apple user identifier and, if you choose to share it, your name and email address. Apple may provide a private relay email address instead of your real email. We use this information solely to create and manage your account.</p>
 
-        <p><strong>Audio recordings.</strong> When you use a practice session, the App records your spoken responses. These recordings are transmitted to our servers solely for transcription and AI-based scoring. Audio data is processed in real time and is not stored on our servers after processing is complete.</p>
+        <h3>b) Profile and Context Information</h3>
+        <p>You may voluntarily provide information such as your name, job role, company, career situation, and professional goals to personalise coaching feedback. You may also upload professional documents (CVs, job descriptions, project briefs) for more tailored practice scenarios. This information is stored on your device and synced to your account if you are signed in.</p>
 
-        <p><strong>Session data.</strong> Scores, coaching feedback, transcripts, and session history are generated during your use of the App and stored locally on your device using on-device storage (AsyncStorage). This data is not transmitted to or stored on our servers.</p>
+        <h3>c) Audio Recordings</h3>
+        <p>When you use a practice session, the App records your spoken responses. These recordings are transmitted to our servers solely for transcription and AI-based scoring. Audio data is processed in real time and is not permanently stored on our servers after processing is complete.</p>
+
+        <p>In Conversation mode, live audio is streamed directly to ElevenLabs for real-time conversational AI interaction. This audio is processed in real time and is not stored after the session ends.</p>
+
+        <h3>d) Session Data</h3>
+        <p>Scores, coaching feedback, transcripts, streaks, badges, and session history are generated during your use of the App. This data is stored locally on your device and synced to your account via our cloud service (Supabase) if you are signed in.</p>
+
+        <h3>e) Purchase Information</h3>
+        <p>If you subscribe to Sharp Pro, your purchase is processed by Apple through the App Store. We use RevenueCat to manage subscription status and verify entitlements. We do not have access to your payment card details or bank account information. RevenueCat receives your anonymous app user ID and purchase receipt to validate your subscription.</p>
+
+        <h3>f) Usage and Analytics Data</h3>
+        <p>We collect anonymised usage data to understand how the App is used and to improve the product. This includes events such as app launches, feature usage, session completions, and paywall interactions. This data is collected via PostHog and is not linked to your identity for advertising purposes.</p>
+
+        <h3>g) Push Notification Tokens</h3>
+        <p>If you opt in to push notifications, we collect your device push token to send you reminders and engagement notifications. You can disable notifications at any time through your device settings.</p>
+
+        <h3>h) Diagnostics</h3>
+        <p>We may collect crash logs and performance data through Expo to diagnose technical issues and improve app stability.</p>
 
         <div class="highlight">
-            Sharp does not require you to create an account. There is no username, password, email address, or other personal identifier collected during normal use of the App.
+            Sharp does not collect precise location, contacts, browsing history, health data, financial information, or any sensitive personal information as defined by applicable privacy laws.
         </div>
+
+        <!-- ===== 2. HOW WE USE YOUR INFORMATION ===== -->
 
         <h2>2. How We Use Your Information</h2>
 
         <p>We use the information described above for the following purposes:</p>
         <ul>
-            <li><strong>Transcription:</strong> Converting your spoken audio into text so it can be analyzed.</li>
-            <li><strong>AI scoring and coaching:</strong> Evaluating your responses across dimensions such as structure, concision, substance, filler word usage, and contextual awareness, and generating actionable coaching feedback.</li>
-            <li><strong>Text-to-speech:</strong> Generating spoken audio for practice questions and prompts within the App.</li>
-            <li><strong>Personalization:</strong> Using optional context you provide (role, company, documents) to make coaching feedback more relevant.</li>
+            <li><strong>Authentication:</strong> Verifying your identity when you sign in with Apple.</li>
+            <li><strong>Transcription:</strong> Converting your spoken audio into text for analysis.</li>
+            <li><strong>AI Scoring and Coaching:</strong> Evaluating your responses across dimensions such as structure, concision, substance, filler word usage, and contextual awareness, and generating actionable coaching feedback.</li>
+            <li><strong>Conversational AI:</strong> Powering real-time voice conversations with AI agents for practice scenarios.</li>
+            <li><strong>Text-to-Speech:</strong> Generating spoken audio for practice questions and model answers.</li>
+            <li><strong>Personalisation:</strong> Using optional context you provide (role, company, documents) to make coaching feedback and practice scenarios more relevant.</li>
+            <li><strong>Subscription Management:</strong> Verifying your Sharp Pro subscription status and unlocking premium features.</li>
+            <li><strong>Analytics:</strong> Understanding how the App is used to improve features and user experience.</li>
+            <li><strong>Notifications:</strong> Sending practice reminders and engagement prompts if you have opted in.</li>
+            <li><strong>Diagnostics:</strong> Identifying and resolving technical issues.</li>
         </ul>
 
-        <p>We do not use your information for advertising, profiling, or any purpose unrelated to delivering the core functionality of the App.</p>
+        <p>We do not use your information for third-party advertising, profiling for advertising purposes, or any purpose unrelated to delivering and improving the App.</p>
+
+        <!-- ===== 3. THIRD-PARTY SERVICES ===== -->
 
         <h2>3. Third-Party Services</h2>
 
         <p>Sharp relies on the following third-party services to deliver its features. Each service receives only the minimum data necessary to perform its function:</p>
 
-        <ul>
-            <li><strong>Anthropic (Claude API)</strong> — Receives transcribed text and optional context to generate scores and coaching feedback. Anthropic's privacy policy is available at <a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener">anthropic.com/privacy</a>.</li>
-            <li><strong>Groq (Whisper Large v3 Turbo)</strong> — Receives audio data for speech-to-text transcription. Groq's privacy policy is available at <a href="https://groq.com/privacy-policy/" target="_blank" rel="noopener">groq.com/privacy-policy</a>.</li>
-            <li><strong>ElevenLabs</strong> — Generates text-to-speech audio for practice questions. ElevenLabs receives text prompts only and does not receive any user audio or personal data. Their privacy policy is available at <a href="https://elevenlabs.io/privacy-policy" target="_blank" rel="noopener">elevenlabs.io/privacy-policy</a>.</li>
-        </ul>
+        <table>
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Purpose</th>
+                    <th>Data Shared</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Apple Sign In</strong></td>
+                    <td>User authentication</td>
+                    <td>Apple user ID, name, email (if shared)</td>
+                </tr>
+                <tr>
+                    <td><strong>Supabase</strong></td>
+                    <td>Cloud storage and account sync</td>
+                    <td>User ID, profile data, session history, documents</td>
+                </tr>
+                <tr>
+                    <td><strong>Anthropic (Claude API)</strong></td>
+                    <td>AI scoring, coaching, question generation</td>
+                    <td>Transcribed text and optional user context</td>
+                </tr>
+                <tr>
+                    <td><strong>Groq (Whisper)</strong></td>
+                    <td>Speech-to-text transcription</td>
+                    <td>Audio recordings</td>
+                </tr>
+                <tr>
+                    <td><strong>ElevenLabs</strong></td>
+                    <td>Text-to-speech and conversational AI</td>
+                    <td>Text prompts; live audio in conversation mode</td>
+                </tr>
+                <tr>
+                    <td><strong>RevenueCat</strong></td>
+                    <td>Subscription management</td>
+                    <td>Anonymous user ID, purchase receipts</td>
+                </tr>
+                <tr>
+                    <td><strong>PostHog</strong></td>
+                    <td>Product analytics</td>
+                    <td>Anonymised usage events</td>
+                </tr>
+                <tr>
+                    <td><strong>Expo</strong></td>
+                    <td>Push notifications, OTA updates, diagnostics</td>
+                    <td>Device push token, crash data</td>
+                </tr>
+            </tbody>
+        </table>
 
         <p>We do not sell, rent, or share your personal information with any third party for marketing or advertising purposes.</p>
 
-        <h2>4. Data Storage and Security</h2>
-
-        <p>All session data, scores, transcripts, and user-provided context are stored locally on your device using AsyncStorage. This data never leaves your device except when audio is temporarily transmitted for transcription and scoring as described above.</p>
-
-        <p>Audio recordings are transmitted securely over HTTPS to our processing servers and to the third-party services listed above. Audio is processed in memory and is not written to persistent storage on our servers.</p>
-
-        <p>If you delete the App from your device, all locally stored data is permanently removed.</p>
-
-        <h2>5. Data Retention</h2>
-
-        <p>Because Sharp stores data locally on your device, you have full control over your data at all times. We do not maintain copies of your session history, transcripts, or scores on any server.</p>
-
-        <p>Audio recordings are retained only for the duration of the transcription and scoring process, typically a matter of seconds, after which they are discarded.</p>
-
-        <h2>6. Your Rights and Choices</h2>
-
-        <p>You may exercise the following rights at any time:</p>
+        <p>Links to third-party privacy policies:</p>
         <ul>
-            <li><strong>Access and deletion:</strong> All your data is stored on your device. You can view it within the App or delete it by clearing the App's data or uninstalling the App.</li>
-            <li><strong>Opt out of audio recording:</strong> You may choose not to use practice features that require audio input. The App will not record without your active initiation.</li>
-            <li><strong>Withdraw optional context:</strong> You may remove any role, company, or document information you have provided at any time through the App's settings.</li>
+            <li><a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">Apple Privacy Policy</a></li>
+            <li><a href="https://supabase.com/privacy" target="_blank" rel="noopener">Supabase Privacy Policy</a></li>
+            <li><a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener">Anthropic Privacy Policy</a></li>
+            <li><a href="https://groq.com/privacy-policy/" target="_blank" rel="noopener">Groq Privacy Policy</a></li>
+            <li><a href="https://elevenlabs.io/privacy-policy" target="_blank" rel="noopener">ElevenLabs Privacy Policy</a></li>
+            <li><a href="https://www.revenuecat.com/privacy/" target="_blank" rel="noopener">RevenueCat Privacy Policy</a></li>
+            <li><a href="https://posthog.com/privacy" target="_blank" rel="noopener">PostHog Privacy Policy</a></li>
+            <li><a href="https://expo.dev/privacy" target="_blank" rel="noopener">Expo Privacy Policy</a></li>
         </ul>
 
-        <p>If you have questions about your data or wish to make a request, please contact us at <a href="mailto:privacy@sharp-ai.app">privacy@sharp-ai.app</a>.</p>
+        <!-- ===== 4. APP STORE PRIVACY LABEL ===== -->
 
-        <h2>7. Children's Privacy</h2>
+        <h2>4. App Store Privacy Label</h2>
 
-        <p>Sharp is not directed at children under the age of 13. We do not knowingly collect personal information from children under 13. If you believe a child under 13 has provided us with personal information, please contact us at <a href="mailto:privacy@sharp-ai.app">privacy@sharp-ai.app</a> and we will take steps to address the situation.</p>
+        <p>The following summarises the data Sharp collects as disclosed in our App Store privacy nutrition label:</p>
 
-        <h2>8. International Data Transfers</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Data Type</th>
+                    <th>Collected</th>
+                    <th>Linked to Identity</th>
+                    <th>Used for Tracking</th>
+                    <th>Purpose</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Name</td>
+                    <td>Yes</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>App Functionality</td>
+                </tr>
+                <tr>
+                    <td>Email Address</td>
+                    <td>Yes</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>App Functionality</td>
+                </tr>
+                <tr>
+                    <td>User ID</td>
+                    <td>Yes</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>App Functionality</td>
+                </tr>
+                <tr>
+                    <td>Audio Data</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>No</td>
+                    <td>App Functionality</td>
+                </tr>
+                <tr>
+                    <td>Other User Content</td>
+                    <td>Yes</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>App Functionality, Product Personalisation</td>
+                </tr>
+                <tr>
+                    <td>Purchase History</td>
+                    <td>Yes</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>App Functionality</td>
+                </tr>
+                <tr>
+                    <td>Product Interaction</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>No</td>
+                    <td>Analytics</td>
+                </tr>
+                <tr>
+                    <td>Crash Data</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>No</td>
+                    <td>App Functionality</td>
+                </tr>
+                <tr>
+                    <td>Performance Data</td>
+                    <td>Yes</td>
+                    <td>No</td>
+                    <td>No</td>
+                    <td>App Functionality</td>
+                </tr>
+            </tbody>
+        </table>
 
-        <p>Audio data transmitted for transcription and scoring may be processed by third-party services located outside your country of residence. By using the App, you consent to the transfer of this data to servers that may be located in the United States or other jurisdictions. All transfers are conducted over encrypted connections.</p>
+        <div class="highlight">
+            Sharp does not track users. We do not link any collected data with third-party data for advertising or advertising measurement purposes, and we do not share data with data brokers.
+        </div>
 
-        <h2>9. Changes to This Privacy Policy</h2>
+        <!-- ===== 5. DATA STORAGE AND SECURITY ===== -->
+
+        <h2>5. Data Storage and Security</h2>
+
+        <p>Session data, scores, transcripts, and user-provided context are stored locally on your device using on-device storage (AsyncStorage). If you are signed in, this data is also synced to Supabase, a secure cloud database hosted on AWS infrastructure.</p>
+
+        <p>Audio recordings are transmitted securely over HTTPS (TLS encryption) to our processing servers and to the third-party services listed above. Audio is processed in memory and is not written to persistent storage on our servers after processing.</p>
+
+        <p>We implement appropriate technical and organisational measures to protect your data, including encryption in transit, secure server infrastructure, and access controls on our backend systems.</p>
+
+        <!-- ===== 6. DATA RETENTION ===== -->
+
+        <h2>6. Data Retention</h2>
+
+        <ul>
+            <li><strong>Audio recordings:</strong> Retained only for the duration of transcription and scoring (typically seconds), then discarded.</li>
+            <li><strong>Session data:</strong> Stored on your device indefinitely until you delete it. Cloud-synced data is retained while your account is active.</li>
+            <li><strong>Account data:</strong> Retained while your account is active. You may request deletion at any time.</li>
+            <li><strong>Analytics data:</strong> Retained in anonymised form for up to 24 months.</li>
+            <li><strong>Push notification tokens:</strong> Retained while notifications are enabled. Removed when you disable notifications or delete your account.</li>
+        </ul>
+
+        <p>If you delete the App from your device, all locally stored data is permanently removed. To delete cloud-synced data, please contact us.</p>
+
+        <!-- ===== 7. YOUR RIGHTS AND CHOICES ===== -->
+
+        <h2>7. Your Rights and Choices</h2>
+
+        <p>Depending on your jurisdiction, you may have the following rights:</p>
+        <ul>
+            <li><strong>Access:</strong> Request a copy of the personal data we hold about you.</li>
+            <li><strong>Deletion:</strong> Request that we delete your personal data. Locally stored data can be deleted by clearing the App's data or uninstalling the App.</li>
+            <li><strong>Correction:</strong> Update your profile information at any time within the App.</li>
+            <li><strong>Portability:</strong> Request your data in a portable format.</li>
+            <li><strong>Opt out of audio recording:</strong> You may choose not to use practice features that require audio input. The App will not record without your active initiation.</li>
+            <li><strong>Opt out of notifications:</strong> Disable push notifications in your device settings at any time.</li>
+            <li><strong>Opt out of analytics:</strong> Contact us to opt out of analytics data collection.</li>
+            <li><strong>Withdraw context:</strong> Remove any role, company, or document information you have provided at any time through the App's settings.</li>
+        </ul>
+
+        <p>To exercise any of these rights, please contact us at <a href="mailto:privacy@sharp-ai.app">privacy@sharp-ai.app</a>. We will respond to your request within 30 days.</p>
+
+        <!-- ===== 8. CHILDREN'S PRIVACY ===== -->
+
+        <h2>8. Children's Privacy</h2>
+
+        <p>Sharp is not directed at children under the age of 13 (or 16 in the European Economic Area). We do not knowingly collect personal information from children. If you believe a child has provided us with personal information, please contact us at <a href="mailto:privacy@sharp-ai.app">privacy@sharp-ai.app</a> and we will take steps to delete the information.</p>
+
+        <!-- ===== 9. INTERNATIONAL DATA TRANSFERS ===== -->
+
+        <h2>9. International Data Transfers</h2>
+
+        <p>Your data may be processed by third-party services located outside your country of residence, including in the United States. By using the App, you consent to the transfer of this data to servers that may be located in other jurisdictions. All transfers are conducted over encrypted connections (HTTPS/TLS).</p>
+
+        <p>Where required by applicable law (such as GDPR), we ensure appropriate safeguards are in place for international data transfers.</p>
+
+        <!-- ===== 10. GDPR (EEA USERS) ===== -->
+
+        <h2>10. Additional Rights for EEA and UK Users</h2>
+
+        <p>If you are located in the European Economic Area (EEA) or the United Kingdom, the following additional information applies:</p>
+
+        <p><strong>Legal bases for processing:</strong></p>
+        <ul>
+            <li><strong>Contract:</strong> Processing necessary to provide you with the App's services (transcription, scoring, coaching).</li>
+            <li><strong>Consent:</strong> Processing based on your consent (push notifications, optional context sharing).</li>
+            <li><strong>Legitimate interests:</strong> Analytics to improve the App, diagnostics to maintain stability.</li>
+        </ul>
+
+        <p>You have the right to lodge a complaint with your local data protection authority if you believe your data has been processed unlawfully.</p>
+
+        <!-- ===== 11. CALIFORNIA USERS ===== -->
+
+        <h2>11. Additional Rights for California Users</h2>
+
+        <p>Under the California Consumer Privacy Act (CCPA), California residents have the right to know what personal information is collected, request deletion, and opt out of the sale of personal information. <strong>Sharp does not sell personal information.</strong></p>
+
+        <!-- ===== 12. CHANGES ===== -->
+
+        <h2>12. Changes to This Privacy Policy</h2>
 
         <p>We may update this Privacy Policy from time to time. When we make material changes, we will update the "Effective Date" at the top of this page and may notify you through the App. Your continued use of Sharp after any changes constitutes acceptance of the updated Privacy Policy.</p>
 
-        <p>We encourage you to review this Privacy Policy periodically.</p>
+        <!-- ===== 13. CONTACT ===== -->
 
-        <h2>10. Contact Us</h2>
+        <h2>13. Contact Us</h2>
 
         <p>If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us at:</p>
 
