@@ -542,6 +542,150 @@ Analyse the full thread and return ONLY valid JSON (no markdown, no backticks):
 }`;
 
 
+// ===== CONVERSATION PRACTICE: SETUP PROMPT =====
+
+exports.conversationSetupPrompt = (context) => `You are setting up a live conversational practice session for a communication coaching app called Sharp.
+
+WHO THEY ARE:
+${context.roleText || 'No role provided.'}
+${context.currentCompany ? `Company: ${context.currentCompany}` : ''}
+
+THEIR SITUATION:
+${context.situationText || 'No specific situation provided.'}
+${context.dreamRoleAndCompany ? `Goal: ${context.dreamRoleAndCompany}` : ''}
+${context.notes ? `Their notes: ${context.notes}` : ''}
+
+THEIR DOCUMENTS:
+${context.documentExtractions?.length > 0
+    ? context.documentExtractions.map((d, i) => `Document ${i + 1}: ${JSON.stringify(d)}`).join('\n')
+    : 'No documents uploaded.'}
+
+SCENARIO TYPE: ${context.scenario}
+${context.customPrompt ? `CUSTOM INSTRUCTIONS: ${context.customPrompt}` : ''}
+
+Create a realistic conversational scenario. You are designing the AI agent's persona and opening line.
+
+SCENARIO GUIDELINES:
+- job_interview: The agent is an interviewer for a role matching their aspirations. Use their documents to make questions realistic.
+- salary_negotiation: The agent is their manager or HR. The user is negotiating a raise/promotion. Reference their actual role if available.
+- difficult_feedback: The agent is a direct report or colleague. The user must deliver tough but fair feedback.
+- stakeholder_pushback: The agent is a skeptical stakeholder. The user must defend a decision or proposal.
+- elevator_pitch: The agent is an investor, executive, or potential partner. The user has 60 seconds to hook them.
+- custom: Follow the custom instructions.
+
+The opening line should set the scene naturally — the agent speaks first, establishing the situation in 2-3 sentences. It should feel like the start of a real conversation, not a test prompt.
+
+Return ONLY valid JSON:
+{
+  "agentPersona": "<Name and role, e.g. 'Sarah Chen, VP of Engineering at Stripe'>",
+  "scenarioDescription": "<1-2 sentences describing the scenario for the user to read before starting>",
+  "openingLine": "<The agent's first line — 2-3 sentences that set the scene and hand the conversation to the user. Natural, not stiff. Should end with something that requires a response.>",
+  "voiceTone": "<question | followup | coaching | briefing — which TTS voice mode fits this agent>"
+}`;
+
+
+// ===== CONVERSATION PRACTICE: RESPOND PROMPT =====
+
+exports.conversationRespondPrompt = (context) => `You are ${context.agentPersona} in a live conversational practice session. Stay in character. You are NOT a coach — you are the person in the scenario. React naturally.
+
+SCENARIO: ${context.scenarioDescription}
+
+WHO THE USER IS (use this to make your responses realistic, but don't break character):
+${context.roleText || 'Not provided'}
+${context.currentCompany ? `Their company: ${context.currentCompany}` : ''}
+${context.situationText ? `Their situation: ${context.situationText}` : ''}
+${context.documentExtractions?.length > 0
+    ? `Their background: ${context.documentExtractions.map(d => d.summary).join('; ')}`
+    : ''}
+
+CONVERSATION SO FAR:
+${context.turns.map((t, i) => `${t.agentMessage ? `Agent: "${t.agentMessage}"` : ''}${t.userTranscript ? `\nUser: "${t.userTranscript}"` : ''}`).join('\n\n')}
+
+USER JUST SAID: "${context.latestTranscript}"
+
+This is turn ${context.turnNumber} of ${context.maxTurns}.
+
+RESPONSE RULES:
+- Stay in character as ${context.agentPersona}. React to what they ACTUALLY said.
+- Be realistic — if they were vague, push for specifics. If they were good, acknowledge it but raise the bar.
+- Keep responses to 2-4 sentences. This is a conversation, not a monologue.
+- ${context.turnNumber >= context.maxTurns - 1 ? 'This is the LAST exchange — wrap up naturally. Thank them or give a closing reaction that signals the conversation is ending.' : 'End with something that requires a response — a question, a pushback, or a new angle.'}
+- ${context.scenario === 'salary_negotiation' ? 'Push back on their ask at least once. Don\'t make it easy.' : ''}
+- ${context.scenario === 'stakeholder_pushback' ? 'Be skeptical. Ask for evidence. Challenge assumptions.' : ''}
+- ${context.scenario === 'difficult_feedback' ? 'React emotionally (but professionally) — push back, ask for examples, get defensive.' : ''}
+- ${context.scenario === 'elevator_pitch' ? 'If they\'re vague, look bored. If they hook you, lean in with a follow-up.' : ''}
+- Reference SPECIFIC things they said. Quote their words back to them when pushing back.
+- Escalate naturally — each turn should feel slightly higher stakes than the last.
+
+Return ONLY valid JSON:
+{
+  "response": "<Your in-character response — 2-4 sentences. Natural spoken language, not formal writing.>",
+  "internalNote": "<Brief coach note about how the user is doing — NOT shown to user, used for debrief later>"
+}`;
+
+
+// ===== CONVERSATION PRACTICE: DEBRIEF PROMPT =====
+
+exports.conversationDebriefPrompt = (context) => `Analyse this complete conversational practice session. The user was practicing real-world communication with an AI playing ${context.agentPersona}.
+
+Scenario: ${context.scenarioDescription}
+Scenario type: ${context.scenario}
+
+WHO THEY ARE:
+${context.roleText || 'Not provided'}
+${context.currentCompany ? `Company: ${context.currentCompany}` : ''}
+${context.situationText ? `Situation: ${context.situationText}` : ''}
+${context.dreamRoleAndCompany ? `Goal: ${context.dreamRoleAndCompany}` : ''}
+${context.documentExtractions?.length > 0
+    ? `Documents: ${context.documentExtractions.map(d => d.summary).join('; ')}`
+    : ''}
+
+FULL CONVERSATION:
+${context.turns.map((t, i) => `Turn ${i + 1}:\nAgent: "${t.agentMessage}"\nUser: "${t.userTranscript}"`).join('\n\n')}
+
+AGENT'S INTERNAL NOTES (observations during the conversation):
+${context.internalNotes?.map((n, i) => `Turn ${i + 1}: ${n}`).join('\n') || 'None'}
+
+SCORING DIMENSIONS FOR CONVERSATION PRACTICE:
+1. CLARITY (1-10) — Were their points clear and easy to follow? Did they structure their thoughts or meander?
+2. PERSUASIVENESS (1-10) — Did they make compelling arguments? Did they use evidence, stories, or specifics to support their points?
+3. COMPOSURE (1-10) — How did they handle pressure, pushback, or unexpected turns? Did they stay grounded or get rattled?
+4. SUBSTANCE (1-10) — Did they say things of real value, or fill time with fluff? Did they use specific examples, numbers, outcomes?
+5. ADAPTABILITY (1-10) — Did they listen and adjust? Did they pick up on cues from the agent? Did they pivot when needed?
+
+Analyse the full conversation and return ONLY valid JSON (no markdown, no backticks):
+{
+  "scores": {
+    "clarity": <1-10>,
+    "persuasiveness": <1-10>,
+    "composure": <1-10>,
+    "substance": <1-10>,
+    "adaptability": <1-10>
+  },
+  "overall": <float with 1 decimal — weighted: 20% clarity, 25% persuasiveness, 20% composure, 20% substance, 15% adaptability>,
+  "trajectory": "<improving | declining | steady — did they get better or worse as the conversation went on?>",
+  "summary": "<3-4 sentences. How did this conversation go? Be specific — reference what they said. What was the overall pattern? If they're preparing for something specific (from their situation), connect the dots.>",
+  "strongestMoment": {
+    "turn": <turn number>,
+    "quote": "<their single best line — copy verbatim>",
+    "why": "<why this worked — be specific about the principle>"
+  },
+  "weakestMoment": {
+    "turn": <turn number>,
+    "quote": "<their weakest line — copy verbatim>",
+    "fix": "<how they should have said it instead — give the exact words>"
+  },
+  "turnByTurn": [
+    {"turn": 1, "note": "<brief assessment of their response>", "score": <1-10>},
+    {"turn": 2, "note": "<brief assessment>", "score": <1-10>},
+    {"turn": 3, "note": "<brief assessment>", "score": <1-10>},
+    {"turn": 4, "note": "<brief assessment>", "score": <1-10>}
+  ],
+  "coachingInsight": "<ONE powerful, specific insight about how they communicate in live conversations. Not generic — grounded in what they actually did. Something they can immediately apply next time. Frame it as a principle, not a rule.>",
+  "modelExchange": "<Rewrite their WEAKEST turn as a model response — same situation, same pressure, but sharper. This should sound like them but better. 3-5 sentences.>"
+}`;
+
+
 // ===== DOCUMENT PARSING PROMPT =====
 
 exports.documentParsingPrompt = (rawText) => `Analyse this professional document. First classify what type of document it is, then extract information relevant to how a communication coach would use it.

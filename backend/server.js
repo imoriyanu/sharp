@@ -90,6 +90,7 @@ app.use('/api/threaded', rateLimit(15));    // 15 threaded calls per minute
 app.use('/api/transcribe', rateLimit(10));  // 10 transcriptions per minute
 app.use('/api/tts', rateLimit(20));         // 20 TTS calls per minute
 app.use('/api/progress', rateLimit(5));     // 5 progress summaries per minute
+app.use('/api/conversation', rateLimit(20)); // 20 conversation calls per minute (fast back-and-forth)
 
 // ===== API Usage Monitoring =====
 
@@ -730,6 +731,162 @@ app.post('/api/webhooks/revenuecat', async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     sendError(res, 500, error, 'RevenueCat webhook');
+  }
+});
+
+// ===== Conversation Practice: Setup =====
+
+app.post('/api/conversation/setup', async (req, res) => {
+  try {
+    if (!req.body?.scenario) {
+      return res.status(400).json({ error: 'scenario is required' });
+    }
+    const prompt = prompts.conversationSetupPrompt(req.body);
+    const result = await callClaude(prompt, 500);
+    res.json(result);
+  } catch (error) {
+    sendError(res, 500, error, 'Conversation setup');
+  }
+});
+
+// ===== Conversation Practice: Signed URL for ElevenLabs Conversational AI =====
+
+app.post('/api/conversation/signed-url', async (req, res) => {
+  try {
+    const agentId = process.env.ELEVENLABS_AGENT_ID;
+    if (!agentId || !process.env.ELEVENLABS_API_KEY) {
+      return res.status(503).json({ error: 'Conversational AI not configured. Set ELEVENLABS_AGENT_ID and ELEVENLABS_API_KEY.' });
+    }
+
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${agentId}`,
+      {
+        method: 'GET',
+        headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`ElevenLabs signed URL error: ${error}`);
+    }
+
+    const data = await response.json();
+    res.json({ signedUrl: data.signed_url });
+  } catch (error) {
+    sendError(res, 500, error, 'Conversation signed URL');
+  }
+});
+
+// ===== Conversation Practice: Fetch Transcript from ElevenLabs =====
+
+app.get('/api/conversation/transcript/:conversationId', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    if (!conversationId) {
+      return res.status(400).json({ error: 'conversationId is required' });
+    }
+    if (!process.env.ELEVENLABS_API_KEY) {
+      return res.status(503).json({ error: 'ElevenLabs not configured' });
+    }
+
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
+      {
+        headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`ElevenLabs transcript error: ${error}`);
+    }
+
+    const data = await response.json();
+
+    // Transform ElevenLabs transcript into Sharp's turn format
+    const transcript = data.transcript || [];
+    const turns = [];
+    let currentAgent = '';
+    let currentUser = '';
+    let turnNum = 0;
+
+    for (const entry of transcript) {
+      if (entry.role === 'agent') {
+        if (currentAgent && currentUser) {
+          turns.push({
+            turnNumber: turnNum,
+            agentMessage: currentAgent,
+            userTranscript: currentUser,
+            timestamp: new Date().toISOString(),
+          });
+          turnNum++;
+          currentAgent = '';
+          currentUser = '';
+        }
+        currentAgent += (currentAgent ? ' ' : '') + (entry.message || '');
+      } else if (entry.role === 'user') {
+        currentUser += (currentUser ? ' ' : '') + (entry.message || '');
+      }
+    }
+
+    // Push final turn
+    if (currentAgent || currentUser) {
+      turns.push({
+        turnNumber: turnNum,
+        agentMessage: currentAgent,
+        userTranscript: currentUser,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.json({
+      conversationId: data.conversation_id,
+      status: data.status,
+      turns,
+      analysis: data.analysis || null,
+      metadata: {
+        duration: data.metadata?.call_duration_secs,
+        startTime: data.metadata?.start_time_unix_secs,
+      },
+    });
+  } catch (error) {
+    sendError(res, 500, error, 'Conversation transcript');
+  }
+});
+
+// ===== Conversation Practice: Respond (low latency) =====
+
+app.post('/api/conversation/respond', async (req, res) => {
+  try {
+    if (!req.body?.latestTranscript) {
+      return res.status(400).json({ error: 'latestTranscript is required' });
+    }
+    if (!req.body?.agentPersona || !req.body?.turns) {
+      return res.status(400).json({ error: 'agentPersona and turns are required' });
+    }
+    req.body.latestTranscript = sanitizeString(req.body.latestTranscript, MAX_TRANSCRIPT);
+    const prompt = prompts.conversationRespondPrompt(req.body);
+    // Low token limit for fast responses
+    const result = await callClaude(prompt, 300);
+    res.json(result);
+  } catch (error) {
+    sendError(res, 500, error, 'Conversation respond');
+  }
+});
+
+// ===== Conversation Practice: Debrief =====
+
+app.post('/api/conversation/debrief', async (req, res) => {
+  try {
+    if (!req.body?.turns || !Array.isArray(req.body.turns)) {
+      return res.status(400).json({ error: 'turns array is required' });
+    }
+    const prompt = prompts.conversationDebriefPrompt(req.body);
+    const result = await callClaude(prompt, 2000);
+    res.json(result);
+  } catch (error) {
+    sendError(res, 500, error, 'Conversation debrief');
   }
 });
 
