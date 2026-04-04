@@ -573,6 +573,8 @@ SCENARIO GUIDELINES:
 - elevator_pitch: The agent is an investor, executive, or potential partner. The user has 60 seconds to hook them.
 - custom: Follow the custom instructions.
 
+This is a 5-MINUTE timed practice session. The agent should acknowledge the time constraint naturally in their opening — e.g. "I know we only have a few minutes..." or "Let's make the most of our time." This sets the pace and makes the user feel the urgency.
+
 The opening line should set the scene naturally — the agent speaks first, establishing the situation in 2-3 sentences. It should feel like the start of a real conversation, not a test prompt.
 
 Return ONLY valid JSON:
@@ -603,7 +605,7 @@ ${context.turns.map((t, i) => `${t.agentMessage ? `Agent: "${t.agentMessage}"` :
 
 USER JUST SAID: "${context.latestTranscript}"
 
-This is turn ${context.turnNumber} of ${context.maxTurns}.
+This is turn ${context.turnNumber} of ${context.maxTurns}. This is a 5-minute timed session — keep the pace tight and don't waste time.
 
 RESPONSE RULES:
 - Stay in character as ${context.agentPersona}. React to what they ACTUALLY said.
@@ -645,6 +647,14 @@ ${context.turns.map((t, i) => `Turn ${i + 1}:\nAgent: "${t.agentMessage}"\nUser:
 
 AGENT'S INTERNAL NOTES (observations during the conversation):
 ${context.internalNotes?.map((n, i) => `Turn ${i + 1}: ${n}`).join('\n') || 'None'}
+
+IMPORTANT — 5-MINUTE FORMAT:
+This was a 5-minute timed conversation. The conversation may have been cut off by the timer before reaching a natural conclusion. When scoring and analysing:
+- Consider what the user accomplished within the 5-minute window — don't penalise them for topics they didn't get to cover.
+- If the conversation ends abruptly, note whether the user was building momentum or losing focus at the point of cutoff.
+- Evaluate pacing — did they use the limited time well? Did they get to the substance quickly or waste time on filler?
+- A shorter conversation with high-impact exchanges should score as well as or better than a longer, meandering one.
+- In the summary, comment on how effectively they used the 5 minutes — e.g. "You covered a lot of ground in 5 minutes" or "You spent too long on pleasantries and didn't get to your key points before time ran out."
 
 SCORING DIMENSIONS FOR CONVERSATION PRACTICE:
 1. CLARITY (1-10) — Were their points clear and easy to follow? Did they structure their thoughts or meander?
