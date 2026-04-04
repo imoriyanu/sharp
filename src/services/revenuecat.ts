@@ -84,20 +84,12 @@ export async function checkEntitlement(): Promise<boolean> {
 // ===== Offerings — fetch real prices from the store =====
 
 export async function getOfferings(): Promise<any | null> {
-  if (!_configured) {
-    console.log('RevenueCat: not configured, API_KEY=', API_KEY ? 'SET' : 'EMPTY');
-    return null;
-  }
+  if (!_configured) return null;
   try {
     const offerings = await Purchases.getOfferings();
-    console.log('RevenueCat: offerings raw:', JSON.stringify(offerings, null, 2));
-    console.log('RevenueCat: current offering:', offerings.current ? 'EXISTS' : 'NULL');
-    if (offerings.current) {
-      console.log('RevenueCat: packages:', offerings.current.availablePackages?.length);
-    }
     return offerings.current;
   } catch (e) {
-    console.warn('RevenueCat: getOfferings failed:', e);
+    __DEV__ && console.warn('RevenueCat: getOfferings failed:', e);
     return null;
   }
 }
