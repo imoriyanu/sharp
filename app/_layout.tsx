@@ -1,19 +1,33 @@
-import { useEffect, useState } from 'react';
-import { View } from 'react-native';
-import { Stack, usePathname, useRouter } from 'expo-router';
+import { useEffect, useState, useRef } from 'react';
+import { View, AppState } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../src/constants/theme';
-import { stopAudio } from '../src/services/tts';
+import { warmUpAudioMode } from '../src/services/tts';
 import { hasOnboarded, clearStaleThread } from '../src/services/storage';
-import { initPremium } from '../src/services/premium';
+import { initPremium, syncFromRevenueCat } from '../src/services/premium';
 import { initErrorTracking } from '../src/services/errorTracking';
 import { initAnalytics, trackEvent, Events } from '../src/services/analytics';
 import { registerForPushNotifications, savePushToken } from '../src/services/notifications';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
 function AudioGuard() {
-  const pathname = usePathname();
-  useEffect(() => { stopAudio(); }, [pathname]);
+  useEffect(() => { warmUpAudioMode(); }, []);
+  return null;
+}
+
+// Sync premium status when app comes back to foreground
+function PremiumSync() {
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        syncFromRevenueCat();
+      }
+      appState.current = nextState;
+    });
+    return () => sub.remove();
+  }, []);
   return null;
 }
 
@@ -57,6 +71,7 @@ export default function RootLayout() {
     <>
       <StatusBar style="dark" />
       <AudioGuard />
+      <PremiumSync />
       <AuthProvider>
       <PushRegistration />
       <OnboardingGate>
@@ -85,6 +100,9 @@ export default function RootLayout() {
           <Stack.Screen name="one-shot/coaching" />
           <Stack.Screen name="threaded/follow-up" />
           <Stack.Screen name="threaded/debrief" />
+          <Stack.Screen name="conversation/setup" />
+          <Stack.Screen name="conversation/live" />
+          <Stack.Screen name="conversation/debrief" />
           <Stack.Screen name="context/setup" options={{ presentation: 'modal' }} />
           <Stack.Screen name="duel/create" options={{ presentation: 'modal' }} />
           <Stack.Screen name="duel/accept" options={{ presentation: 'modal' }} />

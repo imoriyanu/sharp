@@ -6,7 +6,7 @@ import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAud
 import * as Haptics from 'expo-haptics';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
-import { stopAudio, playQuestionAudio, buildNaturalScript, getQuestionVoiceMode } from '../../src/services/tts';
+import { stopAudio, playQuestionAudio, buildNaturalScript, getQuestionVoiceMode, prefetchAudio, resetAudioModeFlag } from '../../src/services/tts';
 import { generateQuestion } from '../../src/services/scoring';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
@@ -56,6 +56,8 @@ export default function DailyChallengeScreen() {
       if (cached) {
         const t = cached.question.timerSeconds || DEFAULT_TIMER;
         if (!mountedRef.current) return;
+        // Start TTS download immediately
+        prefetchAudio(buildNaturalScript(cached.question), getQuestionVoiceMode(cached.question));
         setQ(cached.question);
         setTimerMax(t);
         setTimeLeft(t);
@@ -82,6 +84,9 @@ export default function DailyChallengeScreen() {
         sessionHistory,
         averageScores: averageScores || undefined,
       }, signal);
+
+      // Start TTS download in parallel with caching
+      prefetchAudio(buildNaturalScript(result), getQuestionVoiceMode(result));
 
       // Cache for the day and track for variety
       await cacheDailyQuestion(result);
@@ -172,6 +177,7 @@ export default function DailyChallengeScreen() {
     try {
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
     } catch {}
+    resetAudioModeFlag();
 
     try {
       if (!uri) throw new Error('No recording URI');
@@ -218,6 +224,9 @@ export default function DailyChallengeScreen() {
         turns: [{ id: generateId(), turnNumber: 1, question: q?.question || '', questionReasoning: '', questionTargets: 'concision', questionDifficulty: 5, transcript: text, recordingUri: uri, scores: result.scores, overall: result.overall, summary: result.summary, coachingInsight: result.coachingInsight, awarenessNote: result.awarenessNote, snippet: result.weakestSnippet }],
         createdAt: new Date().toISOString(),
       });
+
+      // Pre-fetch results audio
+      if (result.coachingInsight) prefetchAudio(result.coachingInsight, 'coaching');
 
       // Only navigate if still on this screen
       if (!mountedRef.current) return;

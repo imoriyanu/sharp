@@ -9,7 +9,7 @@ import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '..
 import { FadeIn, AudioWaveBars, PulseDot, LoadingScreen } from '../../src/components/Animations';
 import { SharpFox, SpeechBubble } from '../../src/components/Illustrations';
 import { getContext, saveContext, removeDocument } from '../../src/services/storage';
-import { playQuestionAudio, stopAudio } from '../../src/services/tts';
+import { playQuestionAudio, stopAudio, prefetchAudio } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { isPremium } from '../../src/services/premium';
 import { trackEvent, Events } from '../../src/services/analytics';
@@ -17,9 +17,9 @@ import type { UserContext } from '../../src/types';
 
 const FIELDS = [
   { key: 'roleText' as const, question: "So, what's your thing? Are you working somewhere, studying, building something on the side? Just give me the gist.", label: 'What you do', emoji: '👤', placeholder: 'e.g. Product manager, final-year student, freelance designer, between roles' },
-  { key: 'currentCompany' as const, question: "And where's that? Could be a company, a uni, your own project — wherever you spend your days.", label: 'Where you are', emoji: '🏢', placeholder: 'e.g. Stripe, University of Manchester, self-employed, exploring' },
-  { key: 'situationText' as const, question: "What's on the horizon for you? Anything you're gearing up for — interviews, a promotion, a big presentation, something else?", label: 'What\'s coming up', emoji: '🎯', placeholder: 'e.g. Graduate interviews next month, staff promotion panel, investor pitch' },
-  { key: 'dreamRoleAndCompany' as const, question: "Last one — if you could fast-forward and land anywhere, where would that be? Dream role, dream company, whatever comes to mind.", label: 'Where you\'re headed', emoji: '✨', placeholder: 'e.g. Engineering Manager at Anthropic, founder of my own startup' },
+  { key: 'currentCompany' as const, question: "And where's that? Could be a company, a uni, your own project, wherever you spend your days.", label: 'Where you are', emoji: '🏢', placeholder: 'e.g. Stripe, University of Manchester, self-employed, exploring' },
+  { key: 'situationText' as const, question: "What's on the horizon for you? Anything you're gearing up for, like interviews, a promotion, a big presentation, something like that?", label: 'What\'s coming up', emoji: '🎯', placeholder: 'e.g. Graduate interviews next month, staff promotion panel, investor pitch' },
+  { key: 'dreamRoleAndCompany' as const, question: "Last one. If you could fast-forward and land anywhere, where would that be? Dream role, dream company, whatever comes to mind.", label: 'Where you\'re headed', emoji: '✨', placeholder: 'e.g. Engineering Manager at Anthropic, founder of my own startup' },
 ];
 
 type ContextKey = typeof FIELDS[number]['key'];
@@ -49,10 +49,15 @@ export default function ContextSetupScreen() {
   useEffect(() => {
     if (!isPremium()) { router.replace('/premium'); return; }
     mountedRef.current = true;
+
+    // Pre-fetch ALL voice questions immediately on mount, before we even know if voice mode is needed
+    const greeting = "Hey! I just need to know a bit about you so I can make your practice actually relevant. Four quick questions, just talk to me like you would a friend. ";
+    prefetchAudio(greeting + FIELDS[0].question, 'question');
+    FIELDS.slice(1).forEach(f => prefetchAudio(f.question, 'question'));
+
     getContext().then(c => {
       if (c) setCtx(c);
       setLoaded(true);
-      // If no context exists, start voice setup
       if (!c || !hasExistingContext(c)) {
         setMode('voice');
       }
@@ -75,7 +80,7 @@ export default function ContextSetupScreen() {
   async function speakQuestion() {
     if (voiceStep >= FIELDS.length) return;
     setRecState('speaking');
-    const greeting = voiceStep === 0 ? "Hey! I just need to know a bit about you so I can make your practice actually relevant. Four quick questions — just talk to me like you would a friend. " : '';
+    const greeting = voiceStep === 0 ? "Hey! I just need to know a bit about you so I can make your practice actually relevant. Four quick questions, just talk to me like you would a friend. " : '';
     const played = await playQuestionAudio(greeting + FIELDS[voiceStep].question);
     if (mountedRef.current) {
       // If TTS failed, skip straight to ready state so user can type/record

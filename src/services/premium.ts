@@ -28,6 +28,7 @@ export const FREE_LIMITS: UsageLimits = {
   threadedPerWeek: 0,
   practiceAgainPerDay: 0,
   industryPerDay: 0,
+  conversationsPerDay: 0,
   regeneratesPerDay: 0,
   canAddContext: false,
   canViewSummary: false,
@@ -40,6 +41,7 @@ export const PREMIUM_LIMITS: UsageLimits = {
   threadedPerWeek: 999,
   practiceAgainPerDay: 10,
   industryPerDay: 5,
+  conversationsPerDay: 1,
   regeneratesPerDay: 2,
   canAddContext: true,
   canViewSummary: true,
@@ -163,6 +165,7 @@ interface DailyUsage {
   oneShots: number;
   threaded: number;
   industry: number;
+  conversations: number;
   regenerates: number;
   practiceAgain: number;
   threadedThisWeek: number;
@@ -187,10 +190,10 @@ async function getUsage(): Promise<DailyUsage> {
       }
     }
 
-    return { date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0, practiceAgain: 0, threadedThisWeek: 0, weekStart };
+    return { date: today, oneShots: 0, threaded: 0, industry: 0, conversations: 0, regenerates: 0, practiceAgain: 0, threadedThisWeek: 0, weekStart };
   } catch {
     const today = localDateStr();
-    return { date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0, practiceAgain: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
+    return { date: today, oneShots: 0, threaded: 0, industry: 0, conversations: 0, regenerates: 0, practiceAgain: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
   }
 }
 
@@ -267,6 +270,17 @@ export async function canDoIndustry(): Promise<{ allowed: boolean; used: number;
 
 export function trackIndustryUsage(): Promise<void> {
   return withUsageLock(async () => { const u = await getUsage(); u.industry = (u.industry || 0) + 1; await saveUsage(u); });
+}
+
+export async function canDoConversation(): Promise<{ allowed: boolean; used: number; limit: number }> {
+  const limits = getLimits();
+  if (limits.conversationsPerDay === 0) return { allowed: false, used: 0, limit: 0 };
+  const usage = await getUsage();
+  return { allowed: (usage.conversations || 0) < limits.conversationsPerDay, used: usage.conversations || 0, limit: limits.conversationsPerDay };
+}
+
+export function trackConversationUsage(): Promise<void> {
+  return withUsageLock(async () => { const u = await getUsage(); u.conversations = (u.conversations || 0) + 1; await saveUsage(u); });
 }
 
 // Regenerate is PER QUESTION — tracked in-memory, resets on new question load

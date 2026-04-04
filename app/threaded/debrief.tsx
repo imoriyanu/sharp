@@ -30,7 +30,7 @@ export default function DebriefScreen() {
 
   useEffect(() => {
     if (debrief?.summary) {
-      playCoachingAudio(debrief.summary).then((played) => { if (!played) setTextOnly(true); });
+      playCoachingAudio(debrief.summary).catch(() => false).then((played) => { if (!played) setTextOnly(true); });
     }
     return () => { stopAudio(); };
   }, []);

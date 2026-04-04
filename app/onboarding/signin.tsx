@@ -91,7 +91,7 @@ export default function OnboardingSignIn() {
           </FadeIn>
           <FadeIn delay={300}>
             <TouchableOpacity style={s.primaryBtn} onPress={() => { setConfirmEmail(false); setMode('signin'); }} activeOpacity={0.8}>
-              <Text style={s.primaryBtnText}>I've confirmed — sign in</Text>
+              <Text style={s.primaryBtnText}>I've confirmed, sign in</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setConfirmEmail(false)} activeOpacity={0.7} style={s.ghostLink}>
               <Text style={s.ghostLinkText}>Go back</Text>

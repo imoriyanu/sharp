@@ -33,7 +33,7 @@ export default function OnboardingName() {
             </FadeIn>
 
             <FadeIn delay={500}>
-              <SpeechBubble text={name.trim() ? `Nice to meet you, ${name.trim()}! 👋` : "First things first — what's your name?"} />
+              <SpeechBubble text={name.trim() ? `Nice to meet you, ${name.trim()}! 👋` : "First things first. What's your name?"} />
             </FadeIn>
 
             <FadeIn delay={800}>

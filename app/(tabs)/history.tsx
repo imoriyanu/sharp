@@ -8,8 +8,9 @@ import { FadeIn } from '../../src/components/Animations';
 import { getSessions } from '../../src/services/storage';
 import type { SessionSummary } from '../../src/types';
 
-const TYPE_LABELS: Record<string, string> = { daily_30: 'Daily', one_shot: 'One Shot', threaded: 'Threaded', duel: 'Duel' };
-const TYPE_EMOJI: Record<string, string> = { daily_30: '☀️', one_shot: '⚡', threaded: '⚓', duel: '⚔️' };
+const TYPE_LABELS: Record<string, string> = { daily_30: 'Daily', one_shot: 'One Shot', threaded: 'Threaded', duel: 'Duel', conversation: 'Conversation' };
+const TYPE_EMOJI: Record<string, string> = { daily_30: '☀️', one_shot: '⚡', threaded: '⚓', duel: '⚔️', conversation: '💬' };
+const TYPE_BG: Record<string, string> = { daily_30: colors.daily.bg, threaded: colors.feedback.positiveBg, duel: colors.duel.bg, conversation: colors.duel.bg };
 
 export default function HistoryScreen() {
   const router = useRouter();
@@ -31,7 +32,7 @@ export default function HistoryScreen() {
 
   const renderItem = useCallback(({ item: sess }: { item: SessionSummary }) => (
     <TouchableOpacity style={s.item} onPress={() => router.push(`/session/${sess.id}`)} activeOpacity={0.7}>
-      <View style={[s.typeIcon, { backgroundColor: sess.type === 'daily_30' ? colors.daily.bg : sess.type === 'threaded' ? colors.feedback.positiveBg : colors.accent.light }]}>
+      <View style={[s.typeIcon, { backgroundColor: TYPE_BG[sess.type] || colors.accent.light }]}>
         <Text style={s.typeEmoji}>{TYPE_EMOJI[sess.type] || '⚡'}</Text>
       </View>
       <View style={s.itemInfo}>

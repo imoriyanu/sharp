@@ -6,7 +6,7 @@ import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAud
 import * as Haptics from 'expo-haptics';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
-import { stopAudio } from '../../src/services/tts';
+import { stopAudio, prefetchAudio, resetAudioModeFlag } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer, generateFollowUp, generateDebrief, computeProgressScore } from '../../src/services/scoring';
 import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache, clearIndustryQuestionCache, getThreadState, saveThreadState, clearThreadState, getSessions, getSessionById } from '../../src/services/storage';
@@ -116,6 +116,7 @@ export default function RecordingScreen() {
     try {
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
     } catch {}
+    resetAudioModeFlag(); // So TTS reconfigures for speaker output
 
     try {
       if (!uri) throw new Error('No URI');
@@ -182,6 +183,9 @@ export default function RecordingScreen() {
 
           await clearThreadState();
 
+          // Pre-fetch debrief audio
+          if (debrief.summary) prefetchAudio(debrief.summary, 'coaching');
+
           // Only navigate if still on this screen
           if (!mountedRef.current) return;
 
@@ -207,6 +211,10 @@ export default function RecordingScreen() {
             previousTranscripts: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
             turnNumber: turnNumber + 1,
           });
+
+          // Pre-fetch follow-up audio
+          const followUpSpoken = `${followUp.reaction || ''} ${followUp.followUp || ''}`.trim();
+          if (followUpSpoken) prefetchAudio(followUpSpoken, 'followup');
 
           if (!mountedRef.current) return;
 
@@ -252,6 +260,13 @@ export default function RecordingScreen() {
         sessionCount: sessions.length,
         recentScores,
       });
+
+      // Pre-fetch results audio — text MUST match exactly what results screen builds
+      const pfScoreWord = result.overall >= 7.5 ? 'Really solid work.' : result.overall >= 5.5 ? 'OK, not bad.' : 'Alright, let\'s break this down.';
+      const pfPositives = result.positives || 'You made an effort and that counts.';
+      const pfImprove = result.improvements ? `Now, ${result.improvements}` : '';
+      const pfInsight = result.coachingInsight ? `Here's the key takeaway: ${result.coachingInsight}` : '';
+      prefetchAudio(`${pfScoreWord} ${pfPositives} ${pfImprove} ${pfInsight}`, 'coaching');
 
       trackEvent(Events.SESSION_COMPLETED, { mode: params.mode, score: result.overall });
       await Promise.all([clearOneShotQuestionCache(), clearIndustryQuestionCache()]);

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature, UploadedDocument } from '../types';
+import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature, UploadedDocument, ConversationState } from '../types';
 import { STREAK_BADGES } from '../constants/badges';
 import { syncProfileToCloud, syncContextToCloud, syncSessionToCloud, syncStreakToCloud, syncBadgeToCloud, syncDailyResultToCloud, migrateLocalToCloud, uploadDocumentToStorage, syncDocumentToCloud, deleteDocumentFromCloud } from './sync';
 
@@ -151,6 +151,15 @@ export async function saveSession(session: Session): Promise<void> {
     AsyncStorage.setItem(KEYS.SESSION_DETAIL + session.id, JSON.stringify(session)),
   ]);
   syncQuietly(syncSessionToCloud(session), 'session');
+}
+
+export async function updateSessionScore(sessionId: string, overall: number): Promise<void> {
+  const sessions = await getSessions();
+  const idx = sessions.findIndex(s => s.id === sessionId);
+  if (idx !== -1) {
+    sessions[idx].overall = overall;
+    await AsyncStorage.setItem(KEYS.SESSIONS, JSON.stringify(sessions));
+  }
 }
 
 export async function getSessionById(id: string): Promise<Session | null> {
@@ -567,6 +576,23 @@ export async function addRecentQuestion(question: string): Promise<void> {
   const recent = await getRecentQuestions();
   recent.unshift(question);
   await AsyncStorage.setItem(KEYS.RECENT_QUESTIONS, JSON.stringify(recent.slice(0, 20)));
+}
+
+// ===== Conversation State (persisted across screens during a conversation) =====
+
+const CONVERSATION_KEY = 'sharp:active_conversation';
+
+export async function getConversationState(): Promise<ConversationState | null> {
+  const raw = await AsyncStorage.getItem(CONVERSATION_KEY);
+  return safeParse(raw, null);
+}
+
+export async function saveConversationState(state: ConversationState): Promise<void> {
+  await AsyncStorage.setItem(CONVERSATION_KEY, JSON.stringify(state));
+}
+
+export async function clearConversationState(): Promise<void> {
+  await AsyncStorage.removeItem(CONVERSATION_KEY);
 }
 
 // ===== Thread State (persisted across screens during a threaded session) =====

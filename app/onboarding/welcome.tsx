@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,63 +24,148 @@ export default function OnboardingWelcome() {
 
   return (
     <SafeAreaView style={s.safe}>
-      <View style={s.container}>
-        <View style={s.center}>
-          <FadeIn>
-            <View style={s.celebRow}>
-              {pro && <ConfettiBurst />}
-              <SharpFox size={wp(140)} expression={pro ? 'celebrating' : 'happy'} />
-            </View>
-          </FadeIn>
-
-          <FadeIn delay={400}>
-            <Text style={s.heading}>{pro ? "You're Sharp Pro!" : `Welcome, ${name || 'friend'}!`}</Text>
-          </FadeIn>
-
-          <FadeIn delay={700}>
-            <Text style={s.sub}>
-              {pro
-                ? 'All features unlocked.\nYour journey to sharper communication starts now.'
-                : 'Your first Daily Challenge is waiting.\nCome back every day to build your streak.'}
-            </Text>
-          </FadeIn>
-
-          <FadeIn delay={1000}>
-            <View style={s.tipsCard}>
-              <Text style={s.tipsTitle}>Quick tips to get started</Text>
-              <View style={s.tipRow}><Text style={s.tipEmoji}>☀️</Text><Text style={s.tipText}>Do the Daily Challenge every day</Text></View>
-              <View style={s.tipRow}><Text style={s.tipEmoji}>🎧</Text><Text style={s.tipText}>Listen to model answers after each session</Text></View>
-              <View style={s.tipRow}><Text style={s.tipEmoji}>🔥</Text><Text style={s.tipText}>Build a streak — unlock badges along the way</Text></View>
-            </View>
-          </FadeIn>
-        </View>
-
-        <FadeIn delay={1300}>
-          <TouchableOpacity style={s.cta} onPress={finish} activeOpacity={0.8}>
-            <Text style={s.ctaText}>Let's go!</Text>
-          </TouchableOpacity>
-          {!pro && (
-            <Text style={s.hint}>You can upgrade anytime in Settings</Text>
-          )}
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        <FadeIn>
+          <View style={s.celebRow}>
+            {pro && <ConfettiBurst />}
+            <SharpFox size={wp(110)} expression={pro ? 'celebrating' : 'happy'} />
+          </View>
         </FadeIn>
-      </View>
+
+        <FadeIn delay={400}>
+          <Text style={s.heading}>{pro ? "You're Sharp Pro!" : `You're in, ${name || 'friend'}.`}</Text>
+        </FadeIn>
+
+        <FadeIn delay={700}>
+          <Text style={s.sub}>
+            {pro
+              ? 'Full access unlocked. Deep practice, live conversations, pressure rounds. It all starts now.'
+              : 'Your first Daily Challenge is ready. Show up every day, speak for 30 seconds, and watch yourself get sharper.'}
+          </Text>
+        </FadeIn>
+
+        <FadeIn delay={1000}>
+          <View style={s.tipsCard}>
+            <Text style={s.tipsTitle}>YOUR GAME PLAN</Text>
+
+            <View style={s.tipRow}>
+              <View style={s.tipNum}><Text style={s.tipNumText}>1</Text></View>
+              <View style={s.tipContent}>
+                <Text style={s.tipTitle}>Do the Daily Challenge</Text>
+                <Text style={s.tipDesc}>30 seconds a day builds real muscle memory</Text>
+              </View>
+            </View>
+
+            <View style={s.tipRow}>
+              <View style={s.tipNum}><Text style={s.tipNumText}>2</Text></View>
+              <View style={s.tipContent}>
+                <Text style={s.tipTitle}>Review your coaching</Text>
+                <Text style={s.tipDesc}>Read the insight, listen to the model answer</Text>
+              </View>
+            </View>
+
+            <View style={s.tipRow}>
+              <View style={s.tipNum}><Text style={s.tipNumText}>3</Text></View>
+              <View style={s.tipContent}>
+                <Text style={s.tipTitle}>Build your streak</Text>
+                <Text style={s.tipDesc}>Consistency beats intensity every time</Text>
+              </View>
+            </View>
+          </View>
+        </FadeIn>
+      </ScrollView>
+
+      <FadeIn delay={1300}>
+        <View style={s.footer}>
+          <TouchableOpacity style={s.cta} onPress={finish} activeOpacity={0.8}>
+            <Text style={s.ctaText}>Start training</Text>
+          </TouchableOpacity>
+          {!pro && <Text style={s.hint}>Upgrade anytime in Settings</Text>}
+        </View>
+      </FadeIn>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.primary },
-  container: { flex: 1, padding: layout.screenPadding, justifyContent: 'space-between' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  celebRow: { alignItems: 'center', marginBottom: spacing.xl },
-  heading: { fontSize: fp(28), fontWeight: typography.weight.black, color: colors.text.primary, textAlign: 'center', letterSpacing: -0.5 },
-  sub: { fontSize: typography.size.sm, color: colors.text.tertiary, textAlign: 'center', lineHeight: fp(20), marginTop: spacing.md },
-  tipsCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, width: '100%', marginTop: spacing.xxl, ...shadows.sm },
-  tipsTitle: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.lg },
-  tipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
-  tipEmoji: { fontSize: fp(16) },
-  tipText: { fontSize: typography.size.sm, color: colors.text.secondary, fontWeight: typography.weight.semibold },
-  cta: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(18), alignItems: 'center', marginBottom: spacing.sm, ...shadows.accent },
+  scroll: { flexGrow: 1, padding: layout.screenPadding, justifyContent: 'center' },
+
+  celebRow: { alignItems: 'center', marginBottom: spacing.md },
+
+  heading: {
+    fontSize: fp(28),
+    fontWeight: typography.weight.black,
+    color: colors.text.primary,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  sub: {
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: fp(20),
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+
+  tipsCard: {
+    backgroundColor: colors.bg.secondary,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    marginTop: spacing.xl,
+    ...shadows.md,
+  },
+  tipsTitle: {
+    fontSize: fp(9),
+    fontWeight: typography.weight.black,
+    color: colors.accent.primary,
+    letterSpacing: 1.5,
+    marginBottom: spacing.md,
+  },
+  tipRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  tipNum: {
+    width: wp(28),
+    height: wp(28),
+    borderRadius: wp(14),
+    backgroundColor: colors.accent.light,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.accent.border,
+  },
+  tipNumText: {
+    fontSize: fp(12),
+    fontWeight: typography.weight.black,
+    color: colors.accent.primary,
+  },
+  tipContent: { flex: 1 },
+  tipTitle: {
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+  },
+  tipDesc: {
+    fontSize: typography.size.xs,
+    color: colors.text.tertiary,
+    marginTop: 2,
+    lineHeight: fp(16),
+  },
+
+  footer: { padding: layout.screenPadding, paddingTop: spacing.sm },
+  cta: {
+    backgroundColor: colors.accent.primary,
+    borderRadius: radius.lg,
+    paddingVertical: wp(18),
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    ...shadows.accent,
+  },
   ctaText: { fontSize: typography.size.md, fontWeight: typography.weight.bold, color: colors.text.inverse },
   hint: { fontSize: typography.size.xs, color: colors.text.muted, textAlign: 'center', paddingVertical: spacing.sm },
 });

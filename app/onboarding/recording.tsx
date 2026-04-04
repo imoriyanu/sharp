@@ -7,13 +7,13 @@ import * as Haptics from 'expo-haptics';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
 import { SharpFox, ProgressDots } from '../../src/components/Illustrations';
-import { stopAudio } from '../../src/services/tts';
+import { stopAudio, prefetchAudio, resetAudioModeFlag } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
 import { saveSession, generateId, setOnboardingStep } from '../../src/services/storage';
 
 const TIMER = 30;
-const QUESTION = 'Tell me about yourself — who are you and what you do?';
+const QUESTION = 'Tell me about yourself, who you are and what you do.';
 
 export default function OnboardingRecording() {
   const router = useRouter();
@@ -69,21 +69,26 @@ export default function OnboardingRecording() {
       recorderRef.current = null;
       if (!uri) throw new Error('No URI');
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      resetAudioModeFlag();
       const { transcript } = await transcribeAudio(uri);
       if (!mountedRef.current) return;
       const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
       if (wordCount < 5) {
-        setRetryMsg("That was a bit quick! Give yourself the full 30 seconds — there's no pressure.");
+        setRetryMsg("That was a bit quick! Give yourself the full 30 seconds, there's no pressure.");
         setState('ready'); setTimeLeft(TIMER); return;
       }
       const result = await scoreAnswer({ roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '', question: QUESTION, transcript, isOnboarding: true } as any);
       if (!mountedRef.current) return;
       await saveSession({ id: generateId(), type: 'one_shot', scenario: 'First impression', turns: [{ id: generateId(), turnNumber: 1, question: QUESTION, questionReasoning: '', questionTargets: 'substance', questionDifficulty: 3, transcript, recordingUri: uri, modelAnswer: result.modelAnswer || '', scores: result.scores, overall: result.overall, summary: result.summary, coachingInsight: result.coachingInsight, awarenessNote: result.awarenessNote, snippet: result.weakestSnippet }], createdAt: new Date().toISOString() });
       await setOnboardingStep(3);
+      // Pre-fetch results audio so it plays instantly on the result screen
+      if (result.coachingInsight) {
+        prefetchAudio(`Nice work on your first try! Here's your coaching insight: ${result.coachingInsight}`, 'coaching');
+      }
       router.replace({ pathname: '/onboarding/result', params: { scores: JSON.stringify(result.scores), overall: String(result.overall), positives: result.positives || '', improvements: result.improvements || '', coachingInsight: result.coachingInsight, communicationTip: result.communicationTip || '', modelAnswer: result.modelAnswer || '' } });
     } catch (e) {
       __DEV__ && console.error('Processing error:', e);
-      if (mountedRef.current) { setState('ready'); setRetryMsg('Something went wrong — please try again.'); }
+      if (mountedRef.current) { setState('ready'); setRetryMsg('Something went wrong. Please try again.'); }
     }
   }
 

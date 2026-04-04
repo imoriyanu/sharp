@@ -49,7 +49,7 @@ export default function FollowUpScreen() {
     const spoken = `${p.reaction || ''} ${p.question || ''}`.trim();
     if (!spoken) return;
     setSpeaking(true);
-    const played = await playFollowUpAudio(spoken);
+    const played = await playFollowUpAudio(spoken).catch(() => false);
     if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
   }
 

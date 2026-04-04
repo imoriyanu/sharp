@@ -72,16 +72,17 @@ export default function PremiumScreen() {
   async function handlePurchase() {
     const pkg = selected === 'monthly' ? packages.monthly : packages.annual;
 
-    // If RevenueCat not configured or no package, fall back to direct set (dev/testing)
     if (!rcEnabled || !pkg) {
-      setPurchasing(true);
-      try {
-        const expiresAt = selected === 'monthly'
-          ? new Date(Date.now() + 31 * 86400000).toISOString()
-          : new Date(Date.now() + 365 * 86400000).toISOString();
-        await setPremiumStatus(selected, expiresAt);
-        navigateAfterPurchase();
-      } catch { setPurchasing(false); }
+      if (__DEV__) {
+        // Dev only: mock purchase for testing
+        setPurchasing(true);
+        try {
+          await setPremiumStatus(selected, new Date(Date.now() + 31 * 86400000).toISOString());
+          navigateAfterPurchase();
+        } catch { setPurchasing(false); }
+      } else {
+        Alert.alert('Not available', 'Purchases are not available right now. Please try again later.');
+      }
       return;
     }
 
@@ -91,7 +92,7 @@ export default function PremiumScreen() {
       const { success } = await purchasePackage(pkg);
       if (success) {
         await setPremiumStatus(selected);
-        trackEvent(Events.PAYWALL_VIEWED, { purchased: true, plan: selected });
+        trackEvent(Events.PURCHASE_COMPLETED || Events.PAYWALL_VIEWED, { plan: selected, price: pkg.product?.priceString });
         navigateAfterPurchase();
       } else {
         // User cancelled — not an error

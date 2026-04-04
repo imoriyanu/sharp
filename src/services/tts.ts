@@ -4,15 +4,15 @@ import { getTtsUrl } from './api';
 import type { VoiceMode } from './api';
 import type { GeneratedQuestion } from '../types';
 
-// ===== Playback State =====
-// Single source of truth — prevents overlaps, ghost playback, and stale callbacks
+// ===== State =====
 
 let currentPlayer: ReturnType<typeof createAudioPlayer> | null = null;
-let playbackGeneration = 0; // Incremented on every stop/play — stale callbacks check this
+let playbackGeneration = 0;
 let isPlaying = false;
+let audioModeReady = false;
 
-// Cache: text+mode hash → local file URI
 const audioCache = new Map<string, string>();
+const prefetchPromises = new Map<string, Promise<string | null>>();
 
 function hashText(text: string, mode: VoiceMode = 'question'): string {
   let h = 0;
@@ -21,166 +21,138 @@ function hashText(text: string, mode: VoiceMode = 'question'): string {
   return String(Math.abs(h));
 }
 
-async function downloadAndCache(text: string, mode: VoiceMode, gen: number, signal?: AbortSignal): Promise<string | null> {
-  const key = hashText(text, mode);
-  const cached = audioCache.get(key);
-  if (cached) {
-    const info = await FileSystem.getInfoAsync(cached);
-    if (info.exists) return cached;
-    audioCache.delete(key);
-  }
+// ===== Audio mode =====
 
-  // Check if we've been cancelled during cache lookup
-  if (gen !== playbackGeneration || signal?.aborted) return null;
-
-  const url = getTtsUrl(text, mode);
-  const filename = `${FileSystem.cacheDirectory}tts_${key}.mp3`;
-
+async function ensureAudioMode(): Promise<void> {
+  if (audioModeReady) return;
   try {
-    // Race the download against the abort signal so we bail immediately on navigation
-    const downloadPromise = FileSystem.downloadAsync(url, filename);
-    let result: Awaited<typeof downloadPromise>;
-
-    if (signal) {
-      const abortPromise = new Promise<null>((resolve) => {
-        if (signal.aborted) { resolve(null); return; }
-        signal.addEventListener('abort', () => resolve(null), { once: true });
-      });
-      const raced = await Promise.race([downloadPromise, abortPromise]);
-      if (!raced) return null; // Aborted
-      result = raced;
-    } else {
-      result = await downloadPromise;
-    }
-
-    if (gen !== playbackGeneration || signal?.aborted) return null;
-    if (result.status !== 200) return null;
-    audioCache.set(key, filename);
-    return filename;
-  } catch {
-    return null;
-  }
+    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+    audioModeReady = true;
+  } catch {}
 }
 
-// ===== Stop — always safe to call =====
+export function resetAudioModeFlag(): void { audioModeReady = false; }
+export function warmUpAudioMode(): void { ensureAudioMode(); }
+
+// ===== Stop =====
 
 export async function stopAudio(): Promise<void> {
-  playbackGeneration++; // Invalidate any in-flight downloads or callbacks
+  playbackGeneration++;
   isPlaying = false;
-
   if (currentPlayer) {
     try { currentPlayer.release(); } catch {}
     currentPlayer = null;
   }
 }
 
-// ===== Play — downloads, caches, plays with ElevenLabs =====
-// Returns true if audio played successfully, false if ElevenLabs failed (text-only mode)
+// ===== Download =====
+
+function downloadToCache(text: string, mode: VoiceMode): Promise<string | null> {
+  const key = hashText(text, mode);
+  const cached = audioCache.get(key);
+  if (cached) return Promise.resolve(cached);
+  const inflight = prefetchPromises.get(key);
+  if (inflight) return inflight;
+
+  // Truncate for URL safety — keep under 2000 chars encoded
+  const safeText = text.length > 800 ? text.slice(0, 800) : text;
+  const url = getTtsUrl(safeText, mode);
+  const filename = `${FileSystem.cacheDirectory}tts_${key}.mp3`;
+
+  const promise = FileSystem.downloadAsync(url, filename)
+    .then((result) => {
+      prefetchPromises.delete(key);
+      if (result.status === 200) { audioCache.set(key, filename); return filename; }
+      return null;
+    })
+    .catch(() => { prefetchPromises.delete(key); return null; });
+
+  prefetchPromises.set(key, promise);
+  return promise;
+}
+
+// ===== Prefetch =====
+
+export function prefetchAudio(text: string, mode: VoiceMode = 'coaching'): void {
+  downloadToCache(text, mode);
+}
+
+// ===== Play =====
+
+function playFile(source: string, gen: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (gen !== playbackGeneration) { resolve(false); return; }
+    try {
+      const player = createAudioPlayer(source);
+      if (gen !== playbackGeneration) { try { player.release(); } catch {} resolve(false); return; }
+      currentPlayer = player;
+      let done = false;
+      const finish = (ok: boolean) => {
+        if (done) return;
+        done = true;
+        if (currentPlayer === player) { try { player.release(); } catch {} currentPlayer = null; }
+        isPlaying = false;
+        resolve(ok);
+      };
+      const t = setTimeout(() => finish(true), 90_000);
+      player.addListener('playbackStatusUpdate', (status: any) => {
+        if (gen !== playbackGeneration) { clearTimeout(t); finish(false); return; }
+        if (status.didJustFinish) { clearTimeout(t); finish(true); }
+      });
+      player.play();
+    } catch { isPlaying = false; resolve(false); }
+  });
+}
 
 export async function playQuestionAudio(text: string, signal?: AbortSignal, mode: VoiceMode = 'question'): Promise<boolean> {
   await stopAudio();
   const gen = playbackGeneration;
   isPlaying = true;
-
   try {
-    await setAudioModeAsync({ playsInSilentMode: true });
-    if (gen !== playbackGeneration || signal?.aborted) return false;
-
-    const localUri = await downloadAndCache(text, mode, gen, signal);
+    await ensureAudioMode();
     if (gen !== playbackGeneration || signal?.aborted) { isPlaying = false; return false; }
-    if (!localUri) {
-      // ElevenLabs failed — don't fall back to device voice, just return false
-      isPlaying = false;
-      return false;
-    }
-
-    const player = createAudioPlayer(localUri);
-    if (gen !== playbackGeneration) { try { player.release(); } catch {} isPlaying = false; return false; }
-
-    currentPlayer = player;
-
-    return new Promise<boolean>((resolve) => {
-      const done = () => {
-        if (currentPlayer === player) {
-          try { player.release(); } catch {}
-          currentPlayer = null;
-        }
-        isPlaying = false;
-        resolve(true);
-      };
-
-      player.addListener('playbackStatusUpdate', (status: any) => {
-        if (gen !== playbackGeneration) { done(); return; }
-        if (status.didJustFinish) done();
-      });
-
-      player.play();
-    });
-  } catch {
-    isPlaying = false;
-    return false;
-  }
+    const localUri = await downloadToCache(text, mode);
+    if (gen !== playbackGeneration || signal?.aborted) { isPlaying = false; return false; }
+    if (!localUri) { isPlaying = false; return false; }
+    return playFile(localUri, gen);
+  } catch { isPlaying = false; return false; }
 }
 
-// ===== Convenience wrappers for voice modes =====
+// ===== Wrappers =====
 
 export async function playCoachingAudio(text: string, signal?: AbortSignal): Promise<boolean> {
   return playQuestionAudio(text, signal, 'coaching');
 }
-
 export async function playModelAudio(text: string, signal?: AbortSignal): Promise<boolean> {
   return playQuestionAudio(text, signal, 'model');
 }
-
 export async function playFollowUpAudio(text: string, signal?: AbortSignal): Promise<boolean> {
   return playQuestionAudio(text, signal, 'followup');
 }
-
 export async function playBriefingAudio(text: string, signal?: AbortSignal): Promise<boolean> {
   return playQuestionAudio(text, signal, 'briefing');
 }
-
-
-export function isAudioPlaying(): boolean {
-  return isPlaying;
-}
+export function isAudioPlaying(): boolean { return isPlaying; }
 
 // ===== Natural Script Builder =====
+// Deterministic — same question always produces same text (critical for cache hits)
 
-function getGreeting(): string {
-  const h = new Date().getHours();
-  const greetings = h < 12
-    ? ['Good morning.', 'Morning!', 'Hey, good morning.']
-    : h < 17
-    ? ['Good afternoon.', 'Hey there.', 'Alright, afternoon session.']
-    : ['Good evening.', 'Hey, evening session.', 'Alright, let\'s go.'];
-  return greetings[Math.floor(Math.random() * greetings.length)];
+function seedFromText(text: string): number {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+  return Math.abs(h);
 }
 
 export function buildNaturalScript(q: GeneratedQuestion): string {
-  const greeting = getGreeting();
+  const seed = seedFromText(q.question);
+  // Time-independent greetings — avoids cache busting when the hour changes
+  const greetings = ['Alright.', 'OK.', 'Right.', 'So.', 'Hey.'];
+  const greeting = greetings[seed % greetings.length];
   const format = q.format || 'prompt';
-
-  const transitions = [
-    'Here\'s what I want you to do.',
-    'So here\'s the challenge.',
-    'Ready? Here it is.',
-    'Let me set the scene.',
-    'OK so picture this.',
-    'Alright, here\'s the scenario.',
-  ];
-  const intros = [
-    'I want you to think about this.',
-    'Here\'s a question for you.',
-    'Tell me this.',
-    'I\'ve got something for you.',
-    'Here\'s what I\'m curious about.',
-    'Think about this one.',
-  ];
-  const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+  const pick = (arr: string[]) => arr[seed % arr.length];
 
   if (format === 'roleplay' || format === 'pressure') {
-    return `${greeting} ${pick(transitions)} ${q.situation || ''} ${q.question}`;
+    return `${greeting} ${pick(['Here\'s the scenario.', 'Ready? Here it is.', 'OK so picture this.'])} ${q.situation || ''} ${q.question}`;
   }
   if (format === 'briefing') {
     return `${greeting} OK, so here's some context. ${q.background || ''} Now, ${q.question}`;
@@ -188,11 +160,9 @@ export function buildNaturalScript(q: GeneratedQuestion): string {
   if (format === 'context') {
     return `${greeting} This one's about you. ${q.question}`;
   }
-  // Simple prompt — keep it light
-  return `${greeting} ${pick(intros)} ${q.question}`;
+  return `${greeting} ${pick(['Here\'s a question for you.', 'Tell me this.', 'I\'ve got something for you.'])} ${q.question}`;
 }
 
-// Returns the voice mode appropriate for a question format
 export function getQuestionVoiceMode(q: GeneratedQuestion): VoiceMode {
   const format = q.format || 'prompt';
   if (format === 'briefing' || format === 'industry') return 'briefing';

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, FadeIn } from '../../src/components/Animations';
 import { generateQuestion } from '../../src/services/scoring';
-import { playQuestionAudio, stopAudio, buildNaturalScript, getQuestionVoiceMode } from '../../src/services/tts';
+import { playQuestionAudio, stopAudio, buildNaturalScript, getQuestionVoiceMode, prefetchAudio } from '../../src/services/tts';
 import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion, getCachedIndustryQuestion, cacheIndustryQuestion, clearIndustryQuestionCache, saveThreadState, clearThreadState, getRecentSessionHistory, getAverageScores } from '../../src/services/storage';
 import { isPremium, canRegenerate, trackRegenerateUsage, trackIndustryUsage, resetRegenCount } from '../../src/services/premium';
 import type { GeneratedQuestion } from '../../src/types';
@@ -51,6 +51,8 @@ export default function QuestionScreen() {
           : await getCachedOneShotQuestion();
         if (cached) {
           if (!mountedRef.current) return;
+          // Start TTS download immediately — runs in parallel with UI render
+          prefetchAudio(buildNaturalScript(cached), getQuestionVoiceMode(cached));
           setQuestion(cached);
           setLoading(false);
           setRegenerating(false);
@@ -78,6 +80,9 @@ export default function QuestionScreen() {
         averageScores: averageScores || undefined,
         ...(isIndustry ? { forceFormat: 'industry' } : {}),
       }, signal);
+      // Start TTS download NOW — runs while we cache the question and render UI
+      prefetchAudio(buildNaturalScript(q), getQuestionVoiceMode(q));
+
       await addRecentQuestion(q.question);
 
       // Cache it — each mode has its own cache

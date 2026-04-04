@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { ScoreReveal, FadeIn } from '../../src/components/Animations';
-import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio } from '../../src/services/tts';
+import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio, prefetchAudio } from '../../src/services/tts';
 import { isPremium, canPracticeAgain, trackPracticeAgainUsage } from '../../src/services/premium';
 
 const DIMS = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
@@ -53,6 +53,11 @@ export default function ResultsScreen() {
     mountedRef.current = true;
     speakFullFeedback();
     checkPracticeRemaining();
+    // Pre-fetch all listenable audio so tap-to-play is instant
+    if (modelAnswer) prefetchAudio(`Here's how I'd say it. ${modelAnswer}`, 'model');
+    if (positives) prefetchAudio(positives, 'coaching');
+    if (improvements) prefetchAudio(improvements, 'coaching');
+    if (insight) prefetchAudio(insight, 'coaching');
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
 
@@ -73,7 +78,7 @@ export default function ResultsScreen() {
     const spoken = `${scoreWord} ${positivePart} ${improvePart} ${insightPart}`;
     if (!mountedRef.current) return;
     setPlaying('feedback');
-    const played = await playCoachingAudio(spoken);
+    const played = await playCoachingAudio(spoken).catch(() => false);
     if (mountedRef.current) { setPlaying(null); if (!played) setTextOnly(true); }
   }
 
@@ -83,8 +88,8 @@ export default function ResultsScreen() {
     setPlaying(key);
     await stopAudio();
     const played = key === 'model'
-      ? await playModelAudio(`Here's how I'd say it. ${text}`)
-      : await playCoachingAudio(text);
+      ? await playModelAudio(`Here's how I'd say it. ${text}`).catch(() => false)
+      : await playCoachingAudio(text).catch(() => false);
     if (mountedRef.current) { setPlaying(null); if (!played) setTextOnly(true); }
   }
 

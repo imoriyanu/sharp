@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { getUserProfile, saveUserProfile, trackFeatureInterest } from '../../src/services/storage';
 import { isPremium, getPlanName, syncFromRevenueCat } from '../../src/services/premium';
-import { restorePurchases, isRevenueCatConfigured } from '../../src/services/revenuecat';
+import { restorePurchases, isRevenueCatConfigured, getManagementUrl } from '../../src/services/revenuecat';
 import { useAuth } from '../../src/context/AuthContext';
 import { signOut } from '../../src/services/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -156,6 +156,21 @@ export default function SettingsScreen() {
               <Text style={[s.value, { color: colors.accent.primary, fontWeight: typography.weight.bold }]}>Upgrade →</Text>
             )}
           </TouchableOpacity>
+          {isPremium() && (
+            <TouchableOpacity style={[s.row, s.rowLast]} onPress={async () => {
+              const url = await getManagementUrl();
+              if (url) {
+                const { Linking } = require('react-native');
+                Linking.openURL(url);
+              } else {
+                const { Linking } = require('react-native');
+                Linking.openURL('https://apps.apple.com/account/subscriptions');
+              }
+            }}>
+              <Text style={s.label}>Manage subscription</Text>
+              <Text style={s.value}>→</Text>
+            </TouchableOpacity>
+          )}
           {!isPremium() && isRevenueCatConfigured() && (
             <TouchableOpacity style={[s.row, s.rowLast]} onPress={async () => {
               const planId = await restorePurchases();

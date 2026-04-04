@@ -212,6 +212,67 @@ export function FadeIn({ delay = 0, duration = 400, children, style }: {
   );
 }
 
+// ===== Pulsing Rings — expanding rings for speaking/listening indicators =====
+
+export function PulsingRings({ active, color = colors.accent.primary, size = wp(150) }: {
+  active: boolean; color?: string; size?: number;
+}) {
+  const s1 = useRef(new Animated.Value(1)).current;
+  const s2 = useRef(new Animated.Value(1)).current;
+  const o1 = useRef(new Animated.Value(0)).current;
+  const o2 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!active) {
+      [s1, s2].forEach(v => v.setValue(1));
+      [o1, o2].forEach(v => v.setValue(0));
+      return;
+    }
+    const ring = (s: Animated.Value, o: Animated.Value, d: number) =>
+      Animated.loop(Animated.sequence([
+        Animated.delay(d),
+        Animated.parallel([
+          Animated.timing(s, { toValue: 1.45, duration: 1600, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+          Animated.sequence([
+            Animated.timing(o, { toValue: 0.15, duration: 200, useNativeDriver: true }),
+            Animated.timing(o, { toValue: 0, duration: 1400, useNativeDriver: true }),
+          ]),
+        ]),
+        Animated.timing(s, { toValue: 1, duration: 0, useNativeDriver: true }),
+      ]));
+    const a = ring(s1, o1, 0);
+    const b = ring(s2, o2, 800);
+    a.start(); b.start();
+    return () => { a.stop(); b.stop(); };
+  }, [active]);
+
+  return (
+    <>
+      <Animated.View style={[ringStyles.ring, { width: size, height: size, borderRadius: size / 2, backgroundColor: color, transform: [{ scale: s1 }], opacity: o1 }]} />
+      <Animated.View style={[ringStyles.ring, { width: size, height: size, borderRadius: size / 2, backgroundColor: color, transform: [{ scale: s2 }], opacity: o2 }]} />
+    </>
+  );
+}
+
+const ringStyles = StyleSheet.create({
+  ring: { position: 'absolute' },
+});
+
+// ===== Breathing Orb — gentle scale pulse for idle states =====
+
+export function BreathingOrb({ children }: { children: React.ReactNode }) {
+  const sc = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const a = Animated.loop(Animated.sequence([
+      Animated.timing(sc, { toValue: 1.03, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(sc, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ]));
+    a.start();
+    return () => a.stop();
+  }, []);
+  return <Animated.View style={{ transform: [{ scale: sc }] }}>{children}</Animated.View>;
+}
+
 // ===== Score Reveal — animated score counter =====
 
 export function ScoreReveal({ score, color, size = fp(36) }: { score: number; color: string; size?: number }) {

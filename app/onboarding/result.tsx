@@ -22,13 +22,12 @@ export default function OnboardingResult() {
 
   useEffect(() => {
     mountedRef.current = true;
-    const timer = setTimeout(async () => {
-      if (mountedRef.current && coachingInsight) {
-        const spoken = `Nice work on your first try! Here's your coaching insight: ${coachingInsight}`;
-        await playCoachingAudio(spoken);
-      }
-    }, 2500);
-    return () => { mountedRef.current = false; clearTimeout(timer); stopAudio(); };
+    // Play immediately — no delay. Prefetch from recording screen means audio is already cached.
+    if (coachingInsight) {
+      const spoken = `Nice work on your first try! Here's your coaching insight: ${coachingInsight}`;
+      playCoachingAudio(spoken).catch(() => {});
+    }
+    return () => { mountedRef.current = false; stopAudio(); };
   }, []);
 
   return (
@@ -52,7 +51,7 @@ export default function OnboardingResult() {
               <ScoreReveal score={overall} color={getScoreColor(overall)} size={fp(42)} />
             </View>
             <Text style={s.scoreContext}>
-              {overall >= 7 ? "Impressive start! You're a natural." : overall >= 5 ? "Solid foundation — real potential here." : "Great first step — everyone starts here."}
+              {overall >= 7 ? "You're a natural communicator. Imagine what daily practice could do." : overall >= 5 ? "Solid start. Most people score here, but the ones who train daily don't stay here." : "Every sharp speaker started right where you are. The difference is what happens next."}
             </Text>
           </View>
         </FadeIn>

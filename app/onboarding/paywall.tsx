@@ -51,13 +51,13 @@ export default function OnboardingPaywall() {
     const pkg = planId === 'monthly' ? packages.monthly : packages.annual;
 
     if (!rcEnabled || !pkg) {
-      // Dev/testing fallback
-      setPurchasing(true);
-      const expiresAt = planId === 'monthly'
-        ? new Date(Date.now() + 31 * 86400000).toISOString()
-        : new Date(Date.now() + 365 * 86400000).toISOString();
-      await setPremiumStatus(planId, expiresAt);
-      router.replace('/onboarding/welcome');
+      if (__DEV__) {
+        setPurchasing(true);
+        await setPremiumStatus(planId, new Date(Date.now() + 31 * 86400000).toISOString());
+        router.replace('/onboarding/welcome');
+      } else {
+        Alert.alert('Not available', 'Purchases are not available right now. Please try again later.');
+      }
       return;
     }
 

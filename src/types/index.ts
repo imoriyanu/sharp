@@ -19,6 +19,7 @@ export interface UsageLimits {
   threadedPerWeek: number;      // free only
   practiceAgainPerDay: number;
   industryPerDay: number;
+  conversationsPerDay: number;
   regeneratesPerDay: number;
   canAddContext: boolean;
   canViewSummary: boolean;
@@ -139,7 +140,7 @@ export interface ScoringResult {
 
 // ===== Session Types =====
 
-export type SessionType = 'daily_30' | 'one_shot' | 'threaded' | 'duel';
+export type SessionType = 'daily_30' | 'one_shot' | 'threaded' | 'duel' | 'conversation';
 
 export interface Session {
   id: string;
@@ -284,6 +285,56 @@ export interface SessionSummary {
   createdAt: string;
   duelOpponent?: string;
   duelResult?: 'win' | 'loss' | 'tie';
+}
+
+// ===== Conversation Practice Types =====
+
+export type ConversationScenario =
+  | 'job_interview'
+  | 'salary_negotiation'
+  | 'difficult_feedback'
+  | 'stakeholder_pushback'
+  | 'elevator_pitch'
+  | 'custom';
+
+export interface ConversationConfig {
+  scenario: ConversationScenario;
+  customPrompt?: string;
+  maxTurns: number; // 4-6
+}
+
+export interface ConversationTurn {
+  turnNumber: number;
+  agentMessage: string;    // What the AI agent said
+  userTranscript: string;  // What the user responded
+  timestamp: string;
+}
+
+export interface ConversationState {
+  id: string;
+  config: ConversationConfig;
+  turns: ConversationTurn[];
+  agentPersona: string;    // Agent's name/role
+  scenarioDescription: string;
+  startedAt: string;
+}
+
+export interface ConversationDebrief {
+  scores: {
+    clarity: number;          // 1-10
+    persuasiveness: number;   // 1-10
+    composure: number;        // 1-10
+    substance: number;        // 1-10
+    adaptability: number;     // 1-10
+  };
+  overall: number;
+  trajectory: 'improving' | 'declining' | 'steady';
+  summary: string;
+  strongestMoment: { turn: number; quote: string; why: string };
+  weakestMoment: { turn: number; quote: string; fix: string };
+  turnByTurn: { turn: number; note: string; score: number }[];
+  coachingInsight: string;
+  modelExchange?: string; // How an ideal version of the hardest turn would sound
 }
 
 // ===== Coming Soon Types =====

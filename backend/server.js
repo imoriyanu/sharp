@@ -36,8 +36,12 @@ const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_
 
 const app = express();
 
-// Security headers
-app.use(helmet());
+// Security headers — relaxed for API server (no HTML served)
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: false,
+}));
 
 // CORS — restrict to known origins in production
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
@@ -931,9 +935,11 @@ const VOICE_MODES = {
   },
 };
 
-app.get('/api/tts', async (req, res) => {
+// Support both GET (short text via query) and POST (long text via body)
+app.all('/api/tts', async (req, res) => {
   try {
-    const { text, mode } = req.query;
+    const text = req.body?.text || req.query.text;
+    const mode = req.body?.mode || req.query.mode;
     if (!text) {
       return res.status(400).json({ error: 'No text provided' });
     }
@@ -963,7 +969,7 @@ app.get('/api/tts', async (req, res) => {
           text: text,
           model_id: 'eleven_turbo_v2_5',
           voice_settings: voiceSettings,
-          optimize_streaming_latency: 3,
+          optimize_streaming_latency: 4,
         }),
       }
     );
@@ -974,18 +980,25 @@ app.get('/api/tts', async (req, res) => {
       throw new Error(`ElevenLabs error: ${error}`);
     }
 
-    // Stream audio back to client
+    // Stream audio to client — flush each chunk immediately for lowest latency
     res.set({
       'Content-Type': 'audio/mpeg',
       'Transfer-Encoding': 'chunked',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
     });
+    res.flushHeaders();
 
     const reader = response.body.getReader();
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (!res.writableEnded) res.write(value);
+        if (!res.writableEnded) {
+          res.write(value);
+          // Force flush to prevent Node buffering
+          if (typeof res.flush === 'function') res.flush();
+        }
       }
     } catch (streamErr) {
       logError('TTS stream error:', streamErr.message);

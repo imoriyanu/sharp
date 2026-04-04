@@ -84,3 +84,18 @@ export type VoiceMode = 'question' | 'coaching' | 'model' | 'followup' | 'briefi
 export function getTtsUrl(text: string, mode: VoiceMode = 'question'): string {
   return `${API_BASE}/api/tts?text=${encodeURIComponent(text)}&mode=${mode}`;
 }
+
+// POST-based TTS download — handles long text that won't fit in a URL
+export async function fetchTtsAudio(text: string, mode: VoiceMode = 'question'): Promise<ArrayBuffer | null> {
+  try {
+    const response = await fetch(`${API_BASE}/api/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, mode }),
+    });
+    if (!response.ok) return null;
+    return response.arrayBuffer();
+  } catch {
+    return null;
+  }
+}

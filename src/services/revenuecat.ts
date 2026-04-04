@@ -74,7 +74,7 @@ export async function checkEntitlement(): Promise<boolean> {
   if (!_configured) return false;
   try {
     const info = await Purchases.getCustomerInfo();
-    return info.entitlements.active['pro'] !== undefined;
+    return info.entitlements.active['Sharp Pro'] !== undefined;
   } catch (e) {
     __DEV__ && console.warn('RevenueCat: entitlement check failed:', e);
     return false;
@@ -84,12 +84,20 @@ export async function checkEntitlement(): Promise<boolean> {
 // ===== Offerings — fetch real prices from the store =====
 
 export async function getOfferings(): Promise<any | null> {
-  if (!_configured) return null;
+  if (!_configured) {
+    console.log('RevenueCat: not configured, API_KEY=', API_KEY ? 'SET' : 'EMPTY');
+    return null;
+  }
   try {
     const offerings = await Purchases.getOfferings();
+    console.log('RevenueCat: offerings raw:', JSON.stringify(offerings, null, 2));
+    console.log('RevenueCat: current offering:', offerings.current ? 'EXISTS' : 'NULL');
+    if (offerings.current) {
+      console.log('RevenueCat: packages:', offerings.current.availablePackages?.length);
+    }
     return offerings.current;
   } catch (e) {
-    __DEV__ && console.warn('RevenueCat: getOfferings failed:', e);
+    console.warn('RevenueCat: getOfferings failed:', e);
     return null;
   }
 }
@@ -100,7 +108,7 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; inf
   if (!_configured) return { success: false, info: null };
   try {
     const { customerInfo } = await Purchases.purchasePackage(pkg);
-    const hasPro = customerInfo.entitlements.active['pro'] !== undefined;
+    const hasPro = customerInfo.entitlements.active['Sharp Pro'] !== undefined;
     return { success: hasPro, info: customerInfo };
   } catch (e: any) {
     // User cancelled — not an error
@@ -115,7 +123,7 @@ export async function restorePurchases(): Promise<'monthly' | 'annual' | null> {
   if (!_configured) return null;
   try {
     const info = await Purchases.restorePurchases();
-    const pro = info.entitlements.active['pro'];
+    const pro = info.entitlements.active['Sharp Pro'];
     if (!pro) return null;
     // Detect plan from product identifier
     const productId = pro.productIdentifier || '';
@@ -133,7 +141,7 @@ export async function getDetectedPlanId(): Promise<'monthly' | 'annual'> {
   if (!_configured) return 'annual';
   try {
     const info = await Purchases.getCustomerInfo();
-    const pro = info.entitlements.active['pro'];
+    const pro = info.entitlements.active['Sharp Pro'];
     if (pro?.productIdentifier?.includes('monthly')) return 'monthly';
     return 'annual';
   } catch {

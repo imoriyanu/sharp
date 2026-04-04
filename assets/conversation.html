@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>* { margin: 0; padding: 0; } body { background: transparent; }</style>
+</head>
+<body>
+<script>
+  function post(type, data) {
+    window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...data }));
+  }
+
+  let conv = null;
+  let transcript = [];
+
+  window.addEventListener('message', handler);
+  document.addEventListener('message', handler);
+  function handler(e) {
+    try {
+      const m = JSON.parse(e.data);
+      if (m.type === 'start') startConversation(m);
+      else if (m.type === 'stop') stopConversation();
+    } catch {}
+  }
+
+  async function startConversation(cfg) {
+    post('status', { status: 'connecting' });
+    try {
+      if (!cfg.signedUrl) throw new Error('Missing signed URL');
+
+      // ── Mic ──
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+
+      // ── Audio contexts ──
+      const micCtx = new AudioContext({ sampleRate: 16000 });
+      await micCtx.resume();
+
+      // Playback context — we recreate this on interruption to flush queued audio
+      let playCtx = new AudioContext({ sampleRate: 16000 });
+      await playCtx.resume();
+      let nextPlayTime = 0;
+      let activeSources = []; // Track playing nodes so we can stop them
+
+      // ── Mic processing — always streams to ElevenLabs ──
+      const micSource = micCtx.createMediaStreamSource(stream);
+      let wsOpen = false;
+      let ws = null;
+
+      function sendAudioChunk(f32) {
+        if (!wsOpen || !ws) return;
+        const i16 = new Int16Array(f32.length);
+        for (let i = 0; i < f32.length; i++) {
+          i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32767 | 0));
+        }
+        const bytes = new Uint8Array(i16.buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        try { ws.send(JSON.stringify({ user_audio_chunk: btoa(binary) })); } catch {}
+      }
+
+      // Try AudioWorklet, fall back to ScriptProcessor
+      let processor;
+      try {
+        const code = 'class P extends AudioWorkletProcessor{process(i){if(i[0][0])this.port.postMessage(i[0][0]);return true}}registerProcessor("p",P);';
+        await micCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+        processor = new AudioWorkletNode(micCtx, 'p');
+        processor.port.onmessage = e => sendAudioChunk(e.data);
+      } catch {
+        processor = micCtx.createScriptProcessor(2048, 1, 1);
+        processor.onaudioprocess = e => sendAudioChunk(new Float32Array(e.inputBuffer.getChannelData(0)));
+      }
+      micSource.connect(processor);
+      processor.connect(micCtx.destination);
+
+      // ── Playback ──
+      function playAudioChunk(base64) {
+        try {
+          if (playCtx.state === 'suspended') playCtx.resume();
+
+          const raw = atob(base64);
+          const bytes = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+          const i16 = new Int16Array(bytes.buffer);
+          const f32 = new Float32Array(i16.length);
+          for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+
+          const buffer = playCtx.createBuffer(1, f32.length, 16000);
+          buffer.getChannelData(0).set(f32);
+          const sourceNode = playCtx.createBufferSource();
+          sourceNode.buffer = buffer;
+          sourceNode.connect(playCtx.destination);
+
+          const now = playCtx.currentTime;
+          if (nextPlayTime < now) nextPlayTime = now;
+          sourceNode.start(nextPlayTime);
+          nextPlayTime += buffer.duration;
+
+          // Track active sources for interruption flushing
+          activeSources.push(sourceNode);
+          sourceNode.onended = () => {
+            activeSources = activeSources.filter(s => s !== sourceNode);
+          };
+        } catch {}
+      }
+
+      // ── Flush all queued/playing audio (called on interruption) ──
+      function flushPlayback() {
+        // Stop all currently playing/scheduled sources
+        for (const src of activeSources) {
+          try { src.stop(); } catch {}
+          try { src.disconnect(); } catch {}
+        }
+        activeSources = [];
+        nextPlayTime = 0;
+
+        // Recreate playback context for a clean slate
+        try { playCtx.close(); } catch {}
+        playCtx = new AudioContext({ sampleRate: 16000 });
+        playCtx.resume().catch(() => {});
+      }
+
+      // ── WebSocket ──
+      ws = new WebSocket(cfg.signedUrl);
+      let agentSpeaking = false;
+
+      ws.onopen = () => {
+        wsOpen = true;
+        ws.send(JSON.stringify({
+          type: 'conversation_initiation_client_data',
+          conversation_config_override: {
+            agent: {
+              prompt: { prompt: cfg.systemPrompt || '' },
+              first_message: cfg.firstMessage || 'Hello, shall we get started?',
+              language: 'en',
+            },
+          },
+        }));
+      };
+
+      ws.onmessage = e => {
+        try {
+          const d = JSON.parse(e.data);
+
+          // Session established
+          if (d.type === 'conversation_initiation_metadata') {
+            post('status', { status: 'connected', conversationId: d.conversation_initiation_metadata_event?.conversation_id });
+          }
+
+          // Agent audio chunk — play it
+          if (d.type === 'audio' && d.audio_event?.audio_base_64) {
+            if (!agentSpeaking) {
+              agentSpeaking = true;
+              post('mode', { mode: 'speaking' });
+            }
+            playAudioChunk(d.audio_event.audio_base_64);
+          }
+
+          // Agent text response
+          if (d.type === 'agent_response') {
+            const txt = d.agent_response_event?.agent_response;
+            if (txt) {
+              transcript.push({ role: 'agent', message: txt });
+              post('message', { role: 'agent', message: txt });
+            }
+            // Agent finished speaking — switch to listening
+            if (d.agent_response_event?.end_of_response) {
+              agentSpeaking = false;
+              post('mode', { mode: 'listening' });
+            }
+          }
+
+          // User transcript (what ElevenLabs heard the user say)
+          if (d.type === 'user_transcript') {
+            const txt = d.user_transcription_event?.user_transcript;
+            if (txt) {
+              transcript.push({ role: 'user', message: txt });
+              post('message', { role: 'user', message: txt });
+            }
+          }
+
+          // User interrupted the agent — FLUSH audio immediately
+          if (d.type === 'interruption') {
+            flushPlayback();
+            agentSpeaking = false;
+            post('mode', { mode: 'listening' });
+          }
+
+          // Keepalive
+          if (d.type === 'ping') {
+            try { ws.send(JSON.stringify({ type: 'pong', event_id: d.ping_event?.event_id })); } catch {}
+          }
+
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        wsOpen = false;
+        post('transcript', { transcript });
+        post('status', { status: 'disconnected' });
+        cleanup();
+      };
+
+      ws.onerror = () => {
+        post('error', { message: wsOpen ? 'Connection lost.' : 'Could not connect.' });
+      };
+
+      function cleanup() {
+        try { stream.getTracks().forEach(t => t.stop()); } catch {}
+        try { micCtx.close(); } catch {}
+        try { playCtx.close(); } catch {}
+      }
+
+      conv = { ws, cleanup };
+
+    } catch (err) {
+      post('error', { message: err.message || 'Failed to start.' });
+    }
+  }
+
+  function stopConversation() {
+    if (conv) {
+      try { conv.ws.close(); } catch {}
+      try { conv.cleanup(); } catch {}
+      conv = null;
+    }
+    post('transcript', { transcript });
+    post('status', { status: 'ended' });
+  }
+
+  post('ready', {});
+</script>
+</body>
+</html>

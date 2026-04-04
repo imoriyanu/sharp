@@ -31,7 +31,7 @@ export default function DailyResultScreen() {
     getBestScoreThisWeek().then(setBestWeek);
     if (insight) {
       setSpeakingInsight(true);
-      playCoachingAudio(insight).then((played) => { setSpeakingInsight(false); if (!played) setTextOnly(true); });
+      playCoachingAudio(insight).catch(() => false).then((played) => { setSpeakingInsight(false); if (!played) setTextOnly(true); });
     }
     return () => { stopAudio(); };
   }, []);

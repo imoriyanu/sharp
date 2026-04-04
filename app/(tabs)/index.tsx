@@ -5,7 +5,8 @@ import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
-import { getStreak, getSessions, hasCompletedDailyToday, getContext, getUserProfile } from '../../src/services/storage';
+import { getStreak, getSessions, hasCompletedDailyToday, getContext, getUserProfile, getCachedDailyQuestion } from '../../src/services/storage';
+import { prefetchAudio, buildNaturalScript, getQuestionVoiceMode } from '../../src/services/tts';
 import { isPremium, canDoOneShot, canDoThreaded, canDoIndustry, checkPremiumStatus } from '../../src/services/premium';
 import { getCurrentBadge, getNextBadge } from '../../src/constants/badges';
 import { trackScreen } from '../../src/services/analytics';
@@ -54,6 +55,13 @@ export default function HomeScreen() {
     setDailyDone(dd);
     setContext(ctx);
     setProfile(prof);
+
+    // Pre-fetch daily challenge audio so it plays instantly when user taps Daily 30
+    if (!dd) {
+      getCachedDailyQuestion().then(cached => {
+        if (cached?.question) prefetchAudio(buildNaturalScript(cached.question), getQuestionVoiceMode(cached.question));
+      }).catch(() => {});
+    }
   }
 
   const currentBadge = getCurrentBadge(streak.currentStreak);
@@ -192,6 +200,21 @@ export default function HomeScreen() {
               )}
             </View>
             )}
+
+            {/* Row 3: Conversation Practice */}
+            <View style={st.practiceRow}>
+              <TouchableOpacity style={[st.modeCard, st.modeCardWide, !isPremium() && st.modeCardLocked]} onPress={() => {
+                if (!isPremium()) { router.push('/premium'); return; }
+                router.push('/conversation/setup');
+              }} activeOpacity={0.7}>
+                <View style={[st.modeIconWrap, st.modeIconConversation]}><Text style={st.modeIcon}>💬</Text></View>
+                <Text style={st.modeTitle}>Conversation</Text>
+                <Text style={st.modeDesc}>Live back-and-forth practice with an AI agent</Text>
+                <View style={st.modeDurBadge}>
+                  <Text style={st.modeDur}>{!isPremium() ? 'Pro' : '3-5 min'}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
         </FadeIn>
 
@@ -319,6 +342,8 @@ const st = StyleSheet.create({
   modeIconWrap: { width: wp(48), height: wp(48), borderRadius: wp(14), backgroundColor: colors.accent.light, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   modeIconThreaded: { backgroundColor: colors.feedback.positiveBg },
   modeIconIndustry: { backgroundColor: colors.industry.bg },
+  modeIconConversation: { backgroundColor: colors.duel.bg },
+  modeCardWide: { flex: 1 },
   modeIcon: { fontSize: fp(22) },
   modeTitle: { fontSize: typography.size.base, fontWeight: typography.weight.black, color: colors.text.primary },
   modeDesc: { fontSize: typography.size.xs, color: colors.text.tertiary, marginTop: wp(3) },

@@ -60,9 +60,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   updates: {
     url: 'https://u.expo.dev/12e05e54-293d-47be-8857-4ad2a55926ff',
   },
-  runtimeVersion: {
-    policy: 'appVersion',
-  },
+  runtimeVersion: '2.0.0',
   plugins: [
     'expo-router',
     ['expo-av', { microphonePermission: 'Sharp needs microphone access to record and analyse your spoken answers.' }],
