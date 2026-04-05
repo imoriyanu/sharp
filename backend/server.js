@@ -142,11 +142,13 @@ async function callClaude(prompt, maxTokens = 1500) {
   resetUsageIfNewDay();
   apiUsage.anthropic.calls++;
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
-    });
+    }, { signal: controller.signal }).finally(() => clearTimeout(timeout));
 
     // Track token usage
     if (response.usage) {
@@ -194,9 +196,13 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ===== API Usage Monitoring =====
+// ===== API Usage Monitoring (admin-only) =====
 
 app.get('/api/usage', (req, res) => {
+  const adminKey = process.env.ADMIN_API_KEY;
+  if (!adminKey || req.headers['x-admin-key'] !== adminKey) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   resetUsageIfNewDay();
   res.json({
     date: new Date().toISOString().split('T')[0],
@@ -696,10 +702,14 @@ app.get('/api/waitlist/count', (req, res) => {
 
 app.post('/api/webhooks/revenuecat', async (req, res) => {
   try {
-    // Validate authorization header
+    // Validate authorization header — always required in production
     const authHeader = req.headers['authorization'];
     const expectedToken = process.env.REVENUECAT_WEBHOOK_SECRET;
-    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+    if (!expectedToken) {
+      logError('RevenueCat webhook: REVENUECAT_WEBHOOK_SECRET not configured');
+      return res.status(503).json({ error: 'Webhook not configured' });
+    }
+    if (authHeader !== `Bearer ${expectedToken}`) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -767,12 +777,14 @@ app.post('/api/conversation/signed-url', async (req, res) => {
       {
         method: 'GET',
         headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY },
+        signal: AbortSignal.timeout(15000),
       }
     );
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`ElevenLabs signed URL error: ${error}`);
+      const errorText = await response.text();
+      logError('ElevenLabs signed URL error:', errorText);
+      throw new Error('Failed to connect to conversational AI service');
     }
 
     const data = await response.json();
@@ -798,12 +810,14 @@ app.get('/api/conversation/transcript/:conversationId', async (req, res) => {
       `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
       {
         headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY },
+        signal: AbortSignal.timeout(15000),
       }
     );
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`ElevenLabs transcript error: ${error}`);
+      const errorText = await response.text();
+      logError('ElevenLabs transcript error:', errorText);
+      throw new Error('Failed to fetch conversation transcript');
     }
 
     const data = await response.json();
@@ -971,13 +985,15 @@ app.all('/api/tts', async (req, res) => {
           voice_settings: voiceSettings,
           optimize_streaming_latency: 4,
         }),
+        signal: AbortSignal.timeout(30000),
       }
     );
 
     if (!response.ok) {
       apiUsage.elevenlabs.errors++;
-      const error = await response.text();
-      throw new Error(`ElevenLabs error: ${error}`);
+      const errorText = await response.text();
+      logError('ElevenLabs TTS error:', errorText);
+      throw new Error('Text-to-speech service unavailable');
     }
 
     // Stream audio to client — flush each chunk immediately for lowest latency
@@ -1064,9 +1080,13 @@ async function sendPushNotification(pushToken, title, body, data = {}) {
   }
 }
 
-// Engagement check — called by cron or manually to nudge inactive users
+// Engagement check — called by cron or manually to nudge inactive users (admin-only)
 app.post('/api/notifications/engagement-check', async (req, res) => {
   try {
+    const adminKey = process.env.ADMIN_API_KEY;
+    if (!adminKey || req.headers['x-admin-key'] !== adminKey) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
 
     // Find users with push tokens who haven't had a session recently (paginated)
@@ -1208,7 +1228,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
       try {
         const response = await fetch(`http://localhost:${PORT}/api/notifications/engagement-check`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-admin-key': process.env.ADMIN_API_KEY || '' },
           body: '{}',
         });
         const result = await response.json();
