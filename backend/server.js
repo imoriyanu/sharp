@@ -1072,6 +1072,61 @@ async function sendPushNotification(pushToken, title, body, data = {}) {
   }
 }
 
+// List users with push tokens — debug endpoint
+app.get('/api/notifications/debug', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, display_name, push_token')
+      .not('push_token', 'is', null);
+    res.json({
+      usersWithTokens: (profiles || []).length,
+      users: (profiles || []).map(p => ({
+        id: p.id.slice(0, 8) + '...',
+        name: p.display_name,
+        tokenPrefix: p.push_token?.slice(0, 25) + '...',
+      })),
+    });
+  } catch (error) {
+    sendError(res, 500, error, 'Notification debug');
+  }
+});
+
+// Test notification — send a test push to a specific user
+app.post('/api/notifications/test', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
+
+    // Look up push token
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('push_token, display_name')
+      .eq('id', userId)
+      .single();
+
+    if (profileError || !profile) {
+      return res.json({ error: 'User not found', userId, profileError: profileError?.message });
+    }
+
+    if (!profile.push_token) {
+      return res.json({ error: 'No push token saved for this user', userId, displayName: profile.display_name });
+    }
+
+    const sent = await sendPushNotification(
+      profile.push_token,
+      'Sharp Test',
+      `Hey ${profile.display_name || 'there'}, notifications are working!`,
+      { type: 'test' }
+    );
+
+    res.json({ sent, token: profile.push_token.slice(0, 20) + '...', displayName: profile.display_name });
+  } catch (error) {
+    sendError(res, 500, error, 'Test notification');
+  }
+});
+
 // Engagement check — called by cron or manually to nudge inactive users
 app.post('/api/notifications/engagement-check', async (req, res) => {
   try {
