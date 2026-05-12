@@ -2,6 +2,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-nati
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
+import { FEATURES } from '../../src/constants/features';
 import { FadeIn } from '../../src/components/Animations';
 import { SharpFox, SpeechBubble, FeatureCard } from '../../src/components/Illustrations';
 
@@ -28,7 +29,9 @@ export default function OnboardingValue() {
 
         <FeatureCard emoji="☀️" title="Daily 30" desc="A fresh challenge every morning. 30 seconds to answer. Instant scoring. Build the habit that compounds." chipLabel="Free" chipColor={colors.success} delay={800} />
         <FeatureCard emoji="⚡" title="Deep Practice" desc="Full AI coaching with before/after rewrites. Hear the model answer. See exactly where your words fell short." chipLabel="Pro" chipColor={colors.accent.primary} delay={1000} />
-        <FeatureCard emoji="💬" title="Live Conversations" desc="Talk to an AI agent who plays your interviewer, manager, or investor. Real-time voice, real pressure." chipLabel="Pro" chipColor={colors.accent.primary} delay={1200} />
+        {FEATURES.conversation && (
+          <FeatureCard emoji="💬" title="Live Conversations" desc="Talk to an AI agent who plays your interviewer, manager, or investor. Real-time voice, real pressure." chipLabel="Pro" chipColor={colors.accent.primary} delay={1200} />
+        )}
         <FeatureCard emoji="⚓" title="Pressure Rounds" desc="Four escalating follow-ups that push harder each turn. The closest thing to a real high-stakes conversation." chipLabel="Pro" chipColor={colors.accent.primary} delay={1400} />
 
         <FadeIn delay={1600}>
@@ -47,7 +50,7 @@ export default function OnboardingValue() {
         <FadeIn delay={1800}>
           <TouchableOpacity style={s.cta} onPress={() => router.push('/onboarding/paywall')} activeOpacity={0.8}>
             <Text style={s.ctaText}>Unlock Sharp Pro</Text>
-            <Text style={s.ctaSub}>Unlimited coaching, conversations, and analytics</Text>
+            <Text style={s.ctaSub}>{FEATURES.conversation ? 'Unlimited coaching, conversations, and analytics' : 'Unlimited coaching and analytics'}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.replace('/onboarding/welcome')} activeOpacity={0.7} style={s.skipRow}>
             <Text style={s.skipText}>Continue with free plan</Text>

@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
+import { FEATURES } from '../../src/constants/features';
 import { FadeIn } from '../../src/components/Animations';
 import { SharpFox, ConfettiBurst } from '../../src/components/Illustrations';
 import { getUserProfile, setOnboarded } from '../../src/services/storage';
@@ -39,7 +40,7 @@ export default function OnboardingWelcome() {
         <FadeIn delay={700}>
           <Text style={s.sub}>
             {pro
-              ? 'Full access unlocked. Deep practice, live conversations, pressure rounds. It all starts now.'
+              ? (FEATURES.conversation ? 'Full access unlocked. Deep practice, live conversations, pressure rounds. It all starts now.' : 'Full access unlocked. Deep practice, pressure rounds, and analytics. It all starts now.')
               : 'Your first Daily Challenge is ready. Show up every day, speak for 30 seconds, and watch yourself get sharper.'}
           </Text>
         </FadeIn>

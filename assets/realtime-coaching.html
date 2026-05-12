@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>* { margin: 0; padding: 0; } body { background: transparent; }</style>
+</head>
+<body>
+<script>
+  function post(type, data) {
+    window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...data }));
+  }
+
+  let session = null;
+  let fullTranscript = '';
+  let startTime = 0;
+
+  window.addEventListener('message', handler);
+  document.addEventListener('message', handler);
+  function handler(e) {
+    try {
+      const m = JSON.parse(e.data);
+      if (m.type === 'start') startSession(m);
+      else if (m.type === 'stop') stopSession();
+    } catch {}
+  }
+
+  async function startSession(cfg) {
+    post('status', { status: 'connecting' });
+    try {
+      if (!cfg.deepgramKey) throw new Error('Missing Deepgram key');
+
+      // -- Mic --
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+
+      const micCtx = new AudioContext({ sampleRate: 16000 });
+      await micCtx.resume();
+      startTime = Date.now();
+
+      // -- Mic processing --
+      const micSource = micCtx.createMediaStreamSource(stream);
+      let wsOpen = false;
+      let ws = null;
+
+      function sendAudioChunk(f32) {
+        if (!wsOpen || !ws) return;
+        // Convert Float32 to Int16 PCM -- Deepgram accepts raw bytes
+        const i16 = new Int16Array(f32.length);
+        for (let i = 0; i < f32.length; i++) {
+          i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32767 | 0));
+        }
+        try { ws.send(i16.buffer); } catch {}
+      }
+
+      // AudioWorklet with ScriptProcessor fallback
+      let processor;
+      try {
+        const code = 'class P extends AudioWorkletProcessor{process(i){if(i[0][0])this.port.postMessage(i[0][0]);return true}}registerProcessor("p",P);';
+        await micCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+        processor = new AudioWorkletNode(micCtx, 'p');
+        processor.port.onmessage = e => sendAudioChunk(e.data);
+      } catch {
+        processor = micCtx.createScriptProcessor(2048, 1, 1);
+        processor.onaudioprocess = e => sendAudioChunk(new Float32Array(e.inputBuffer.getChannelData(0)));
+      }
+      micSource.connect(processor);
+      processor.connect(micCtx.destination);
+
+      // -- Deepgram WebSocket --
+      const dgUrl = 'wss://api.deepgram.com/v1/listen'
+        + '?model=nova-2'
+        + '&language=en'
+        + '&smart_format=true'
+        + '&punctuate=true'
+        + '&interim_results=true'
+        + '&endpointing=300'
+        + '&utterance_end_ms=1500'
+        + '&encoding=linear16'
+        + '&sample_rate=16000'
+        + '&channels=1';
+
+      ws = new WebSocket(dgUrl, ['token', cfg.deepgramKey]);
+
+      ws.onopen = () => {
+        wsOpen = true;
+        post('status', { status: 'connected' });
+      };
+
+      // Track interim text for live display
+      let interimText = '';
+
+      ws.onmessage = e => {
+        try {
+          const d = JSON.parse(e.data);
+          if (d.type !== 'Results') return;
+
+          const alt = d.channel?.alternatives?.[0];
+          if (!alt) return;
+          const text = alt.transcript || '';
+          if (!text.trim()) return;
+
+          const isFinal = d.is_final === true;
+          const speechFinal = d.speech_final === true;
+          const elapsed = Date.now() - startTime;
+
+          if (isFinal) {
+            // Append to full transcript
+            fullTranscript += (fullTranscript ? ' ' : '') + text;
+            interimText = '';
+
+            // Send live update
+            post('transcript_update', {
+              text: fullTranscript,
+              interim: '',
+            });
+
+            // On sentence boundary -- trigger evaluation
+            if (speechFinal) {
+              post('sentence', {
+                text: text,
+                fullTranscript: fullTranscript,
+                elapsedMs: elapsed,
+              });
+            }
+          } else {
+            // Interim result -- show live but don't commit
+            interimText = text;
+            post('transcript_update', {
+              text: fullTranscript,
+              interim: interimText,
+            });
+          }
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        wsOpen = false;
+        post('status', { status: 'disconnected' });
+        post('final_transcript', { transcript: fullTranscript });
+      };
+
+      ws.onerror = () => {
+        post('error', { message: 'Deepgram connection failed' });
+      };
+
+      function cleanup() {
+        try { stream.getTracks().forEach(t => t.stop()); } catch {}
+        try { micCtx.close(); } catch {}
+      }
+
+      session = { ws, cleanup };
+
+    } catch (err) {
+      post('error', { message: err.message || 'Failed to start' });
+    }
+  }
+
+  function stopSession() {
+    if (session) {
+      // Send close message to Deepgram
+      try { session.ws.send(JSON.stringify({ type: 'CloseStream' })); } catch {}
+      // Small delay to let final results arrive
+      setTimeout(() => {
+        try { session.ws.close(); } catch {}
+        try { session.cleanup(); } catch {}
+        session = null;
+        post('final_transcript', { transcript: fullTranscript });
+        post('status', { status: 'ended' });
+      }, 500);
+    }
+  }
+
+  post('ready', {});
+</script>
+</body>
+</html>
