@@ -1077,119 +1077,187 @@ app.post('/api/conversation/debrief', async (req, res) => {
   }
 });
 
-// ===== Text-to-Speech (ElevenLabs) =====
+// ===== Text-to-Speech =====
+// Provider switch via TTS_PROVIDER env. Default = Kokoro (cheap, via Together AI).
+// Set TTS_PROVIDER=elevenlabs to fall back to the previous provider instantly.
 
-// Voice modes — different settings for different coaching contexts
-const VOICE_MODES = {
-  // Default: natural, conversational — for questions and general speech
-  question: {
-    stability: 0.6,
-    similarity_boost: 0.75,
-    style: 0.2,
-    use_speaker_boost: true,
-  },
-  // Coaching: warmer, slower, more considered — for feedback and insights
-  coaching: {
-    stability: 0.75,
-    similarity_boost: 0.8,
-    style: 0.1,
-    use_speaker_boost: true,
-  },
-  // Model answer: crisp, authoritative — demonstrating sharp communication
-  model: {
-    stability: 0.7,
-    similarity_boost: 0.85,
-    style: 0.3,
-    use_speaker_boost: true,
-  },
-  // Follow-up / pressure: slightly more assertive — interviewer energy
-  followup: {
-    stability: 0.55,
-    similarity_boost: 0.7,
-    style: 0.35,
-    use_speaker_boost: true,
-  },
-  // Briefing: measured, news-anchor clarity
-  briefing: {
-    stability: 0.8,
-    similarity_boost: 0.8,
-    style: 0.15,
-    use_speaker_boost: true,
-  },
+const useKokoro = process.env.TTS_PROVIDER !== 'elevenlabs';
+
+// In-memory server-side cache. Same text+mode combo hits the TTS provider
+// once. Shared content (e.g. the daily question) is generated for one user
+// and served from RAM for everyone else. ~99% provider-call reduction on
+// the hottest paths.
+const ttsCache = new Map();
+const TTS_CACHE_MAX = 200;
+const TTS_CACHE_TTL = 3600_000; // 1h
+
+function getTtsCacheKey(text, mode) {
+  const crypto = require('crypto');
+  return crypto.createHash('md5').update(`${mode}:${text}`).digest('hex');
+}
+
+function cleanTtsCache() {
+  if (ttsCache.size <= TTS_CACHE_MAX) return;
+  const now = Date.now();
+  for (const [key, entry] of ttsCache) {
+    if (now - entry.ts > TTS_CACHE_TTL) ttsCache.delete(key);
+  }
+  if (ttsCache.size > TTS_CACHE_MAX) {
+    const oldest = [...ttsCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+    for (let i = 0; i < oldest.length - TTS_CACHE_MAX; i++) ttsCache.delete(oldest[i][0]);
+  }
+}
+
+// Kokoro voice mappings — single voice, speed variation per mode
+const KOKORO_VOICE_MODES = {
+  question:  { voice: 'af_nicole', speed: 1.0  },
+  coaching:  { voice: 'af_nicole', speed: 0.9  },
+  model:     { voice: 'af_nicole', speed: 1.05 },
+  followup:  { voice: 'af_nicole', speed: 1.0  },
+  briefing:  { voice: 'af_nicole', speed: 0.95 },
 };
+
+// ElevenLabs voice modes — kept for fallback when TTS_PROVIDER=elevenlabs
+const ELEVENLABS_VOICE_MODES = {
+  question:  { stability: 0.6,  similarity_boost: 0.75, style: 0.2,  use_speaker_boost: true },
+  coaching:  { stability: 0.75, similarity_boost: 0.8,  style: 0.1,  use_speaker_boost: true },
+  model:     { stability: 0.7,  similarity_boost: 0.85, style: 0.3,  use_speaker_boost: true },
+  followup:  { stability: 0.55, similarity_boost: 0.7,  style: 0.35, use_speaker_boost: true },
+  briefing:  { stability: 0.8,  similarity_boost: 0.8,  style: 0.15, use_speaker_boost: true },
+};
+
+// Streams provider response to client AND collects a copy for the cache.
+// This is the "best of both worlds" path: client gets bytes as they arrive
+// (~400-700ms TTFA), and once the full body lands we keep a buffer so the
+// next play of the same text+mode is instant.
+async function streamAndCache(providerResponse, res, cacheKey, provider) {
+  res.set({
+    'Content-Type': 'audio/mpeg',
+    'Transfer-Encoding': 'chunked',
+    'Cache-Control': 'no-cache',
+    'X-Accel-Buffering': 'no',
+    'X-TTS-Cache': 'miss',
+    'X-TTS-Provider': provider,
+  });
+  res.flushHeaders();
+
+  const reader = providerResponse.body.getReader();
+  const chunks = [];
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(Buffer.from(value));
+      if (!res.writableEnded) {
+        res.write(value);
+        if (typeof res.flush === 'function') res.flush();
+      }
+    }
+    // Cache the complete buffer for subsequent requests
+    if (chunks.length) {
+      cleanTtsCache();
+      ttsCache.set(cacheKey, { data: Buffer.concat(chunks), ts: Date.now() });
+    }
+  } catch (streamErr) {
+    logError('TTS stream error:', streamErr.message);
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
+}
 
 // Support both GET (short text via query) and POST (long text via body)
 app.all('/api/tts', async (req, res) => {
   try {
     const text = req.body?.text || req.query.text;
-    const mode = req.body?.mode || req.query.mode;
+    const mode = req.body?.mode || req.query.mode || 'question';
     if (!text) {
       return res.status(400).json({ error: 'No text provided' });
     }
     if (String(text).length > MAX_TTS_TEXT) {
       return res.status(400).json({ error: 'Text too long' });
     }
-    if (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_VOICE_ID) {
-      return res.status(503).json({ error: 'TTS not configured' });
+
+    // Config check based on provider
+    if (useKokoro && !process.env.TOGETHER_API_KEY) {
+      return res.status(503).json({ error: 'TTS not configured — TOGETHER_API_KEY missing' });
+    }
+    if (!useKokoro && (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_VOICE_ID)) {
+      return res.status(503).json({ error: 'TTS not configured — ElevenLabs keys missing' });
     }
 
     resetUsageIfNewDay();
-    apiUsage.elevenlabs.calls++;
+    const cacheKey = getTtsCacheKey(String(text), mode);
+
+    // Cache hit — served instantly, no provider call
+    const cached = ttsCache.get(cacheKey);
+    if (cached) {
+      cached.ts = Date.now();
+      res.set({
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': cached.data.length,
+        'Cache-Control': 'public, max-age=3600',
+        'X-TTS-Cache': 'hit',
+        'X-TTS-Provider': useKokoro ? 'kokoro' : 'elevenlabs',
+      });
+      return res.send(cached.data);
+    }
+
+    apiUsage.elevenlabs.calls++; // legacy field — tracks total TTS calls regardless of provider
     apiUsage.elevenlabs.characters += String(text).length;
 
-    const voiceId = process.env.ELEVENLABS_VOICE_ID;
-    const voiceSettings = VOICE_MODES[mode] || VOICE_MODES.question;
-
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
-      {
+    let response;
+    if (useKokoro) {
+      // Kokoro via Together AI — stream:true keeps TTFA fast
+      const voiceConfig = KOKORO_VOICE_MODES[mode] || KOKORO_VOICE_MODES.question;
+      const kokoroBaseUrl = process.env.KOKORO_TTS_URL || 'https://api.together.ai';
+      response = await fetch(`${kokoroBaseUrl}/v1/audio/speech`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'xi-api-key': process.env.ELEVENLABS_API_KEY,
+          'Authorization': `Bearer ${process.env.TOGETHER_API_KEY}`,
         },
         body: JSON.stringify({
-          text: text,
-          model_id: 'eleven_turbo_v2_5',
-          voice_settings: voiceSettings,
-          optimize_streaming_latency: 4,
+          model: 'hexgrad/Kokoro-82M',
+          input: String(text),
+          voice: voiceConfig.voice,
+          speed: voiceConfig.speed,
+          response_format: 'mp3',
+          stream: true,
         }),
         signal: AbortSignal.timeout(30000),
-      }
-    );
+      });
+    } else {
+      // ElevenLabs fallback path
+      const voiceId = process.env.ELEVENLABS_VOICE_ID;
+      const voiceSettings = ELEVENLABS_VOICE_MODES[mode] || ELEVENLABS_VOICE_MODES.question;
+      response = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'xi-api-key': process.env.ELEVENLABS_API_KEY,
+          },
+          body: JSON.stringify({
+            text: text,
+            model_id: 'eleven_turbo_v2_5',
+            voice_settings: voiceSettings,
+            optimize_streaming_latency: 4,
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      );
+    }
 
     if (!response.ok) {
       apiUsage.elevenlabs.errors++;
       const errorText = await response.text();
-      logError('ElevenLabs TTS error:', errorText);
+      logError(`${useKokoro ? 'Kokoro' : 'ElevenLabs'} TTS error:`, errorText);
       throw new Error('Text-to-speech service unavailable');
     }
 
-    // Stream audio to client — flush each chunk immediately for lowest latency
-    res.set({
-      'Content-Type': 'audio/mpeg',
-      'Transfer-Encoding': 'chunked',
-      'Cache-Control': 'no-cache',
-      'X-Accel-Buffering': 'no',
-    });
-    res.flushHeaders();
-
-    const reader = response.body.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!res.writableEnded) {
-          res.write(value);
-          // Force flush to prevent Node buffering
-          if (typeof res.flush === 'function') res.flush();
-        }
-      }
-    } catch (streamErr) {
-      logError('TTS stream error:', streamErr.message);
-    } finally {
-      if (!res.writableEnded) res.end();
-    }
+    // Stream the response to the client and cache the full buffer in parallel
+    await streamAndCache(response, res, cacheKey, useKokoro ? 'kokoro' : 'elevenlabs');
 
   } catch (error) {
     logError('TTS error:', error);

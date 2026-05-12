@@ -143,6 +143,26 @@ function playFile(source: string, gen: number): Promise<boolean> {
   });
 }
 
+// Device speech fallback via expo-speech — used only when both the cache
+// hit and the streaming URL fail (network outage, provider down). Better
+// than silence; users still hear the question/coaching, just in the OS
+// default voice.
+async function playDeviceSpeech(text: string): Promise<boolean> {
+  try {
+    const Speech = await import('expo-speech');
+    devLog('device speech fallback', { len: text.length });
+    return new Promise((resolve) => {
+      Speech.speak(text, {
+        language: 'en-US',
+        rate: 0.95,
+        onDone: () => { isPlaying = false; resolve(true); },
+        onError: () => { isPlaying = false; resolve(false); },
+        onStopped: () => { isPlaying = false; resolve(false); },
+      });
+    });
+  } catch { isPlaying = false; return false; }
+}
+
 export async function playQuestionAudio(text: string, signal?: AbortSignal, mode: VoiceMode = 'question'): Promise<boolean> {
   await stopAudio();
   const gen = playbackGeneration;
@@ -157,20 +177,26 @@ export async function playQuestionAudio(text: string, signal?: AbortSignal, mode
     const cachedFile = audioCache.get(key);
     if (cachedFile) {
       devLog('cache hit', { key, mode });
-      return playFile(cachedFile, gen);
+      const ok = await playFile(cachedFile, gen);
+      if (!ok && gen === playbackGeneration && !signal?.aborted) return playDeviceSpeech(text);
+      return ok;
     }
 
-    // Cache miss. Stream directly from the URL instead of waiting for a full
-    // download — AVPlayer (iOS) and MediaPlayer (Android) handle progressive
-    // playback natively, so audio starts in ~400-700ms vs ~1-3s for full download.
+    // Cache miss. Stream directly from the URL — AVPlayer (iOS) and
+    // MediaPlayer (Android) handle progressive playback natively, so audio
+    // starts in ~400-700ms vs ~1-3s for full download.
     //
-    // An in-flight prefetch (if any) continues in the background and populates
-    // the cache for the next play of the same text. Worst case: ElevenLabs is
-    // called twice for a single play; only happens on the first play before
-    // prefetch completes, and only ever once per text.
+    // An in-flight prefetch (if any) continues in the background and
+    // populates the cache for the next play. On the server side the response
+    // is also cached, so subsequent users hitting the same text+mode are
+    // served from RAM.
     const streamUrl = buildStreamUrl(text, mode);
     devLog('stream miss', { key, mode });
-    return playFile(streamUrl, gen);
+    const ok = await playFile(streamUrl, gen);
+    // If both the stream and the cache failed, fall back to device speech
+    // rather than leaving the user in silence.
+    if (!ok && gen === playbackGeneration && !signal?.aborted) return playDeviceSpeech(text);
+    return ok;
   } catch (e) {
     devLog('play error', { error: String((e as Error)?.message || e) });
     isPlaying = false;
@@ -197,30 +223,17 @@ export function isAudioPlaying(): boolean { return isPlaying; }
 // ===== Natural Script Builder =====
 // Deterministic — same question always produces same text (critical for cache hits)
 
-function seedFromText(text: string): number {
-  let h = 0;
-  for (let i = 0; i < text.length; i++) h = ((h << 5) - h + text.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
 export function buildNaturalScript(q: GeneratedQuestion): string {
-  const seed = seedFromText(q.question);
-  // Time-independent greetings — avoids cache busting when the hour changes
-  const greetings = ['Alright.', 'OK.', 'Right.', 'So.', 'Hey.'];
-  const greeting = greetings[seed % greetings.length];
+  // Plain script — no chatty preamble. Saves TTS chars (= cost + speed).
+  // The voice and pacing carry the personality; the words don't need to.
   const format = q.format || 'prompt';
-  const pick = (arr: string[]) => arr[seed % arr.length];
-
   if (format === 'roleplay' || format === 'pressure') {
-    return `${greeting} ${pick(['Here\'s the scenario.', 'Ready? Here it is.', 'OK so picture this.'])} ${q.situation || ''} ${q.question}`;
+    return `${q.situation || ''} ${q.question}`.trim();
   }
   if (format === 'briefing') {
-    return `${greeting} OK, so here's some context. ${q.background || ''} Now, ${q.question}`;
+    return `${q.background || ''} ${q.question}`.trim();
   }
-  if (format === 'context') {
-    return `${greeting} This one's about you. ${q.question}`;
-  }
-  return `${greeting} ${pick(['Here\'s a question for you.', 'Tell me this.', 'I\'ve got something for you.'])} ${q.question}`;
+  return q.question;
 }
 
 export function getQuestionVoiceMode(q: GeneratedQuestion): VoiceMode {
