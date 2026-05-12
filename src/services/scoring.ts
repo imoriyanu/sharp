@@ -1,5 +1,9 @@
 import { apiPost } from './api';
+import { FEATURES } from '../constants/features';
 import type { ScoringResult, UserContext, GeneratedQuestion, FollowUp, ThreadDebrief } from '../types';
+
+// Note: userId is no longer passed in request bodies — the backend verifies
+// the user from the Authorization header attached by apiPost in api.ts.
 
 // ===== Progress Score =====
 // Contextualises the raw score against the user's own history.
@@ -126,15 +130,19 @@ export async function generateFollowUp(params: {
   originalQuestion: string;
   previousTranscripts: { turn: number; question: string; transcript: string; scores: any }[];
   turnNumber: number;
+  sessionId?: string;
 }): Promise<FollowUp> {
-  const { previousTranscripts, originalQuestion, ...rest } = params;
+  const { previousTranscripts, originalQuestion, sessionId, ...rest } = params;
   const lastTranscript = previousTranscripts[previousTranscripts.length - 1]?.transcript || '';
-  return apiPost('/threaded/follow-up', {
+  const endpoint = FEATURES.agenticThreaded ? '/v2/threaded/follow-up' : '/threaded/follow-up';
+  return apiPost(endpoint, {
     ...rest,
     turns: previousTranscripts,
     originalQuestion,
     question: originalQuestion,
     transcript: lastTranscript,
+    turnNumber: params.turnNumber,
+    ...(sessionId ? { sessionId } : {}),
   });
 }
 

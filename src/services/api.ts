@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { supabase } from './supabase';
 
 const PROD_API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://sharp-production-2d7c.up.railway.app';
 
@@ -26,12 +27,25 @@ function withTimeout(signal?: AbortSignal, ms = DEFAULT_TIMEOUT): { signal: Abor
   };
 }
 
+// Attach the Supabase access token if available. Harmless on v1 endpoints
+// (they ignore it) and required by v2 endpoints to verify userId server-side.
+async function buildAuthHeaders(): Promise<Record<string, string>> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function apiPost<T>(endpoint: string, body: any, signal?: AbortSignal): Promise<T> {
   const { signal: combined, cleanup } = withTimeout(signal);
   try {
+    const authHeaders = await buildAuthHeaders();
     const response = await fetch(`${API_BASE}/api${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify(body),
       signal: combined,
     });
@@ -45,12 +59,32 @@ export async function apiPost<T>(endpoint: string, body: any, signal?: AbortSign
   }
 }
 
+// Fetches { features, version } from /api/config and applies feature flags.
+// Best-effort: silently no-ops on network failure so app launch never blocks.
+export async function fetchRemoteConfig(): Promise<void> {
+  try {
+    const { applyRemoteFeatures } = await import('../constants/features');
+    const { signal, cleanup } = withTimeout(undefined, 5000);
+    try {
+      const response = await fetch(`${API_BASE}/api/config`, { signal });
+      if (!response.ok) return;
+      const json = await response.json();
+      applyRemoteFeatures(json?.features);
+    } finally {
+      cleanup();
+    }
+  } catch {
+    // ignore — defaults from src/constants/features.ts apply
+  }
+}
+
 export async function apiGet<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${API_BASE}/api${endpoint}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const { signal, cleanup } = withTimeout();
   try {
-    const response = await fetch(url.toString(), { signal });
+    const authHeaders = await buildAuthHeaders();
+    const response = await fetch(url.toString(), { signal, headers: authHeaders });
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       throw new Error(error.error || `API error: ${response.status}`);

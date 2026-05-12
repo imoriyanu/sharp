@@ -8,6 +8,7 @@ import { hasOnboarded, clearStaleThread } from '../src/services/storage';
 import { initPremium, syncFromRevenueCat } from '../src/services/premium';
 import { initErrorTracking } from '../src/services/errorTracking';
 import { initAnalytics, trackEvent, Events } from '../src/services/analytics';
+import { fetchRemoteConfig } from '../src/services/api';
 import { registerForPushNotifications, savePushToken } from '../src/services/notifications';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
@@ -48,7 +49,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   const [onboarded, setOnboarded] = useState(true); // default true to avoid flash
 
   useEffect(() => {
-    Promise.all([hasOnboarded(), initPremium(), clearStaleThread(), initErrorTracking(), initAnalytics()]).then(([val]) => {
+    Promise.all([hasOnboarded(), initPremium(), clearStaleThread(), initErrorTracking(), initAnalytics(), fetchRemoteConfig()]).then(([val]) => {
       trackEvent(Events.APP_OPENED);
       setOnboarded(val);
       setChecked(true);

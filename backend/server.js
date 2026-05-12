@@ -11,6 +11,9 @@ const { PDFParse } = require('pdf-parse');
 const mammoth = require('mammoth');
 
 const { createClient } = require('@supabase/supabase-js');
+const { generateThreadedFollowUp } = require('./agent/threaded_interrogator');
+const { makeVerifyUser } = require('./agent/auth');
+const agentTraces = require('./agent/traces');
 const log = process.env.NODE_ENV === 'production' ? () => {} : console.log.bind(console);
 const logError = console.error.bind(console); // always log errors
 const isProd = process.env.NODE_ENV === 'production';
@@ -95,6 +98,12 @@ app.use('/api/transcribe', rateLimit(10));  // 10 transcriptions per minute
 app.use('/api/tts', rateLimit(20));         // 20 TTS calls per minute
 app.use('/api/progress', rateLimit(5));     // 5 progress summaries per minute
 app.use('/api/conversation', rateLimit(20)); // 20 conversation calls per minute (fast back-and-forth)
+app.use('/api/v2/threaded', rateLimit(15)); // mirror v1 limits for the agentic variant
+app.use('/api/v2/score', rateLimit(10));
+
+// JWT verification for v2 endpoints — sets req.userId from a verified Bearer token.
+// Soft-fails (req.userId = null) so the endpoint can fall back to the v1 prompt.
+app.use('/api/v2', makeVerifyUser(supabase));
 
 // ===== API Usage Monitoring =====
 
@@ -194,6 +203,22 @@ app.get('/api/health', (req, res) => {
       elevenlabs: !!process.env.ELEVENLABS_API_KEY,
     },
   });
+});
+
+// ===== Remote Config =====
+// Mobile clients fetch this at app start (cached for the session) to decide
+// which v2 features are live. Lets us roll out / roll back agent endpoints
+// without an App Store update.
+
+app.get('/api/config', (req, res) => {
+  // Default off in code so a misconfigured deploy never silently breaks v1 callers.
+  // Flip individual flags via env vars, or replace this with a DB lookup later.
+  const features = {
+    agenticThreaded: process.env.FEATURE_AGENTIC_THREADED === 'on',
+    agenticScoring: process.env.FEATURE_AGENTIC_SCORING === 'on',
+    agenticDebrief: process.env.FEATURE_AGENTIC_DEBRIEF === 'on',
+  };
+  res.json({ features, version: 1 });
 });
 
 // ===== API Usage Monitoring =====
@@ -441,6 +466,50 @@ app.post('/api/threaded/follow-up', async (req, res) => {
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Follow-up generation');
+  }
+});
+
+// ===== Threaded Challenge: Follow-up (Agentic v2) =====
+// Same input/output shape as v1 + optional userId/sessionId.
+// Falls back to v1 behaviour automatically on agent failure.
+
+app.post('/api/v2/threaded/follow-up', async (req, res) => {
+  try {
+    if (!req.body?.question || !req.body?.transcript) {
+      return res.status(400).json({ error: 'question and transcript are required' });
+    }
+    req.body.transcript = sanitizeString(req.body.transcript, MAX_TRANSCRIPT);
+    req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
+
+    // SECURITY: only trust req.userId from the verifyUser middleware.
+    // Ignore any req.body.userId — clients cannot self-attest identity.
+    const userId = req.userId || null;
+    const sessionId = typeof req.body.sessionId === 'string' && req.body.sessionId.length > 0 ? req.body.sessionId : null;
+    // If userId is unverified, fall through to v1 immediately — no agent retrieval.
+    if (!userId) {
+      const prompt = prompts.followUpPrompt(req.body);
+      const result = await callClaude(prompt, 400);
+      return res.json(result);
+    }
+
+    apiUsage.anthropic.calls++; // approximate; runner increments token counts internally
+    try {
+      const result = await generateThreadedFollowUp({
+        anthropic, supabase, userId, sessionId, payload: req.body,
+      });
+      const { requestId, ...clientShape } = result; // strip requestId unless ?debug=1
+      if (req.query.debug === '1') return res.json({ ...clientShape, requestId });
+      return res.json(clientShape);
+    } catch (agentError) {
+      // Agent failure -> fall back to v1 deterministic prompt so the user
+      // never sees a broken thread mid-session. Logged for investigation.
+      logError('Agentic follow-up failed, falling back to v1:', agentError);
+      const prompt = prompts.followUpPrompt(req.body);
+      const result = await callClaude(prompt, 400);
+      res.json(result);
+    }
+  } catch (error) {
+    sendError(res, 500, error, 'Follow-up generation (v2)');
   }
 });
 
@@ -1292,6 +1361,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 
 function shutdown(signal) {
   console.log(`\n  ${signal} received — shutting down gracefully...`);
+  // Flush PostHog buffer so the last batch of agent traces isn't lost on redeploy.
+  agentTraces.shutdown().catch(() => {});
   server.close(() => {
     console.log('  Server closed.');
     process.exit(0);
