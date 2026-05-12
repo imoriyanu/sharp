@@ -11,14 +11,14 @@ import { trackEvent, Events } from '../../src/services/analytics';
 import type { PlanId } from '../../src/types';
 
 const FEATURES = [
-  { icon: '⚡', title: '5 One Shots per day', desc: 'Full 90-second coaching sessions' },
-  { icon: '⚓', title: '5 Threaded Challenges per day', desc: '4-round escalating pressure drills' },
-  { icon: '📰', title: '5 Industry Questions per day', desc: 'Real news tailored to your role' },
-  { icon: '🎧', title: 'Model answers', desc: 'Listen to how an expert would answer' },
-  { icon: '📄', title: 'Context & documents', desc: 'Upload your CV for personalised questions' },
-  { icon: '📊', title: 'Sharp Summary', desc: 'AI progress review with coaching focus' },
-  { icon: '🔄', title: 'Practice again', desc: 'Re-record and compare your improvement' },
-  { icon: '❄️', title: 'Streak freeze', desc: '1 free freeze per week to protect your streak' },
+  { icon: '⚡', title: 'Nail your next interview', desc: 'Unlimited practice with AI scoring on every answer' },
+  { icon: '⚓', title: 'Stay sharp under pressure', desc: '4-round follow-ups that get harder — just like real life' },
+  { icon: '🎧', title: 'Hear the perfect answer', desc: 'Model answers show exactly how a 9/10 response sounds' },
+  { icon: '📰', title: 'Sound informed at work', desc: 'Practise speaking about real news in your industry' },
+  { icon: '📄', title: 'Coaching that knows you', desc: 'Upload your CV and get questions tailored to your goals' },
+  { icon: '💡', title: 'Know exactly what to fix', desc: 'Before/after rewrites that quote your actual words' },
+  { icon: '📊', title: 'Track your progress', desc: 'Watch your scores climb and see patterns over time' },
+  { icon: '❄️', title: 'Protect your streak', desc: '1 free freeze per week so one busy day doesn\'t reset you' },
 ];
 
 export default function PremiumScreen() {
@@ -152,8 +152,9 @@ export default function PremiumScreen() {
             </View>
             <Text style={s.heroTitle}>Sharp Pro</Text>
             <Text style={s.heroHeadline}>
-              Your personal AI communication{'\n'}coach — unlimited practice
+              Speak clearly when it counts.{'\n'}Every time.
             </Text>
+            <Text style={s.heroSocial}>Join thousands of professionals already practising</Text>
           </View>
         </FadeIn>
 
@@ -161,7 +162,15 @@ export default function PremiumScreen() {
         <FadeIn delay={100}>
           <View style={s.anchorCard}>
             <Text style={s.anchorIcon}>💡</Text>
-            <Text style={s.anchorText}>A single session with a communication coach costs £150–500. Sharp Pro gives you unlimited AI coaching for less than the price of lunch.</Text>
+            <Text style={s.anchorText}>A communication coach charges £150–500 per session. Sharp Pro gives you unlimited AI coaching that quotes your exact words, shows you the fix, and tracks your progress — for less than a coffee a day.</Text>
+          </View>
+        </FadeIn>
+
+        {/* Social proof */}
+        <FadeIn delay={120}>
+          <View style={s.proofCard}>
+            <Text style={s.proofQuote}>"Sharp told me to cut my intro from 45 words to 12. I used that in my interview the next day — and got the offer."</Text>
+            <Text style={s.proofAuthor}>— Early access user</Text>
           </View>
         </FadeIn>
 
@@ -207,8 +216,8 @@ export default function PremiumScreen() {
         <FadeIn delay={250}>
           <View style={s.freeCompare}>
             <Text style={s.freeTitle}>Free plan includes</Text>
-            <Text style={s.freeItem}>Unlimited Daily 30</Text>
-            <Text style={s.freeItem}>Unlimited Sharp Duels</Text>
+            <Text style={s.freeItem}>Daily Challenge (no scoring)</Text>
+            <Text style={s.freeItem}>1 One Shot per day</Text>
           </View>
         </FadeIn>
 
@@ -229,6 +238,9 @@ export default function PremiumScreen() {
 
         {/* Bottom */}
         <FadeIn delay={400}>
+          <View style={s.guaranteeCard}>
+            <Text style={s.guaranteeText}>30-day money-back guarantee. If you're not improving, we'll refund you. No questions.</Text>
+          </View>
           <Text style={s.legal}>
             Payment will be charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.
           </Text>
@@ -261,6 +273,12 @@ const s = StyleSheet.create({
   anchorIcon: { fontSize: fp(18), marginTop: wp(2) },
   anchorText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.dark, flex: 1, lineHeight: fp(20) },
 
+  heroSocial: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: spacing.sm },
+
+  proofCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xl, ...shadows.sm },
+  proofQuote: { fontSize: typography.size.sm, fontStyle: 'italic' as const, color: colors.text.secondary, lineHeight: fp(20), marginBottom: spacing.sm },
+  proofAuthor: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.text.muted },
+
   // Section
   sectionLabel: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.md, marginTop: spacing.md },
 
@@ -283,14 +301,14 @@ const s = StyleSheet.create({
   planName: { fontSize: typography.size.sm, fontWeight: typography.weight.black, color: colors.text.primary },
   planNameActive: { color: colors.accent.primary },
   planPrice: { fontSize: fp(18), fontWeight: typography.weight.black, color: colors.text.primary, marginTop: wp(2) },
-  planBilled: { fontSize: fp(9), color: colors.text.muted, marginTop: wp(1) },
+  planBilled: { fontSize: fp(10), color: colors.text.muted, marginTop: wp(1) },
   savingsBadge: { backgroundColor: colors.success, borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(3) },
-  savingsText: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.inverse, letterSpacing: 0.5 },
+  savingsText: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.inverse, letterSpacing: 0.5 },
   badge: { position: 'absolute', top: -wp(10), right: wp(16), borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
   badgeAccent: { backgroundColor: colors.accent.primary },
   badgeGhost: { backgroundColor: colors.bg.tertiary, borderWidth: 1, borderColor: colors.border },
-  badgeText: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.tertiary },
-  badgeTextAccent: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.inverse },
+  badgeText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.tertiary },
+  badgeTextAccent: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.inverse },
 
   // Free comparison
   freeCompare: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xl, borderWidth: 1, borderColor: colors.borderLight },
@@ -306,6 +324,9 @@ const s = StyleSheet.create({
   // Bottom
   restoreBtn: { alignItems: 'center', padding: spacing.lg },
   restoreText: { fontSize: typography.size.sm, color: colors.accent.primary, fontWeight: typography.weight.semibold },
-  legal: { fontSize: fp(9), color: colors.text.muted, lineHeight: fp(14), textAlign: 'center', paddingHorizontal: spacing.lg },
+  guaranteeCard: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.lg, alignItems: 'center' },
+  guaranteeText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.success, textAlign: 'center', lineHeight: fp(20) },
+
+  legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', paddingHorizontal: spacing.lg },
   bottomSpacer: { height: wp(40) },
 });

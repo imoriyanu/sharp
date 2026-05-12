@@ -8,7 +8,7 @@ import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '..
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
 import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
-import { isPremium, canPracticeAgain, trackPracticeAgainUsage } from '../../src/services/premium';
+import { isPremium } from '../../src/services/premium';
 
 type PracticeState = 'idle' | 'listening_model' | 'ready' | 'recording' | 'processing' | 'done';
 
@@ -23,29 +23,20 @@ export default function CoachingScreen() {
   const [practiceState, setPracticeState] = useState<PracticeState>('idle');
   const [userAttempt, setUserAttempt] = useState('');
   const [feedback, setFeedback] = useState('');
-  const [practiceRemaining, setPracticeRemaining] = useState<number | null>(null);
+  const [practiceRemaining, setPracticeRemaining] = useState<number | null>(isPremium() ? 999 : 0);
   const recorderRef = useRef<InstanceType<typeof AudioModule.AudioRecorder> | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
-    checkPractice();
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
 
-  async function checkPractice() {
-    if (!isPremium()) { setPracticeRemaining(0); return; }
-    const { limit, used } = await canPracticeAgain();
-    if (mountedRef.current) setPracticeRemaining(limit - used);
-  }
-
   async function startPractice() {
-    if (!isPremium() || (practiceRemaining !== null && practiceRemaining <= 0)) {
+    if (!isPremium()) {
       router.push('/premium');
       return;
     }
-    await trackPracticeAgainUsage();
-    setPracticeRemaining(prev => Math.max(0, (prev || 1) - 1));
     setPracticeState('listening_model');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await playModelAudio(rewrite);
@@ -120,12 +111,10 @@ export default function CoachingScreen() {
   }
 
   async function retryPractice() {
-    if (!isPremium() || (practiceRemaining !== null && practiceRemaining <= 0)) {
+    if (!isPremium()) {
       router.push('/premium');
       return;
     }
-    await trackPracticeAgainUsage();
-    setPracticeRemaining(prev => Math.max(0, (prev || 1) - 1));
     await stopAudio();
     setUserAttempt('');
     setFeedback('');
@@ -177,17 +166,10 @@ export default function CoachingScreen() {
         ) : null}
 
         {/* Practice section */}
-        {practiceState === 'idle' && isPremium() && practiceRemaining !== null && practiceRemaining > 0 && (
+        {practiceState === 'idle' && isPremium() && (
           <TouchableOpacity style={s.mainBtn} onPress={startPractice} activeOpacity={0.8}>
             <Text style={s.mainBtnText}>🎤 Practice this sentence</Text>
-            <Text style={s.mainBtnSub}>{practiceRemaining} practice{practiceRemaining !== 1 ? 's' : ''} remaining today</Text>
           </TouchableOpacity>
-        )}
-        {practiceState === 'idle' && isPremium() && practiceRemaining === 0 && (
-          <View style={[s.mainBtn, s.mainBtnDisabled]}>
-            <Text style={s.mainBtnText}>Practice limit reached</Text>
-            <Text style={s.mainBtnSub}>Resets tomorrow</Text>
-          </View>
         )}
         {practiceState === 'idle' && !isPremium() && (
           <TouchableOpacity style={[s.mainBtn, s.mainBtnLocked]} onPress={() => router.push('/premium')} activeOpacity={0.7}>
@@ -235,17 +217,9 @@ export default function CoachingScreen() {
               </View>
             </FadeIn>
 
-            {practiceRemaining !== null && practiceRemaining > 0 ? (
-              <TouchableOpacity style={s.mainBtn} onPress={retryPractice} activeOpacity={0.8}>
-                <Text style={s.mainBtnText}>↻ Try again</Text>
-                <Text style={s.mainBtnSub}>{practiceRemaining} remaining</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={[s.mainBtn, s.mainBtnDisabled]}>
-                <Text style={s.mainBtnText}>No practices remaining</Text>
-                <Text style={s.mainBtnSub}>Resets tomorrow</Text>
-              </View>
-            )}
+            <TouchableOpacity style={s.mainBtn} onPress={retryPractice} activeOpacity={0.8}>
+              <Text style={s.mainBtnText}>↻ Try again</Text>
+            </TouchableOpacity>
           </>
         )}
 
@@ -292,7 +266,7 @@ const s = StyleSheet.create({
   mainBtnDisabled: { opacity: 0.4 },
   mainBtnLocked: { backgroundColor: colors.text.muted },
   mainBtnText: { fontSize: fp(12), fontWeight: typography.weight.bold, color: colors.text.inverse },
-  mainBtnSub: { fontSize: fp(9), color: 'rgba(255,255,255,0.7)', marginTop: wp(2) },
+  mainBtnSub: { fontSize: fp(10), color: 'rgba(255,255,255,0.7)', marginTop: wp(2) },
   recordBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(15), alignItems: 'center', marginTop: spacing.md, ...shadows.accent },
   recordBtnText: { fontSize: fp(13), fontWeight: typography.weight.bold, color: colors.text.inverse },
   stopBtn: { backgroundColor: colors.bg.secondary, borderWidth: 2, borderColor: colors.feedback.negativeBorder, borderRadius: radius.lg, paddingVertical: wp(13), flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(6), marginTop: spacing.md },

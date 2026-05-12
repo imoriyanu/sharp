@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
-import { FEATURES } from '../../src/constants/features';
 import { FadeIn } from '../../src/components/Animations';
 import { SharpFox, ConfettiBurst } from '../../src/components/Illustrations';
 import { getUserProfile, setOnboarded } from '../../src/services/storage';
@@ -40,7 +39,7 @@ export default function OnboardingWelcome() {
         <FadeIn delay={700}>
           <Text style={s.sub}>
             {pro
-              ? (FEATURES.conversation ? 'Full access unlocked. Deep practice, live conversations, pressure rounds. It all starts now.' : 'Full access unlocked. Deep practice, pressure rounds, and analytics. It all starts now.')
+              ? 'Full access unlocked. Deep practice, pressure rounds, and full coaching. It all starts now.'
               : 'Your first Daily Challenge is ready. Show up every day, speak for 30 seconds, and watch yourself get sharper.'}
           </Text>
         </FadeIn>
@@ -52,16 +51,16 @@ export default function OnboardingWelcome() {
             <View style={s.tipRow}>
               <View style={s.tipNum}><Text style={s.tipNumText}>1</Text></View>
               <View style={s.tipContent}>
-                <Text style={s.tipTitle}>Do the Daily Challenge</Text>
-                <Text style={s.tipDesc}>30 seconds a day builds real muscle memory</Text>
+                <Text style={s.tipTitle}>{pro ? 'Do the Daily Challenge' : 'Do the Daily Challenge'}</Text>
+                <Text style={s.tipDesc}>{pro ? '60 seconds a day builds real muscle memory' : '60 seconds a day — the question is free for everyone'}</Text>
               </View>
             </View>
 
             <View style={s.tipRow}>
               <View style={s.tipNum}><Text style={s.tipNumText}>2</Text></View>
               <View style={s.tipContent}>
-                <Text style={s.tipTitle}>Review your coaching</Text>
-                <Text style={s.tipDesc}>Read the insight, listen to the model answer</Text>
+                <Text style={s.tipTitle}>{pro ? 'Try a One Shot' : 'Try your free One Shot'}</Text>
+                <Text style={s.tipDesc}>{pro ? 'Full scoring, coaching, and a model answer — 3 per day' : 'You get 1 full scored session per day — see how you compare'}</Text>
               </View>
             </View>
 

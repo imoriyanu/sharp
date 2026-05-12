@@ -8,11 +8,10 @@ import { PLANS, setPremiumStatus } from '../../src/services/premium';
 import { getOfferings, purchasePackage, restorePurchases, isRevenueCatConfigured } from '../../src/services/revenuecat';
 
 const COMPARE = [
-  { feature: 'Daily Challenge', free: 'Unlimited', pro: 'Unlimited' },
-  { feature: 'Sharp Duels', free: 'Unlimited', pro: 'Unlimited' },
-  { feature: 'One Shot sessions', free: '—', pro: '5/day' },
-  { feature: 'Threaded practice', free: '—', pro: '5/day' },
-  { feature: 'Industry questions', free: '—', pro: '5/day' },
+  { feature: 'Daily Challenge', free: 'No scoring', pro: 'Full coaching' },
+  { feature: 'One Shot sessions', free: '1/day', pro: '3/day' },
+  { feature: 'Threaded practice', free: '—', pro: '2/day' },
+  { feature: 'Industry questions', free: '—', pro: '2/day' },
   { feature: 'Context & documents', free: '—', pro: '✓' },
   { feature: 'Model answers', free: '—', pro: '✓' },
 ];
@@ -157,6 +156,9 @@ export default function OnboardingPaywall() {
           <Text style={s.skipText}>Maybe later</Text>
         </TouchableOpacity>
 
+        <View style={s.guaranteeCard}>
+          <Text style={s.guaranteeText}>30-day money-back guarantee. Not improving? Full refund.</Text>
+        </View>
         <Text style={s.legal}>Payment will be charged to your Apple ID account at confirmation. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.</Text>
       </ScrollView>
     </SafeAreaView>
@@ -177,9 +179,9 @@ const s = StyleSheet.create({
   // Comparison
   compareCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, overflow: 'hidden', marginBottom: spacing.xxl, ...shadows.md },
   compareHeader: { flexDirection: 'row', padding: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.bg.tertiary },
-  compareLabel: { flex: 2, fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted },
-  compareFree: { flex: 1, fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted, textAlign: 'center' },
-  comparePro: { flex: 1, fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.accent.primary, textAlign: 'center' },
+  compareLabel: { flex: 2, fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted },
+  compareFree: { flex: 1, fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted, textAlign: 'center' },
+  comparePro: { flex: 1, fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.accent.primary, textAlign: 'center' },
   compareRow: { flexDirection: 'row', padding: spacing.md, paddingHorizontal: spacing.lg, alignItems: 'center' },
   compareBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
   compareFeature: { flex: 2, fontSize: typography.size.xs, color: colors.text.primary, fontWeight: typography.weight.semibold },
@@ -190,7 +192,7 @@ const s = StyleSheet.create({
   planCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, marginBottom: spacing.md, borderWidth: 1.5, borderColor: colors.borderLight, ...shadows.sm },
   planRecommended: { borderColor: colors.accent.primary, borderWidth: 2, ...shadows.accent },
   recBadge: { position: 'absolute', top: -wp(10), right: wp(16), backgroundColor: colors.accent.primary, borderRadius: radius.pill, paddingHorizontal: wp(12), paddingVertical: wp(3) },
-  recBadgeText: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.inverse },
+  recBadgeText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.inverse },
   planTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   planName: { fontSize: typography.size.md, fontWeight: typography.weight.black, color: colors.text.primary },
   planSavings: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.success, backgroundColor: colors.feedback.positiveBg, borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(2) },
@@ -203,5 +205,7 @@ const s = StyleSheet.create({
   restoreText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary, textAlign: 'center', paddingVertical: spacing.md },
   skipText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.muted, textAlign: 'center', paddingVertical: spacing.md },
 
-  legal: { fontSize: fp(9), color: colors.text.muted, lineHeight: fp(14), textAlign: 'center', marginTop: spacing.lg, paddingHorizontal: spacing.lg },
+  guaranteeCard: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, alignItems: 'center' },
+  guaranteeText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.success, textAlign: 'center' },
+  legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', marginTop: spacing.lg, paddingHorizontal: spacing.lg },
 });

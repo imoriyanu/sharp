@@ -18,17 +18,15 @@ let _premiumCached: boolean | null = null;
 let _planIdCached: PlanId | null = null;
 
 export const PLANS: PremiumPlan[] = [
-  { id: 'annual', name: 'Annual', price: '£119.99', period: '/year', perMonth: '£10/mo', savings: 'Save 44%', recommended: true, badge: 'Best value' },
-  { id: 'monthly', name: 'Monthly', price: '£17.99', period: '/month', perMonth: '£17.99/mo' },
+  { id: 'annual', name: 'Annual', price: '£149.99', period: '/year', perMonth: '£12.50/mo', savings: 'Save 38%', recommended: true, badge: 'Best value' },
+  { id: 'monthly', name: 'Monthly', price: '£19.99', period: '/month', perMonth: '£19.99/mo' },
 ];
 
 export const FREE_LIMITS: UsageLimits = {
-  oneShotsPerDay: 0,
+  oneShotsPerDay: 1,
   threadedPerDay: 0,
   threadedPerWeek: 0,
-  practiceAgainPerDay: 0,
   industryPerDay: 0,
-  conversationsPerDay: 0,
   regeneratesPerDay: 0,
   canAddContext: false,
   canViewSummary: false,
@@ -36,13 +34,11 @@ export const FREE_LIMITS: UsageLimits = {
 };
 
 export const PREMIUM_LIMITS: UsageLimits = {
-  oneShotsPerDay: 5,
-  threadedPerDay: 5,
+  oneShotsPerDay: 3,
+  threadedPerDay: 2,
   threadedPerWeek: 999,
-  practiceAgainPerDay: 10,
-  industryPerDay: 5,
-  conversationsPerDay: 1,
-  regeneratesPerDay: 2,
+  industryPerDay: 2,
+  regeneratesPerDay: 1,
   canAddContext: true,
   canViewSummary: true,
   canPracticeSnippet: true,
@@ -165,9 +161,7 @@ interface DailyUsage {
   oneShots: number;
   threaded: number;
   industry: number;
-  conversations: number;
   regenerates: number;
-  practiceAgain: number;
   threadedThisWeek: number;
   weekStart: string;
 }
@@ -190,10 +184,10 @@ async function getUsage(): Promise<DailyUsage> {
       }
     }
 
-    return { date: today, oneShots: 0, threaded: 0, industry: 0, conversations: 0, regenerates: 0, practiceAgain: 0, threadedThisWeek: 0, weekStart };
+    return { date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0, threadedThisWeek: 0, weekStart };
   } catch {
     const today = localDateStr();
-    return { date: today, oneShots: 0, threaded: 0, industry: 0, conversations: 0, regenerates: 0, practiceAgain: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
+    return { date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
   }
 }
 
@@ -219,7 +213,6 @@ async function syncUsageToCloud(usage: DailyUsage): Promise<void> {
       usage_date: usage.date,
       one_shots: usage.oneShots,
       threaded: usage.threaded,
-      practice_again: usage.practiceAgain,
       threaded_this_week: usage.threadedThisWeek,
       week_start: usage.weekStart,
     });
@@ -242,23 +235,12 @@ export async function canDoThreaded(): Promise<{ allowed: boolean; used: number;
   return { allowed: usage.threadedThisWeek < limits.threadedPerWeek, used: usage.threadedThisWeek, limit: limits.threadedPerWeek };
 }
 
-export async function canPracticeAgain(): Promise<{ allowed: boolean; used: number; limit: number }> {
-  const limits = getLimits();
-  if (!limits.canPracticeSnippet) return { allowed: false, used: 0, limit: 0 };
-  const usage = await getUsage();
-  return { allowed: usage.practiceAgain < limits.practiceAgainPerDay, used: usage.practiceAgain, limit: limits.practiceAgainPerDay };
-}
-
 export function trackOneShotUsage(): Promise<void> {
   return withUsageLock(async () => { const u = await getUsage(); u.oneShots++; await saveUsage(u); });
 }
 
 export function trackThreadedUsage(): Promise<void> {
   return withUsageLock(async () => { const u = await getUsage(); u.threaded++; u.threadedThisWeek++; await saveUsage(u); });
-}
-
-export function trackPracticeAgainUsage(): Promise<void> {
-  return withUsageLock(async () => { const u = await getUsage(); u.practiceAgain++; await saveUsage(u); });
 }
 
 export async function canDoIndustry(): Promise<{ allowed: boolean; used: number; limit: number }> {
@@ -272,15 +254,16 @@ export function trackIndustryUsage(): Promise<void> {
   return withUsageLock(async () => { const u = await getUsage(); u.industry = (u.industry || 0) + 1; await saveUsage(u); });
 }
 
+// Conversation feature is currently hidden behind FEATURES.conversation.
+// These helpers stay as no-op shims so conversation/setup.tsx still compiles —
+// when the feature is re-enabled (post-MVP), wire to a credits or subscription
+// limit here.
 export async function canDoConversation(): Promise<{ allowed: boolean; used: number; limit: number }> {
-  const limits = getLimits();
-  if (limits.conversationsPerDay === 0) return { allowed: false, used: 0, limit: 0 };
-  const usage = await getUsage();
-  return { allowed: (usage.conversations || 0) < limits.conversationsPerDay, used: usage.conversations || 0, limit: limits.conversationsPerDay };
+  return { allowed: false, used: 0, limit: 0 };
 }
 
 export function trackConversationUsage(): Promise<void> {
-  return withUsageLock(async () => { const u = await getUsage(); u.conversations = (u.conversations || 0) + 1; await saveUsage(u); });
+  return Promise.resolve();
 }
 
 // Regenerate is PER QUESTION — tracked in-memory, resets on new question load

@@ -27,8 +27,8 @@ export default function OnboardingValue() {
           <Text style={s.subheading}>The best speakers aren't talented. They're trained. Sharp gives you the reps and the feedback to get there.</Text>
         </FadeIn>
 
-        <FeatureCard emoji="☀️" title="Daily 30" desc="A fresh challenge every morning. 30 seconds to answer. Instant scoring. Build the habit that compounds." chipLabel="Free" chipColor={colors.success} delay={800} />
-        <FeatureCard emoji="⚡" title="Deep Practice" desc="Full AI coaching with before/after rewrites. Hear the model answer. See exactly where your words fell short." chipLabel="Pro" chipColor={colors.accent.primary} delay={1000} />
+        <FeatureCard emoji="☀️" title="Daily Challenge" desc="A fresh question every morning. Record your answer and build the habit. Pro unlocks full AI scoring and coaching." chipLabel="Free" chipColor={colors.success} delay={800} />
+        <FeatureCard emoji="⚡" title="One Shot" desc="Full scored session with AI coaching, before/after rewrites, and a model answer you can listen to. 1 free per day." chipLabel="Free" chipColor={colors.success} delay={1000} />
         {FEATURES.conversation && (
           <FeatureCard emoji="💬" title="Live Conversations" desc="Talk to an AI agent who plays your interviewer, manager, or investor. Real-time voice, real pressure." chipLabel="Pro" chipColor={colors.accent.primary} delay={1200} />
         )}
@@ -50,7 +50,7 @@ export default function OnboardingValue() {
         <FadeIn delay={1800}>
           <TouchableOpacity style={s.cta} onPress={() => router.push('/onboarding/paywall')} activeOpacity={0.8}>
             <Text style={s.ctaText}>Unlock Sharp Pro</Text>
-            <Text style={s.ctaSub}>{FEATURES.conversation ? 'Unlimited coaching, conversations, and analytics' : 'Unlimited coaching and analytics'}</Text>
+            <Text style={s.ctaSub}>Full scoring, coaching, and pressure training</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.replace('/onboarding/welcome')} activeOpacity={0.7} style={s.skipRow}>
             <Text style={s.skipText}>Continue with free plan</Text>

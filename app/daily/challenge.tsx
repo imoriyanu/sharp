@@ -6,11 +6,12 @@ import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAud
 import * as Haptics from 'expo-haptics';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/components/Animations';
-import { stopAudio, playQuestionAudio, buildNaturalScript, getQuestionVoiceMode, prefetchAudio, resetAudioModeFlag } from '../../src/services/tts';
-import { generateQuestion } from '../../src/services/scoring';
+import { stopAudio, prefetchAudio, resetAudioModeFlag } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
-import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, getRecentQuestions, addRecentQuestion, getAverageScores, getRecentInsights, getRecentSessionHistory } from '../../src/services/storage';
+import { apiGet } from '../../src/services/api';
+import { isPremium } from '../../src/services/premium';
+import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, addRecentQuestion, getAverageScores, getRecentInsights } from '../../src/services/storage';
 import { trackEvent, Events } from '../../src/services/analytics';
 import type { RecordingState, GeneratedQuestion } from '../../src/types';
 
@@ -56,37 +57,16 @@ export default function DailyChallengeScreen() {
       if (cached) {
         const t = cached.question.timerSeconds || DEFAULT_TIMER;
         if (!mountedRef.current) return;
-        // Start TTS download immediately
-        prefetchAudio(buildNaturalScript(cached.question), getQuestionVoiceMode(cached.question));
         setQ(cached.question);
         setTimerMax(t);
         setTimeLeft(t);
         setState('ready');
-        setSpeaking(true);
-        const played = await playQuestionAudio(buildNaturalScript(cached.question), signal, getQuestionVoiceMode(cached.question));
-        if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
+        setTextOnly(true);
         return;
       }
 
-      const [ctx, recentQuestions, sessionHistory, averageScores] = await Promise.all([
-        getContext(), getRecentQuestions(), getRecentSessionHistory(), getAverageScores(),
-      ]);
-      const documentExtractions = (ctx?.documents || []).map(d => d.structuredExtraction).filter(Boolean);
-      const result = await generateQuestion({
-        roleText: ctx?.roleText || '',
-        currentCompany: ctx?.currentCompany || '',
-        situationText: ctx?.situationText || '',
-        dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
-        notes: ctx?.notes || '',
-        documents: ctx?.documents || [],
-        documentExtractions,
-        recentQuestions,
-        sessionHistory,
-        averageScores: averageScores || undefined,
-      }, signal);
-
-      // Start TTS download in parallel with caching
-      prefetchAudio(buildNaturalScript(result), getQuestionVoiceMode(result));
+      // Fetch universal daily question from server (same for all users)
+      const result = await apiGet<GeneratedQuestion>('/api/daily-question');
 
       // Cache for the day and track for variety
       await cacheDailyQuestion(result);
@@ -98,18 +78,14 @@ export default function DailyChallengeScreen() {
       setTimerMax(t);
       setTimeLeft(t);
       setState('ready');
-      setSpeaking(true);
-      const played = await playQuestionAudio(buildNaturalScript(result), signal, getQuestionVoiceMode(result));
-      if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
+      setTextOnly(true);
     } catch (e: any) {
       if (e?.name === 'AbortError') return;
       if (!mountedRef.current) return;
       const fallback: GeneratedQuestion = { question: "What's the hardest decision you've made this month, and what did you learn?", format: 'prompt', timerSeconds: 60, reasoning: '', targets: 'substance', difficulty: 5, contextUsed: [] };
       setQ(fallback);
       setState('ready');
-      setSpeaking(true);
-      const played = await playQuestionAudio(buildNaturalScript(fallback), signal, getQuestionVoiceMode(fallback));
-      if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
+      setTextOnly(true);
     }
   }
 
@@ -181,6 +157,39 @@ export default function DailyChallengeScreen() {
 
     try {
       if (!uri) throw new Error('No recording URI');
+
+      // Free users: transcribe + score to get teaser number, but hide coaching
+      if (!isPremium()) {
+        const { transcript: freeText } = await transcribeAudio(uri);
+        if (!mountedRef.current) return;
+        const trimmed = freeText.trim();
+        if (!trimmed || trimmed.split(/\s+/).filter(Boolean).length < 5) {
+          setRetryReason(trimmed.length === 0 ? "I didn't catch anything. Check your microphone and try again." : "That was too short to score. Try giving a fuller answer.");
+          setState('ready');
+          stoppingRef.current = false;
+          return;
+        }
+        const freeResult = await scoreAnswer({ roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '', question: q?.question || '', transcript: freeText } as any);
+        trackEvent(Events.DAILY_CHALLENGE_COMPLETED, { score: freeResult.overall, free: true });
+        await clearDailyQuestionCache();
+        const streakResult = await updateStreak();
+        if (!mountedRef.current) return;
+        router.replace({
+          pathname: '/daily/result',
+          params: {
+            score: String(freeResult.overall),
+            insight: '',
+            question: q?.question || '',
+            communicationTip: '',
+            suggestedAngles: '[]',
+            summary: '',
+            newBadge: streakResult.newBadge ? JSON.stringify(streakResult.newBadge) : '',
+            free: 'true',
+            weakestArea: freeResult.scores ? Object.entries(freeResult.scores).sort(([,a]: any, [,b]: any) => a - b)[0]?.[0] || '' : '',
+          },
+        });
+        return;
+      }
 
       const { transcript: text } = await transcribeAudio(uri);
       if (!mountedRef.current) return;
@@ -316,7 +325,7 @@ export default function DailyChallengeScreen() {
           )}
 
           {/* Timer */}
-          <Text style={[st.timer, state === 'recording' && st.timerActive]}>
+          <Text style={[st.timer, state === 'recording' && st.timerActive, state === 'recording' && timeLeft <= 10 && { color: colors.error }]}>
             {state === 'processing' ? '...' : timerStr}
           </Text>
 
@@ -333,7 +342,10 @@ export default function DailyChallengeScreen() {
           )}
 
           {transcript ? (
-            <View style={st.transcriptBox}><Text style={st.transcriptText}>"{transcript.slice(0, 200)}..."</Text></View>
+            <View style={st.transcriptBox}>
+              <Text style={st.transcriptText}>"{transcript.slice(0, 200)}{transcript.length > 200 ? '...' : ''}"</Text>
+              <Text style={{ fontSize: fp(10), color: colors.text.muted, marginTop: spacing.xs, textAlign: 'right' }}>{transcript.split(/\s+/).filter(Boolean).length} words</Text>
+            </View>
           ) : state === 'recording' ? (
             <View style={st.transcriptBox}><Text style={st.transcriptPlaceholder}>Speak clearly...</Text></View>
           ) : null}
@@ -348,22 +360,8 @@ export default function DailyChallengeScreen() {
 
         <View style={st.btnArea}>
           {state === 'ready' && !speaking && (
-            <>
-              {!textOnly && (
-                <TouchableOpacity style={st.btnReplay} onPress={async () => {
-                  if (q) { setSpeaking(true); const played = await playQuestionAudio(buildNaturalScript(q), undefined, getQuestionVoiceMode(q)); setSpeaking(false); if (!played) setTextOnly(true); }
-                }} activeOpacity={0.7}>
-                  <Text style={st.btnReplayText}>🔊 Replay question</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={st.btnMain} onPress={() => { setRetryReason(''); setTranscript(''); setTimeLeft(timerMax); startRecording(); }} activeOpacity={0.8}>
-                <Text style={st.btnMainText}>{retryReason ? '🎤 Try again' : `🎤 Start recording · ${timerMax}s`}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-          {speaking && (
-            <TouchableOpacity style={st.btnSkip} onPress={() => { stopAudio(); setSpeaking(false); }} activeOpacity={0.7}>
-              <Text style={st.btnSkipText}>Skip →</Text>
+            <TouchableOpacity style={st.btnMain} onPress={() => { setRetryReason(''); setTranscript(''); setTimeLeft(timerMax); startRecording(); }} activeOpacity={0.8}>
+              <Text style={st.btnMainText}>{retryReason ? '🎤 Try again' : `🎤 Start recording · ${timerMax}s`}</Text>
             </TouchableOpacity>
           )}
           {state === 'recording' && (
@@ -387,10 +385,10 @@ const st = StyleSheet.create({
   badge: { backgroundColor: colors.daily.bg, borderRadius: radius.pill, paddingHorizontal: wp(12), paddingVertical: wp(5) },
   badgeText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.daily.text },
   formatBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(4) },
-  formatText: { fontSize: fp(9), fontWeight: typography.weight.semibold, color: colors.text.tertiary },
+  formatText: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.text.tertiary },
 
   contextCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.lg, ...shadows.sm },
-  contextLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },
+  contextLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },
   contextText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20) },
 
   question: { fontSize: typography.size.lg, color: colors.text.primary, lineHeight: fp(28), fontWeight: typography.weight.bold, marginBottom: spacing.xxl },
@@ -398,7 +396,7 @@ const st = StyleSheet.create({
   timer: { fontSize: typography.size.timer, fontWeight: typography.weight.black, color: colors.text.primary, letterSpacing: -2, textAlign: 'center', marginBottom: spacing.sm },
   timerActive: { color: colors.accent.primary },
 
-  recBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(5), backgroundColor: colors.feedback.negativeBg, borderWidth: 1.5, borderColor: colors.feedback.negativeBorder, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(5), alignSelf: 'center', marginBottom: spacing.lg },
+  recBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(5), backgroundColor: colors.accent.light, borderWidth: 1.5, borderColor: colors.accent.border, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(5), alignSelf: 'center', marginBottom: spacing.lg },
   recDot: { width: wp(7), height: wp(7), borderRadius: wp(4), backgroundColor: colors.recording },
   recText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.recording, textTransform: 'uppercase' as const },
 

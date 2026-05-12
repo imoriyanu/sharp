@@ -17,9 +17,7 @@ export interface UsageLimits {
   oneShotsPerDay: number;
   threadedPerDay: number;       // free: 0 (1 per week tracked separately)
   threadedPerWeek: number;      // free only
-  practiceAgainPerDay: number;
   industryPerDay: number;
-  conversationsPerDay: number;
   regeneratesPerDay: number;
   canAddContext: boolean;
   canViewSummary: boolean;

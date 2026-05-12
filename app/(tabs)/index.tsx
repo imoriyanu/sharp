@@ -3,11 +3,13 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
 import { getStreak, getSessions, hasCompletedDailyToday, getContext, getUserProfile, getCachedDailyQuestion } from '../../src/services/storage';
 import { prefetchAudio, buildNaturalScript, getQuestionVoiceMode } from '../../src/services/tts';
 import { isPremium, canDoOneShot, canDoThreaded, canDoIndustry, checkPremiumStatus } from '../../src/services/premium';
+import { FEATURES } from '../../src/constants/features';
 import { getCurrentBadge, getNextBadge } from '../../src/constants/badges';
 import { trackScreen } from '../../src/services/analytics';
 import type { Streak, SessionSummary, UserContext, UserProfile } from '../../src/types';
@@ -51,7 +53,7 @@ export default function HomeScreen() {
       getStreak(), getSessions(), hasCompletedDailyToday(), getContext(), getUserProfile(),
     ]);
     setStreak(s);
-    setSessions(sess.slice(0, 3));
+    setSessions(sess.slice(0, 5));
     setDailyDone(dd);
     setContext(ctx);
     setProfile(prof);
@@ -138,16 +140,17 @@ export default function HomeScreen() {
           <View style={st.practiceGrid}>
             {/* Row 1: One Shot + Threaded */}
             <View style={st.practiceRow}>
-              <TouchableOpacity style={[st.modeCard, !isPremium() ? st.modeCardLocked : oneShotLeft === 0 && st.modeCardDimmed]} onPress={async () => {
-                if (!isPremium()) { router.push('/premium'); return; }
+              <TouchableOpacity style={[st.modeCard, oneShotLeft === 0 && st.modeCardDimmed]} onPress={async () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 const check = await canDoOneShot();
                 if (check.allowed) router.push('/one-shot/question');
+                else if (!isPremium()) router.push('/premium');
               }} activeOpacity={0.7}>
                 <View style={st.modeIconWrap}><Text style={st.modeIcon}>⚡</Text></View>
                 <Text style={st.modeTitle}>One Shot</Text>
                 <Text style={st.modeDesc}>Full scored session</Text>
                 <View style={st.modeDurBadge}>
-                  <Text style={st.modeDur}>{!isPremium() ? 'Pro' : oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left today` : oneShotLeft === 0 ? 'Limit reached' : '2-3 min'}</Text>
+                  <Text style={st.modeDur}>{oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left today` : oneShotLeft === 0 ? (isPremium() ? 'Limit reached' : 'Upgrade for more') : '2-3 min'}</Text>
                 </View>
               </TouchableOpacity>
               <TouchableOpacity style={[st.modeCard, !isPremium() ? st.modeCardLocked : threadedLeft === 0 && st.modeCardDimmed]} onPress={async () => {
@@ -165,7 +168,6 @@ export default function HomeScreen() {
             </View>
 
             {/* Row 2: Industry */}
-            {(isPremium() || true) && (
             <View style={st.practiceRow}>
               {isPremium() && (context?.currentCompany || context?.roleText) ? (
                 <TouchableOpacity style={[st.modeCard, industryLeft === 0 && st.modeCardDimmed]} onPress={async () => {
@@ -199,22 +201,23 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               )}
             </View>
-            )}
 
-            {/* Row 3: Conversation Practice */}
-            <View style={st.practiceRow}>
-              <TouchableOpacity style={[st.modeCard, st.modeCardWide, !isPremium() && st.modeCardLocked]} onPress={() => {
-                if (!isPremium()) { router.push('/premium'); return; }
-                router.push('/conversation/setup');
-              }} activeOpacity={0.7}>
-                <View style={[st.modeIconWrap, st.modeIconConversation]}><Text style={st.modeIcon}>💬</Text></View>
-                <Text style={st.modeTitle}>Conversation</Text>
-                <Text style={st.modeDesc}>Live back-and-forth practice with an AI agent</Text>
-                <View style={st.modeDurBadge}>
-                  <Text style={st.modeDur}>{!isPremium() ? 'Pro' : '3-5 min'}</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+            {/* Row 3: Conversation Practice — hidden behind FEATURES.conversation for MVP */}
+            {FEATURES.conversation && (
+              <View style={st.practiceRow}>
+                <TouchableOpacity style={[st.modeCard, st.modeCardWide]} onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/conversation/setup');
+                }} activeOpacity={0.7}>
+                  <View style={[st.modeIconWrap, st.modeIconConversation]}><Text style={st.modeIcon}>💬</Text></View>
+                  <Text style={st.modeTitle}>Conversation</Text>
+                  <Text style={st.modeDesc}>Live back-and-forth practice with an AI agent</Text>
+                  <View style={st.modeDurBadge}>
+                    <Text style={st.modeDur}>3-5 min</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </FadeIn>
 
@@ -226,7 +229,7 @@ export default function HomeScreen() {
                 <View style={st.progressIconWrap}><Text style={st.progressIcon}>📊</Text></View>
                 <View style={st.progressText}>
                   <Text style={st.progressTitle}>Sharp Summary</Text>
-                  <Text style={st.progressSub}>{isPremium() ? 'Hear your 30-second progress review' : 'Upgrade to unlock'}</Text>
+                  <Text style={st.progressSub}>{isPremium() ? 'Hear your 30-second progress review' : 'Track your scores and see what\'s improving'}</Text>
                 </View>
               </View>
               {isPremium() ? <Text style={st.progressArrow}>→</Text> : <View style={st.proBadgeSm}><Text style={st.proBadgeSmText}>PRO</Text></View>}
@@ -257,7 +260,7 @@ export default function HomeScreen() {
                 <View style={st.ctxIconWrap}><Text style={st.ctxIcon}>{isPremium() ? '📋' : '🔒'}</Text></View>
                 <View style={st.ctxEmptyText}>
                   <Text style={st.ctxEmptyTitle}>{isPremium() ? 'Set up your context' : 'Custom Context'}</Text>
-                  <Text style={st.ctxEmptyDesc}>{isPremium() ? 'Add your role, company, and goals for personalised coaching' : 'Upgrade to Pro to personalise your coaching'}</Text>
+                  <Text style={st.ctxEmptyDesc}>{isPremium() ? 'Add your role, company, and goals for personalised coaching' : 'Tell Sharp about your role and goals for questions tailored to you'}</Text>
                 </View>
                 {isPremium() ? <Text style={st.ctxEdit}>→</Text> : <View style={st.proBadgeSm}><Text style={st.proBadgeSmText}>PRO</Text></View>}
               </View>
@@ -268,7 +271,12 @@ export default function HomeScreen() {
         {/* Recent sessions */}
         {sessions.length > 0 && (
           <>
-            <Text style={st.section}>Recent Sessions</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={st.section}>Recent Sessions</Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/history')} activeOpacity={0.7}>
+                <Text style={{ fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary }}>View all</Text>
+              </TouchableOpacity>
+            </View>
             <FadeIn delay={600}>
               <View style={st.recentCard}>
                 {sessions.map((sess, i) => (
@@ -322,7 +330,7 @@ const st = StyleSheet.create({
 
   // Daily hero
   dailyHero: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, ...shadows.lg },
-  dailyDone: { opacity: 0.5 },
+  dailyDone: { opacity: 0.7, borderColor: colors.success, borderWidth: 1.5 },
   dailyTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   dailyIconWrap: { width: wp(50), height: wp(50), borderRadius: wp(16), backgroundColor: colors.daily.bg, alignItems: 'center', justifyContent: 'center' },
   dailyEmoji: { fontSize: fp(24) },
@@ -348,7 +356,7 @@ const st = StyleSheet.create({
   modeTitle: { fontSize: typography.size.base, fontWeight: typography.weight.black, color: colors.text.primary },
   modeDesc: { fontSize: typography.size.xs, color: colors.text.tertiary, marginTop: wp(3) },
   modeDurBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3), marginTop: spacing.md },
-  modeDur: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted },
+  modeDur: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted },
 
   // Progress card
   progressCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginTop: spacing.lg, ...shadows.md },
@@ -370,7 +378,7 @@ const st = StyleSheet.create({
   ctxSituation: { fontSize: typography.size.xs, color: colors.text.tertiary, lineHeight: fp(18), marginTop: spacing.sm },
   ctxMeta: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   ctxChip: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
-  ctxChipText: { fontSize: fp(9), color: colors.text.muted, fontWeight: typography.weight.semibold },
+  ctxChipText: { fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.semibold },
   ctxEmpty: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   ctxEmptyText: { flex: 1 },
   ctxEmptyTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.text.primary },

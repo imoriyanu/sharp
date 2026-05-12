@@ -12,8 +12,10 @@ export default function DailyResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     score: string; insight: string; question: string;
-    communicationTip: string; suggestedAngles: string; summary: string; newBadge: string;
+    communicationTip: string; suggestedAngles: string; summary: string; newBadge: string; free: string; weakestArea: string;
   }>();
+  const isFree = params.free === 'true';
+  const weakestArea = params.weakestArea || '';
   const score = parseFloat(params.score || '0');
   const insight = params.insight || '';
   const summary = params.summary || '';
@@ -29,12 +31,71 @@ export default function DailyResultScreen() {
   useEffect(() => {
     getStreak().then(s => setStreak(s.currentStreak));
     getBestScoreThisWeek().then(setBestWeek);
-    if (insight) {
+    if (insight && !isFree) {
       setSpeakingInsight(true);
       playCoachingAudio(insight).catch(() => false).then((played) => { setSpeakingInsight(false); if (!played) setTextOnly(true); });
     }
     return () => { stopAudio(); };
   }, []);
+
+  if (isFree) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+          <View style={s.badgeRow}>
+            <View style={s.badge}><Text style={s.badgeText}>Day {streak}</Text></View>
+          </View>
+
+          {newBadge && (
+            <FadeIn delay={0}>
+              <View style={s.newBadgeCard}>
+                <Text style={s.newBadgeEmoji}>{newBadge.emoji}</Text>
+                <Text style={s.newBadgeTitle}>Badge Unlocked!</Text>
+                <Text style={s.newBadgeName}>{newBadge.name}</Text>
+                <Text style={s.newBadgeDesc}>{newBadge.description}</Text>
+              </View>
+            </FadeIn>
+          )}
+
+          <FadeIn delay={100}>
+            <View style={s.ring}>
+              <ScoreReveal score={score} color={getScoreColor(score)} />
+            </View>
+            <Text style={s.scoreLbl}>Today's Score</Text>
+          </FadeIn>
+
+          <FadeIn delay={200}>
+            <View style={[s.insightCard, { alignItems: 'center' as const }]}>
+              <Text style={{ fontSize: fp(18), marginBottom: spacing.sm }}>🔒</Text>
+              <Text style={{ fontSize: typography.size.base, fontWeight: typography.weight.black, color: colors.text.primary, textAlign: 'center' as const, marginBottom: spacing.xs }}>
+                {weakestArea ? `Your weakest area was ${weakestArea === 'fillerWords' ? 'Filler Words' : weakestArea.charAt(0).toUpperCase() + weakestArea.slice(1)}` : 'You scored ' + score.toFixed(1)}
+              </Text>
+              <Text style={{ fontSize: typography.size.sm, color: colors.text.secondary, textAlign: 'center' as const, lineHeight: fp(20) }}>Upgrade to Pro to see your full breakdown, get AI coaching, and hear the model answer.</Text>
+            </View>
+          </FadeIn>
+
+          <FadeIn delay={300}>
+            <TouchableOpacity style={[s.doneBtn, { backgroundColor: colors.accent.primary, borderColor: colors.accent.primary, marginBottom: spacing.sm }]} onPress={() => router.push('/premium')} activeOpacity={0.8}>
+              <Text style={[s.doneBtnText, { color: '#FFF', fontWeight: typography.weight.bold }]}>See full coaching — Upgrade to Pro</Text>
+            </TouchableOpacity>
+          </FadeIn>
+
+          <FadeIn delay={400}>
+            <View style={s.streakCard}>
+              <Text style={s.streakNum}>{streak} 🔥</Text>
+              <Text style={s.streakLabel}>Day streak</Text>
+            </View>
+          </FadeIn>
+
+          <TouchableOpacity style={s.doneBtn} onPress={() => router.replace('/(tabs)')} activeOpacity={0.8}>
+            <Text style={s.doneBtnText}>Done</Text>
+          </TouchableOpacity>
+
+          <View style={s.bottomSpacer} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe}>
@@ -145,7 +206,7 @@ const s = StyleSheet.create({
 
   ring: { width: wp(100), height: wp(100), borderRadius: wp(50), borderWidth: wp(4), borderColor: colors.borderLight, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: spacing.xs },
   scoreNum: { fontSize: fp(36), fontWeight: typography.weight.black, letterSpacing: -1.5 },
-  scoreLbl: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, textAlign: 'center', marginBottom: spacing.xl },
+  scoreLbl: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, textAlign: 'center', marginBottom: spacing.xl },
 
   summaryCard: { backgroundColor: colors.bg.tertiary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md },
   summaryText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20) },
@@ -153,17 +214,17 @@ const s = StyleSheet.create({
   insightCard: { backgroundColor: colors.daily.bg, borderWidth: 1.5, borderColor: colors.daily.border, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md },
   insightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   insightEmoji: { fontSize: fp(14) },
-  insightListen: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.accent.primary },
+  insightListen: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.accent.primary },
   textOnlyBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
-  textOnlyText: { fontSize: fp(9), fontWeight: typography.weight.semibold, color: colors.text.muted },
+  textOnlyText: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.text.muted },
   insightText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22), fontWeight: typography.weight.bold },
 
   tipCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm },
-  tipLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },
+  tipLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },
   tipText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20) },
 
   anglesCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xl, ...shadows.sm },
-  anglesLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.md },
+  anglesLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.md },
   angleRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
   angleBullet: { fontSize: typography.size.sm, color: colors.accent.primary, fontWeight: typography.weight.bold },
   angleText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20), flex: 1 },

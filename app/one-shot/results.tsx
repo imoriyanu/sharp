@@ -6,7 +6,8 @@ import { useEffect } from 'react';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { ScoreReveal, FadeIn } from '../../src/components/Animations';
 import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio, prefetchAudio } from '../../src/services/tts';
-import { isPremium, canPracticeAgain, trackPracticeAgainUsage } from '../../src/services/premium';
+import * as Haptics from 'expo-haptics';
+import { isPremium } from '../../src/services/premium';
 
 const DIMS = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
 const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words', awareness: 'Awareness' };
@@ -46,13 +47,11 @@ export default function ResultsScreen() {
   const [playing, setPlaying] = React.useState<string | null>(null);
   const [textOnly, setTextOnly] = React.useState(false);
   const [showReasoning, setShowReasoning] = React.useState(false);
-  const [practiceRemaining, setPracticeRemaining] = React.useState<number | null>(null);
   const mountedRef = React.useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
     speakFullFeedback();
-    checkPracticeRemaining();
     // Pre-fetch all listenable audio so tap-to-play is instant
     if (modelAnswer) prefetchAudio(`Here's how I'd say it. ${modelAnswer}`, 'model');
     if (positives) prefetchAudio(positives, 'coaching');
@@ -60,12 +59,6 @@ export default function ResultsScreen() {
     if (insight) prefetchAudio(insight, 'coaching');
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
-
-  async function checkPracticeRemaining() {
-    if (!isPremium()) { setPracticeRemaining(0); return; }
-    const { limit, used } = await canPracticeAgain();
-    setPracticeRemaining(limit - used);
-  }
 
   // Session is already saved in recording.tsx — no duplicate save needed
 
@@ -83,6 +76,7 @@ export default function ResultsScreen() {
   }
 
   async function play(key: string, text: string) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (playing === key) { stopAudio(); setPlaying(null); return; }
     if (!mountedRef.current) return;
     setPlaying(key);
@@ -230,7 +224,7 @@ export default function ResultsScreen() {
         )}
 
         {/* Fillers */}
-        {fillerCount > 0 && (
+        {fillerCount > 0 ? (
           <View style={s.fillerSection}>
             <Text style={s.tipLabel}>Filler words · {fillerCount}</Text>
             <View style={s.fillerRow}>
@@ -239,6 +233,13 @@ export default function ResultsScreen() {
                   <Text style={s.fillerText}>{word}{count > 1 ? ` ×${count}` : ''}</Text>
                 </View>
               ))}
+            </View>
+          </View>
+        ) : (
+          <View style={s.fillerSection}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <Text style={s.tipLabel}>Filler words</Text>
+              <View style={[s.fillerPill, { backgroundColor: colors.feedback.positiveBg }]}><Text style={[s.fillerText, { color: colors.success }]}>Zero</Text></View>
             </View>
           </View>
         )}
@@ -286,21 +287,13 @@ export default function ResultsScreen() {
         <View style={s.divider} />
 
         {/* Actions */}
-        {isPremium() && practiceRemaining !== null && practiceRemaining > 0 ? (
-          <TouchableOpacity style={s.mainBtn} onPress={async () => {
-            await trackPracticeAgainUsage();
-            setPracticeRemaining(prev => (prev || 1) - 1);
+        {isPremium() ? (
+          <TouchableOpacity style={s.mainBtn} onPress={() => {
             stopAudio();
             router.push({ pathname: '/one-shot/coaching', params: { original: p.snippetOriginal, problems: p.snippetProblems, rewrite: p.snippetRewrite, explanation: p.snippetExplanation } });
           }} activeOpacity={0.8}>
             <Text style={s.mainBtnText}>✨ Practice the sharper version</Text>
-            <Text style={s.mainBtnSub}>{practiceRemaining} practice{practiceRemaining !== 1 ? 's' : ''} remaining today</Text>
           </TouchableOpacity>
-        ) : isPremium() && practiceRemaining === 0 ? (
-          <View style={[s.mainBtn, s.mainBtnDisabled]}>
-            <Text style={s.mainBtnText}>Practice limit reached</Text>
-            <Text style={s.mainBtnSub}>Resets tomorrow</Text>
-          </View>
         ) : (
           <TouchableOpacity style={[s.mainBtn, s.mainBtnLocked]} onPress={() => router.push('/premium')} activeOpacity={0.7}>
             <Text style={s.mainBtnText}>🔒 Practice the sharper version</Text>
@@ -330,53 +323,53 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary },
-  close: { fontSize: fp(22), color: colors.text.muted },
+  close: { fontSize: fp(24), color: colors.text.muted, padding: spacing.sm, minWidth: wp(44), minHeight: wp(44), textAlign: 'center' },
   textOnlyBadge: { backgroundColor: colors.bg.tertiary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
-  textOnlyText: { fontSize: fp(9), fontWeight: typography.weight.semibold, color: colors.text.muted },
+  textOnlyText: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.text.muted },
 
   scoreSection: { alignItems: 'center', marginBottom: spacing.xl },
   ring: { width: wp(100), height: wp(100), borderRadius: wp(50), borderWidth: wp(4), alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   scoreNum: { fontSize: fp(36), fontWeight: typography.weight.black, letterSpacing: -1.5 },
-  scoreLbl: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5 },
+  scoreLbl: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   deltaBadge: { borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(2) },
   deltaUp: { backgroundColor: colors.feedback.positiveBg },
   deltaDown: { backgroundColor: colors.feedback.negativeBg },
-  deltaText: { fontSize: fp(9), fontWeight: typography.weight.bold },
+  deltaText: { fontSize: fp(10), fontWeight: typography.weight.bold },
   deltaUpText: { color: colors.success },
   deltaDownText: { color: colors.error },
   progressMsg: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.text.tertiary, marginTop: wp(3) },
-  rawScore: { fontSize: fp(9), color: colors.text.muted, marginTop: wp(2) },
+  rawScore: { fontSize: fp(10), color: colors.text.muted, marginTop: wp(2) },
 
   card: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, ...shadows.md, marginBottom: spacing.lg },
   dim: { flexDirection: 'row', alignItems: 'center', paddingVertical: wp(6) },
   dimSep: { borderTopWidth: 1.5, borderTopColor: colors.borderLight, marginTop: wp(4), paddingTop: wp(8) },
   dimName: { fontSize: fp(11), color: colors.text.tertiary, width: wp(75), fontWeight: typography.weight.semibold },
-  dimTrack: { flex: 1, height: wp(6), backgroundColor: colors.borderLight, borderRadius: wp(3), marginHorizontal: wp(8), overflow: 'hidden' },
-  dimFill: { height: '100%', borderRadius: wp(3) },
+  dimTrack: { flex: 1, height: wp(8), backgroundColor: colors.borderLight, borderRadius: wp(4), marginHorizontal: wp(8), overflow: 'hidden' },
+  dimFill: { height: '100%', borderRadius: wp(4) },
   dimVal: { fontSize: fp(14), fontWeight: typography.weight.black, width: wp(24), textAlign: 'right' },
 
   section: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 2, marginBottom: spacing.md },
 
   positiveCard: { backgroundColor: colors.feedback.positiveBg, borderWidth: 1.5, borderColor: colors.feedback.positiveBorder, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md },
   positiveText: { fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20), fontWeight: typography.weight.semibold },
-  posListenBtn: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.success },
+  posListenBtn: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.success },
   improveCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm },
   feedbackHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   feedbackEmoji: { fontSize: fp(14) },
-  listenBtn: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.accent.primary },
+  listenBtn: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.accent.primary },
   feedbackText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20) },
 
   insightCard: { backgroundColor: colors.daily.bg, borderWidth: 1.5, borderColor: colors.daily.border, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.lg },
   insightText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22), fontWeight: typography.weight.bold },
 
   modelCard: { backgroundColor: colors.feedback.positiveBg, borderWidth: 1.5, borderColor: colors.feedback.positiveBorder, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.lg, ...shadows.sm },
-  modelListenBtn: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.success },
+  modelListenBtn: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.success },
   modelText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22), fontStyle: 'italic' },
-  modelHint: { fontSize: fp(9), color: colors.text.muted, marginTop: spacing.sm },
+  modelHint: { fontSize: fp(10), color: colors.text.muted, marginTop: spacing.sm },
 
   tipCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm },
-  tipLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },
+  tipLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },
   tipText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20) },
 
   anglesCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm },
@@ -387,7 +380,7 @@ const s = StyleSheet.create({
   fillerSection: { marginBottom: spacing.md },
   fillerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: wp(4), marginTop: spacing.sm },
   fillerPill: { backgroundColor: colors.feedback.negativeBg, borderWidth: 1.5, borderColor: colors.feedback.negativeBorder, borderRadius: radius.sm, paddingHorizontal: wp(8), paddingVertical: wp(3) },
-  fillerText: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.error },
+  fillerText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.error },
 
   awareCard: { backgroundColor: colors.daily.bg, borderWidth: 1.5, borderColor: colors.daily.border, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   awareText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.accent.primary },
@@ -413,8 +406,8 @@ const s = StyleSheet.create({
   mainBtnDisabled: { opacity: 0.4 },
   mainBtnLocked: { backgroundColor: colors.text.muted },
   mainBtnText: { fontSize: fp(13), fontWeight: typography.weight.bold, color: colors.text.inverse },
-  mainBtnSub: { fontSize: fp(9), color: 'rgba(255,255,255,0.7)', marginTop: wp(2) },
-  ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(15), alignItems: 'center' },
+  mainBtnSub: { fontSize: fp(10), color: 'rgba(255,255,255,0.7)', marginTop: wp(2) },
+  ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(13), alignItems: 'center' },
   ghostBtnText: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.text.tertiary },
 
   bottomSpacer: { height: wp(30) },

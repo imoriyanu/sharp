@@ -17,11 +17,11 @@ const STYLE_LABELS: Record<string, { label: string; color: string; bg: string }>
   clarity: { label: 'Sharpen It', color: colors.accent.primary, bg: colors.accent.light },
   challenge: { label: 'Challenge', color: colors.accent.primary, bg: colors.daily.bg },
   perspective: { label: 'New Angle', color: colors.duel.text, bg: colors.duel.bg },
-  stakes: { label: 'High Stakes', color: colors.error, bg: colors.feedback.negativeBg },
-  accountability: { label: 'Be Real', color: colors.error, bg: colors.feedback.negativeBg },
+  stakes: { label: 'High Stakes', color: colors.accent.primary, bg: colors.accent.light },
+  accountability: { label: 'Be Real', color: colors.accent.primary, bg: colors.accent.light },
   probing: { label: 'Probing', color: colors.success, bg: colors.feedback.positiveBg },
   pressing: { label: 'Pressing', color: colors.accent.primary, bg: colors.accent.light },
-  pressure: { label: 'Pressure', color: colors.error, bg: colors.feedback.negativeBg },
+  pressure: { label: 'Pressure', color: colors.accent.primary, bg: colors.accent.light },
 };
 
 export default function FollowUpScreen() {
@@ -83,7 +83,7 @@ export default function FollowUpScreen() {
               </View>
               <View style={s.userBubble}>
                 <Text style={[s.bubbleLabel, s.userLabel]}>You</Text>
-                <Text style={s.userText} numberOfLines={3}>{turn.transcript}</Text>
+                <Text style={s.userText} numberOfLines={5}>{turn.transcript}</Text>
               </View>
             </View>
           ))}
