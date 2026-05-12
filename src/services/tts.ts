@@ -21,6 +21,21 @@ function hashText(text: string, mode: VoiceMode = 'question'): string {
   return String(Math.abs(h));
 }
 
+// Dev-only log — gated on __DEV__ so production stays silent.
+function devLog(event: string, payload?: Record<string, unknown>): void {
+  if (!__DEV__) return;
+  // eslint-disable-next-line no-console
+  console.log(`[tts] ${event}`, payload || '');
+}
+
+// Build the streaming URL the audio player consumes directly on cache miss.
+// Mirrors the truncation downloadToCache uses so both paths produce the same
+// hash key — important so cache fills match what was streamed.
+function buildStreamUrl(text: string, mode: VoiceMode): string {
+  const safeText = text.length > 800 ? text.slice(0, 800) : text;
+  return getTtsUrl(safeText, mode);
+}
+
 // ===== Audio mode =====
 
 async function ensureAudioMode(): Promise<void> {
@@ -54,18 +69,26 @@ function downloadToCache(text: string, mode: VoiceMode): Promise<string | null> 
   const inflight = prefetchPromises.get(key);
   if (inflight) return inflight;
 
-  // Truncate for URL safety — keep under 2000 chars encoded
-  const safeText = text.length > 800 ? text.slice(0, 800) : text;
-  const url = getTtsUrl(safeText, mode);
+  const url = buildStreamUrl(text, mode);
   const filename = `${FileSystem.cacheDirectory}tts_${key}.mp3`;
+  devLog('cache fill start', { key, mode });
 
   const promise = FileSystem.downloadAsync(url, filename)
     .then((result) => {
       prefetchPromises.delete(key);
-      if (result.status === 200) { audioCache.set(key, filename); return filename; }
+      if (result.status === 200) {
+        audioCache.set(key, filename);
+        devLog('cache fill done', { key });
+        return filename;
+      }
+      devLog('cache fill fail', { key, status: result.status });
       return null;
     })
-    .catch(() => { prefetchPromises.delete(key); return null; });
+    .catch((e) => {
+      prefetchPromises.delete(key);
+      devLog('cache fill error', { key, error: String(e?.message || e) });
+      return null;
+    });
 
   prefetchPromises.set(key, promise);
   return promise;
@@ -82,11 +105,14 @@ export function prefetchAudio(text: string, mode: VoiceMode = 'coaching'): void 
 function playFile(source: string, gen: number): Promise<boolean> {
   return new Promise((resolve) => {
     if (gen !== playbackGeneration) { resolve(false); return; }
+    const isRemote = source.startsWith('http://') || source.startsWith('https://');
+    const startedAt = __DEV__ ? Date.now() : 0;
     try {
       const player = createAudioPlayer(source);
       if (gen !== playbackGeneration) { try { player.release(); } catch {} resolve(false); return; }
       currentPlayer = player;
       let done = false;
+      let started = false;
       const finish = (ok: boolean) => {
         if (done) return;
         done = true;
@@ -97,10 +123,23 @@ function playFile(source: string, gen: number): Promise<boolean> {
       const t = setTimeout(() => finish(true), 90_000);
       player.addListener('playbackStatusUpdate', (status: any) => {
         if (gen !== playbackGeneration) { clearTimeout(t); finish(false); return; }
+        // Fail fast on player error — remote streams can fail mid-fetch.
+        if (status?.error || status?.didFailToLoad) {
+          devLog('play failed', { error: status?.error || 'didFailToLoad', isRemote });
+          clearTimeout(t); finish(false); return;
+        }
+        if (!started && (status?.isPlaying === true)) {
+          started = true;
+          if (__DEV__) devLog('audio started', { ttfaMs: Date.now() - startedAt, isRemote });
+        }
         if (status.didJustFinish) { clearTimeout(t); finish(true); }
       });
       player.play();
-    } catch { isPlaying = false; resolve(false); }
+    } catch (e) {
+      devLog('createAudioPlayer threw', { error: String((e as Error)?.message || e), isRemote });
+      isPlaying = false;
+      resolve(false);
+    }
   });
 }
 
@@ -111,11 +150,32 @@ export async function playQuestionAudio(text: string, signal?: AbortSignal, mode
   try {
     await ensureAudioMode();
     if (gen !== playbackGeneration || signal?.aborted) { isPlaying = false; return false; }
-    const localUri = await downloadToCache(text, mode);
-    if (gen !== playbackGeneration || signal?.aborted) { isPlaying = false; return false; }
-    if (!localUri) { isPlaying = false; return false; }
-    return playFile(localUri, gen);
-  } catch { isPlaying = false; return false; }
+
+    // Fast path: cache hit. Plays from local file URI — instant TTFA.
+    // Any in-flight prefetch that has completed will have populated this.
+    const key = hashText(text, mode);
+    const cachedFile = audioCache.get(key);
+    if (cachedFile) {
+      devLog('cache hit', { key, mode });
+      return playFile(cachedFile, gen);
+    }
+
+    // Cache miss. Stream directly from the URL instead of waiting for a full
+    // download — AVPlayer (iOS) and MediaPlayer (Android) handle progressive
+    // playback natively, so audio starts in ~400-700ms vs ~1-3s for full download.
+    //
+    // An in-flight prefetch (if any) continues in the background and populates
+    // the cache for the next play of the same text. Worst case: ElevenLabs is
+    // called twice for a single play; only happens on the first play before
+    // prefetch completes, and only ever once per text.
+    const streamUrl = buildStreamUrl(text, mode);
+    devLog('stream miss', { key, mode });
+    return playFile(streamUrl, gen);
+  } catch (e) {
+    devLog('play error', { error: String((e as Error)?.message || e) });
+    isPlaying = false;
+    return false;
+  }
 }
 
 // ===== Wrappers =====
