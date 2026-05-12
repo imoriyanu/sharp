@@ -15,7 +15,7 @@ export default function TabLayout() {
           height: Platform.OS === 'ios' ? wp(88) : wp(68),
           paddingBottom: Platform.OS === 'ios' ? wp(28) : wp(8),
           paddingTop: wp(8),
-          shadowColor: 'rgba(80,60,40,0.06)',
+          shadowColor: 'rgba(192,112,80,0.08)',
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 1,
           shadowRadius: 12,
@@ -30,7 +30,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? 'flash' : 'flash-outline'} size={wp(22)} color={color} />,
+          tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? 'home' : 'home-outline'} size={wp(22)} color={color} />,
         }}
       />
       <Tabs.Screen

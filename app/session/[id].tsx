@@ -86,7 +86,7 @@ export default function SessionDetailScreen() {
           <TurnCard key={turn.id} turn={turn} index={i} totalTurns={session.turns.length} playing={playing} play={play} />
         ))}
 
-        {oneShotStatus?.allowed && isPremium() ? (
+        {oneShotStatus?.allowed ? (
           <TouchableOpacity style={s.retryBtn} onPress={async () => {
             stopAudio();
             await trackOneShotUsage();
@@ -95,17 +95,12 @@ export default function SessionDetailScreen() {
             <Text style={s.retryBtnText}>Practice again</Text>
             <Text style={s.retryBtnSub}>{oneShotStatus.limit - oneShotStatus.used} remaining today</Text>
           </TouchableOpacity>
-        ) : isPremium() && oneShotStatus && !oneShotStatus.allowed ? (
+        ) : oneShotStatus && !oneShotStatus.allowed ? (
           <View style={[s.retryBtn, s.retryBtnLocked]}>
-            <Text style={s.retryBtnText}>Daily limit reached</Text>
-            <Text style={s.retryBtnSub}>Resets tomorrow</Text>
+            <Text style={s.retryBtnText}>{isPremium() ? 'Daily limit reached' : 'Free session used'}</Text>
+            <Text style={s.retryBtnSub}>{isPremium() ? 'Resets tomorrow' : 'Upgrade for 3/day'}</Text>
           </View>
-        ) : (
-          <TouchableOpacity style={[s.retryBtn, s.retryBtnLocked]} onPress={() => router.push('/premium')} activeOpacity={0.7}>
-            <Text style={s.retryBtnText}>🔒 Practice again</Text>
-            <Text style={s.retryBtnSub}>Upgrade to Pro</Text>
-          </TouchableOpacity>
-        )}
+        ) : null}
 
         <TouchableOpacity style={s.ghostBtn} onPress={() => { stopAudio(); router.back(); }} activeOpacity={0.7}>
           <Text style={s.ghostBtnText}>Back</Text>
@@ -180,7 +175,7 @@ const s = StyleSheet.create({
   loadingText: { fontSize: typography.size.sm, color: colors.text.muted },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg },
   title: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary },
-  close: { fontSize: fp(22), color: colors.text.muted },
+  close: { fontSize: fp(24), color: colors.text.muted, padding: spacing.sm, minWidth: wp(44), minHeight: wp(44), textAlign: 'center' },
 
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xl },
   typeBadge: { backgroundColor: colors.accent.light, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(4) },

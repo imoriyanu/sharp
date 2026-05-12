@@ -106,7 +106,7 @@ export default function OnboardingSignIn() {
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <ProgressDots total={4} current={1} />
+          <ProgressDots total={5} current={1} />
 
           {/* Title */}
           <View style={s.titleSection}>

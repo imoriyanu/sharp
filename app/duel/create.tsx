@@ -63,7 +63,7 @@ const s = StyleSheet.create({
   linkCopy: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.accent.primary },
   scoreBox: { backgroundColor: colors.bg.secondary, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', width: '100%', marginBottom: spacing.lg, ...shadows.sm },
   scoreNum: { fontSize: fp(28), fontWeight: typography.weight.black, letterSpacing: -1 },
-  scoreLbl: { fontSize: fp(9), color: colors.text.muted, fontWeight: typography.weight.bold, marginTop: 1 },
+  scoreLbl: { fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.bold, marginTop: 1 },
   questionBox: { backgroundColor: colors.bg.tertiary, borderRadius: radius.lg, padding: spacing.md, width: '100%' },
   questionText: { fontSize: fp(10), color: colors.text.secondary, fontStyle: 'italic', lineHeight: fp(16) },
   ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(13), width: '100%', alignItems: 'center', marginBottom: spacing.sm },

@@ -11,7 +11,7 @@ export default function ChallengeIntro() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.container}>
-        <ProgressDots total={4} current={1} />
+        <ProgressDots total={5} current={2} />
 
         <View style={s.center}>
           <FadeIn delay={200}>

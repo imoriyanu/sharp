@@ -52,6 +52,8 @@ export default function OnboardingRecording() {
       setState('recording');
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setTimeLeft(TIMER);
+      // Clear any orphan interval from a previous startRecording call.
+      if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => { if (prev <= 1) { stopRecording(); return 0; } return prev - 1; });
       }, 1000);
@@ -99,7 +101,7 @@ export default function OnboardingRecording() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.container}>
-        <FadeIn><ProgressDots total={4} current={2} /></FadeIn>
+        <FadeIn><ProgressDots total={5} current={3} /></FadeIn>
 
         <View style={s.center}>
           <FadeIn delay={200}>
@@ -167,13 +169,13 @@ const s = StyleSheet.create({
   container: { flex: 1, padding: layout.screenPadding, justifyContent: 'space-between', paddingTop: wp(16) },
   center: { alignItems: 'center', gap: spacing.lg },
   questionCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, width: '100%', ...shadows.md },
-  questionLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.accent.primary, letterSpacing: 1.5, marginBottom: spacing.sm },
+  questionLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.accent.primary, letterSpacing: 1.5, marginBottom: spacing.sm },
   questionText: { fontSize: typography.size.md, fontWeight: typography.weight.bold, color: colors.text.primary, lineHeight: fp(24) },
   timer: { fontSize: fp(52), fontWeight: typography.weight.black, color: colors.text.primary, letterSpacing: -2 },
   timerActive: { color: colors.accent.primary },
   waveSection: { alignItems: 'center', gap: spacing.md },
   recIndicator: { flexDirection: 'row', alignItems: 'center', gap: wp(6) },
-  recText: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.recording, letterSpacing: 1.5 },
+  recText: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.recording, letterSpacing: 1.5 },
   retryCard: { alignItems: 'center', gap: spacing.md, backgroundColor: colors.daily.bg, borderRadius: radius.xl, padding: spacing.xl },
   retryText: { fontSize: typography.size.sm, color: colors.text.secondary, textAlign: 'center', lineHeight: fp(20) },
   btnArea: { marginBottom: wp(16) },

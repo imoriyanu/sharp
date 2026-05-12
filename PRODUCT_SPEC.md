@@ -1,8 +1,8 @@
 # Sharp AI — Product Specification
 
-> **Last updated:** 2026-04-03
-> **Version:** 2.1.0
-> **Status:** Pre-production
+> **Last updated:** 2026-04-06
+> **Version:** 2.2.0
+> **Status:** Production
 
 ## What Sharp Is
 
@@ -10,7 +10,7 @@ Sharp trains professionals to speak clearly, concisely, and with substance under
 
 **Platform:** React Native / Expo (iOS primary, Android supported)
 **Backend:** Node.js + Express on Railway
-**AI Engine:** Claude Sonnet 4 (coaching/scoring), Groq Whisper (transcription), ElevenLabs (TTS)
+**AI Engine:** Claude Sonnet 4 (coaching/scoring), Groq Whisper (transcription), Kokoro TTS via Together AI (questions/coaching), ElevenLabs (Conversational AI only)
 **Database:** Supabase PostgreSQL (RLS-secured)
 **Monetization:** RevenueCat (in-app subscriptions)
 **Analytics:** PostHog
@@ -134,36 +134,40 @@ app/
 
 ## Practice Modes
 
-### 1. Daily Challenge (Free)
+### 1. Daily Challenge (Free — text-only, no scoring for free users)
 **Purpose:** Build a daily communication habit with a single question.
 
-**Flow:**
+**Flow (Pro users):**
 1. Home screen shows "Daily Challenge" hero card
-2. Tap → question loads (cached per calendar day, shared across all users)
-3. Sharp reads the question aloud (TTS) or displays text-only
+2. Tap → universal question loads from server (same for all users, generated once/day)
+3. Question displayed as text only (no TTS — cost optimisation)
 4. User records a 60-second response
 5. Audio transcribed → scored on 5 dimensions
 6. Result screen: score ring, coaching insight, communication tip, suggested angles
 7. Streak updates automatically
 
-**Question Formats:** Prompt, Roleplay, Briefing, Pressure, Context
-- Roleplay: includes situation card ("Here's what I want you to do...")
-- Briefing: includes background card ("Here's some context...")
-- Pressure: includes high-stakes scenario
-- Context: draws from user's uploaded documents/role
+**Flow (Free users):**
+1-4. Same as Pro
+5. **No transcription, no scoring** — zero API calls
+6. Result screen shows "?" score with lock icon + "Upgrade to Pro to see your score" CTA
+7. Streak still updates (keeps engagement)
+
+**Question Generation:**
+- Universal question generated server-side once per day (`GET /api/daily-question`)
+- Cached on server — all users get the same question (enables duels)
+- Context-free questions any professional can answer
+- Fallback question if API fails
 
 **Key Details:**
-- Same question for all users each day (enables duels)
-- Never paywalled (core free feature + viral growth via duels)
-- Fallback question if API fails
-- Minimum 5 words required for scoring
-- TTS with fallback to text-only mode
+- Text-only (no TTS) — saves ElevenLabs/Kokoro costs
+- Free users cost $0/day (no API calls)
+- Pro users cost ~$0.03/day (transcription + scoring)
 
-### 2. One Shot (Premium, 5/day)
-**Purpose:** Full 90-second scored session with comprehensive coaching.
+### 2. One Shot (Free: 1/day, Pro: 3/day)
+**Purpose:** Full 90-second scored session with comprehensive coaching. Free users get 1/day as a conversion hook — they experience full scoring and coaching, then want more.
 
 **Flow:**
-1. Home → One Shot card (premium gate)
+1. Home → One Shot card (unlocked for all users, shows remaining count)
 2. Question screen: AI-generated question using user's context
 3. Difficulty indicator (1-10 dot scale)
 4. "New question" button (2 regenerates per question)
@@ -186,9 +190,9 @@ app/
 - User listens to model version → records their own attempt
 - Similarity scoring (word overlap vs model)
 - Tiered feedback: >80% "Nailed it", 50-80% "Good attempt", <50% "Try again"
-- Limited daily retries (10/day)
+- Unlimited retries (no separate practice limit)
 
-### 3. Threaded Challenge (Premium, 5/day)
+### 3. Threaded Challenge (Pro: 2/day)
 **Purpose:** 4-turn escalating pressure drill simulating real conversations.
 
 **Flow:**
@@ -221,7 +225,7 @@ app/
 - Probes documents if user claims something but can't articulate
 - Escalating pressure: depth → clarity → challenge → perspective → stakes → accountability
 
-### 4. Industry Insight (Premium, 5/day)
+### 4. Industry Insight (Pro: 2/day)
 **Purpose:** Practice answering questions about real-world news relevant to your role.
 
 **Flow:**
@@ -257,6 +261,36 @@ app/
 - Async — no real-time requirement
 - Status: pending → completed → expired
 - Never paywalled (viral growth loop)
+
+### 6. Live Conversations (Pro: 1/day)
+**Purpose:** Full-duplex voice conversations with AI characters in realistic professional scenarios.
+
+**Powered by:** ElevenLabs Conversational AI (separate from Kokoro TTS)
+
+**5 Scenario Types:**
+| Scenario | AI Character | What It Tests |
+|----------|-------------|---------------|
+| Job Interview | Realistic interviewer for user's target role | Clarity, substance, confidence |
+| Salary Negotiation | Manager/HR during raise discussion | Persuasion, anchoring, composure |
+| Difficult Feedback | Direct report receiving tough feedback | Empathy, directness, structure |
+| Stakeholder Pushback | Skeptical stakeholder challenging a decision | Defence, evidence, adaptability |
+| Elevator Pitch | Investor/executive, 60 seconds to hook them | Concision, impact, storytelling |
+
+**Flow:**
+1. Home → Conversation card (Pro gate)
+2. Select scenario → character intro (name, role, context)
+3. 5-minute real-time voice conversation via WebSocket
+4. AI adapts in real-time based on user responses
+5. Debrief with 5 conversational dimensions:
+   - Clarity, Persuasiveness, Composure, Substance, Adaptability
+6. Turn-by-turn transcript with coaching notes
+
+**Key Details:**
+- Uses ElevenLabs ConvAI (not Kokoro) — requires real-time full-duplex voice
+- Pre-configured agent with persona, voice, and scenario context
+- Signed URL auth flow for secure WebSocket connection
+- Transcript fetched from ElevenLabs API after conversation ends
+- 1/day limit for Pro users (highest per-session API cost at ~$0.60/session)
 
 ---
 
@@ -382,36 +416,49 @@ Documents directly influence question generation and scoring.
 ## Premium Model
 
 ### Free Tier
-- Unlimited Daily Challenges
-- Unlimited Sharp Duels
-- Basic scoring (5 dimensions)
+- Daily Challenge (text-only question, no scoring — streak still tracks)
+- 1 One Shot per day (full scoring + coaching — conversion hook)
+- Sharp Duels (async 1v1)
 - Streak tracking + badges
 
 ### Sharp Pro
 
-| Feature | Limit |
-|---------|-------|
-| One Shot sessions | 5/day |
-| Threaded challenges | 5/day |
-| Industry questions | 5/day |
-| Practice Again (coaching drill) | 10/day |
-| Question regenerates | 2/question |
-| Model answers | Unlimited |
-| Context + documents | Full access |
-| Sharp Summary (analytics) | Full access |
-| Streak freeze | 1/week |
+| Feature | Free | Pro |
+|---------|------|-----|
+| Daily Challenge | Question only (no score) | Full scoring + coaching |
+| One Shot sessions | 1/day | 3/day |
+| Threaded challenges | — | 2/day |
+| Industry questions | — | 2/day |
+| Live Conversations | — | 1/day |
+| Practice Again (coaching drill) | — | Unlimited |
+| Question regenerates | — | 1/question |
+| Model answers | — | Unlimited |
+| Context + documents | — | Full access |
+| Sharp Summary (analytics) | — | Full access |
+| Streak freeze | — | 1/week |
 
 ### Pricing
-- **Annual:** £119.99/year (recommended, ~44% savings)
-- **Monthly:** £17.99/month
+- **Annual:** £249.99/year (recommended, ~40% savings, £20.83/mo effective)
+- **Monthly:** £34.99/month
 
 ### Paywall UX
-- Anchor card: "A single session with a communication coach costs £150-500. Sharp Pro gives you unlimited AI coaching for less than the price of lunch."
-- 8 feature cards with descriptions
-- Radio button plan selection (Annual/Monthly/Free)
+- Headline: "Speak clearly when it counts. Every time."
+- Anchor card: "A communication coach charges £150–500 per session. Sharp Pro gives you unlimited AI coaching that quotes your exact words, shows you the fix, and tracks your progress — for less than a coffee a day."
+- 8 outcome-focused feature cards (e.g., "Nail your next interview" not "5 One Shots/day")
+- Radio button plan selection (Annual/Monthly)
 - RevenueCat handles real App Store pricing when configured
 - Restore purchases link for existing subscribers
 - Legal text re auto-renewal
+
+### Unit Economics
+
+| User Type | Monthly Cost | Revenue (after Apple 30%) | Margin |
+|-----------|-------------|--------------------------|--------|
+| Free (active daily) | ~$0.065 (1 One Shot) | $0 | — |
+| Pro Light (1-2 sessions/day) | ~$8 | $30.80 (monthly) | +74% |
+| Pro Regular (3-4 sessions/day) | ~$18 | $30.80 | +42% |
+| Pro Power (maxes everything) | ~$37 | $30.80 | -20% |
+| **Blended average** | **~$16** | **$25.87** | **+48%** |
 
 ---
 
@@ -445,24 +492,31 @@ Documents directly influence question generation and scoring.
 
 ## Audio System
 
-### Text-to-Speech (ElevenLabs)
-5 voice modes with different delivery styles:
+### Text-to-Speech (Kokoro via Together AI)
+Self-hosted open-source TTS replaced ElevenLabs for all non-conversation audio. 99.9% cost reduction ($166/mo → $0.15/mo per power user).
 
-| Mode | Use Case | Style |
-|------|----------|-------|
-| Question | Reading practice questions | Natural, conversational |
-| Coaching | Feedback and insights | Warm, slower, considered |
-| Model | Expert sample answers | Crisp, authoritative |
-| Follow-up | Threaded pressure questions | Assertive, interviewer energy |
-| Briefing | Industry/news context | Measured, news-anchor clarity |
+**Provider:** Kokoro-82M model via Together AI GPU API ($0.50/M characters)
+**Feature flag:** `TTS_PROVIDER` env var — set to `elevenlabs` for instant rollback
+**ElevenLabs retained for:** Conversational AI (live voice conversations only)
 
-**Fallback:** Text-only mode if ElevenLabs unavailable. Fallback to on-device Speech API.
+5 voice modes mapped to Kokoro voices:
+
+| Mode | Voice | Speed | Use Case |
+|------|-------|-------|----------|
+| Question | af_heart | 1.0 | Reading practice questions — warm, conversational |
+| Coaching | af_heart | 0.9 | Feedback and insights — slower, considered |
+| Model | af_nicole | 1.05 | Expert sample answers — crisp, authoritative |
+| Follow-up | af_nicole | 1.1 | Threaded pressure questions — assertive |
+| Briefing | af_bella | 0.95 | Industry/news context — measured, news-anchor |
+
+**Fallback:** Text-only mode if TTS unavailable. On-device Speech API as secondary fallback.
+**Server-side cache:** MD5-keyed, 200 entries, 1hr TTL — same text+mode combo only hits TTS provider once.
 
 ### Natural Script Builder
-- Greetings vary by time of day ("Good morning...", "Afternoon question for you...")
-- Transitions adapt to question format
-- Roleplay: "Here's what I want you to do. [situation] [question]"
-- Briefing: "Here's some context. [background] Now, [question]"
+- No preamble — questions go straight to the point (saves ~40 chars per call)
+- Roleplay/Pressure: "[situation] [question]"
+- Briefing: "[background] [question]"
+- All other formats: question text only
 
 ### Audio Management
 - Single player instance (prevents overlaps)
@@ -638,7 +692,8 @@ auth.users (Supabase managed)
 | POST | /api/threaded/debrief | 10/min | Analyse completed threaded challenge |
 | POST | /api/progress/summary | 5/min | Generate spoken progress summary |
 | POST | /api/transcribe | 10/min | Transcribe audio via Groq Whisper |
-| GET | /api/tts | 20/min | ElevenLabs voice generation (streaming MP3) |
+| GET | /api/tts | 20/min | Kokoro TTS via Together AI (MP3, fallback to ElevenLabs) |
+| GET | /api/daily-question | — | Universal daily question (cached per day, one Claude call for all users) |
 | POST | /api/document/extract-text | — | Extract text from PDF/DOCX/TXT |
 | POST | /api/document/parse | — | Classify + extract structured data from document |
 | POST | /api/notifications/register | — | Store push token |
@@ -699,17 +754,18 @@ Logs quality score + improvement suggestions without blocking the response.
 
 ## External Integrations
 
-| Service | Purpose |
-|---------|---------|
-| Supabase | Auth, PostgreSQL database, file storage, RLS |
-| Railway | Backend hosting (Node.js/Express) |
-| Anthropic (Claude) | All AI intelligence (scoring, coaching, questions) |
-| Groq (Whisper) | Audio transcription |
-| ElevenLabs | Text-to-speech (5 voice modes) |
-| RevenueCat | In-app purchase management |
-| PostHog | Event analytics + feature flags |
-| Expo Notifications | Push notifications |
-| Google News RSS | Industry question research |
+| Service | Purpose | Monthly Cost (per power user) |
+|---------|---------|-------------------------------|
+| Supabase | Auth, PostgreSQL database, file storage, RLS | ~$25 (fixed) |
+| Railway | Backend hosting (Node.js/Express) | ~$20 (fixed) |
+| Anthropic (Claude Sonnet 4) | All AI intelligence (scoring, coaching, questions) | ~$18 |
+| Groq (Whisper) | Audio transcription | ~$0.66 |
+| Together AI (Kokoro-82M) | Text-to-speech for questions, coaching, model answers | ~$0.15 |
+| ElevenLabs | Conversational AI only (live voice conversations) | ~$18 |
+| RevenueCat | In-app purchase management | Free tier |
+| PostHog | Event analytics + feature flags | Free tier |
+| Expo Notifications | Push notifications | Free |
+| Google News RSS | Industry question research | Free |
 
 ---
 
@@ -816,7 +872,7 @@ src/
     ├── storage.ts            # AsyncStorage CRUD for all data
     ├── scoring.ts            # generateQuestion, scoreAnswer, generateFollowUp, generateDebrief
     ├── transcription.ts      # Groq/Whisper via backend
-    ├── tts.ts                # ElevenLabs + device fallback (5 voice modes)
+    ├── tts.ts                # Kokoro TTS via Together AI + device fallback (5 voice modes)
     ├── auth.ts               # Apple Sign In + email/password
     ├── premium.ts            # RevenueCat integration + usage limits
     ├── sync.ts               # Supabase cloud sync (all data types)
@@ -826,7 +882,81 @@ src/
     └── analytics.ts          # PostHog event tracking
 
 backend/
-├── server.js                 # Express server, 16 API routes
+├── server.js                 # Express server, 17 API routes
 ├── prompts/index.js          # All Claude prompts (7 prompt types)
 └── .env                      # API keys (never commit)
 ```
+
+---
+
+## Growth & Conversion Strategy
+
+### Conversion Funnel
+```
+TikTok/Shorts/Reels views (4M/month)
+    ↓ 0.096% view-to-download
+~2,700 downloads/month
+    ↓ 5% convert to Pro
+~135 new Pro subscribers/month
+    ↓ accumulate (6% monthly churn)
+~1,277 active Pro subs after 12 months
+    =
+£10,000/month profit
+```
+
+### Conversion Hooks
+1. **Free One Shot** (1/day) — lets free users experience full scoring + coaching before paying
+2. **Daily Challenge "?" score** — free users record but see locked score, creating curiosity gap
+3. **Onboarding scored session** — first-time users get one free scored assessment during onboarding
+4. **Outcome-focused paywall** — "Nail your next interview" not "5 One Shots/day"
+5. **Value anchoring** — "A coach charges £150-500/session. Sharp Pro costs less than a coffee/day."
+
+### Upgrade Touchpoints (9 locations)
+1. Home screen: Threaded, Industry, Conversation, Summary, Context cards (all show Pro badge)
+2. Daily Challenge result: "See your score — Upgrade to Pro"
+3. One Shot after daily limit: "Upgrade for more"
+4. One Shot coaching drill (locked for free)
+5. Session detail "Practice again" (locked for free)
+6. Question regeneration (locked for free)
+7. Settings plan section
+8. Onboarding value prop screen
+9. Onboarding paywall screen
+
+### Content Strategy (4-5 posts/day across 3 platforms)
+| Content Type | Purpose |
+|-------------|---------|
+| Hook clips ("You say 'um' 47 times in interviews") | Top of funnel, virality |
+| Before/after rewrites (show Sharp's coaching) | Product demo, conversion |
+| "Score my answer" challenges | Engagement, UGC potential |
+| Quick communication tips | Authority building |
+| Results/testimonials | Social proof |
+
+---
+
+## Environment Variables
+
+### Backend (Railway)
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | Claude Sonnet 4 for scoring/coaching |
+| `GROQ_API_KEY` | Whisper transcription |
+| `TOGETHER_API_KEY` | Kokoro TTS via Together AI |
+| `KOKORO_TTS_URL` | Together AI base URL (defaults to https://api.together.ai) |
+| `TTS_PROVIDER` | `kokoro` (default) or `elevenlabs` for instant rollback |
+| `ELEVENLABS_API_KEY` | Conversational AI + TTS fallback |
+| `ELEVENLABS_VOICE_ID` | Voice for ElevenLabs TTS fallback |
+| `ELEVENLABS_AGENT_ID` | Conversational AI agent |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase admin key |
+| `REVENUECAT_WEBHOOK_SECRET` | Webhook auth |
+
+### Client (EAS / app.config.ts)
+
+| Variable | Purpose |
+|----------|---------|
+| `EXPO_PUBLIC_API_URL` | Backend URL |
+| `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase public key |
+| `EXPO_PUBLIC_POSTHOG_KEY` | PostHog analytics |
+| `EXPO_PUBLIC_REVENUECAT_API_KEY` | RevenueCat SDK key |

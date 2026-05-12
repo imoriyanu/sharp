@@ -22,7 +22,7 @@ export default function RecordingScreen() {
   const [timeLeft, setTimeLeft] = useState(TIMER_SECONDS);
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [processingMsg, setProcessingMsg] = useState('Scoring your answer...');
+  const [processingMsg, setProcessingMsg] = useState('Transcribing your answer...');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [retryReason, setRetryReason] = useState('');
   const recorderRef = useRef<InstanceType<typeof AudioModule.AudioRecorder> | null>(null);
@@ -76,6 +76,10 @@ export default function RecordingScreen() {
       trackEvent(Events.RECORDING_STARTED, { mode: params.mode });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+      // Clear any orphan interval from a previous startRecording call
+      // (retry banner taps, double-presses) — without this the timer drops
+      // 2-3 seconds per real second.
+      if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) { stopRecording(); return 0; }
@@ -234,6 +238,7 @@ export default function RecordingScreen() {
       }
 
       // ===== ONE-SHOT MODE: score and show results =====
+      if (mountedRef.current) setProcessingMsg('Transcribed. Now scoring...');
       const [prevScores, insights, sessions] = await Promise.all([getAverageScores(), getRecentInsights(), getSessions()]);
       const result = await scoreAnswer({
         roleText: ctx?.roleText || '',
@@ -260,6 +265,8 @@ export default function RecordingScreen() {
         sessionCount: sessions.length,
         recentScores,
       });
+
+      if (mountedRef.current) setProcessingMsg('Generating coaching...');
 
       // Pre-fetch results audio — text MUST match exactly what results screen builds
       const pfScoreWord = result.overall >= 7.5 ? 'Really solid work.' : result.overall >= 5.5 ? 'OK, not bad.' : 'Alright, let\'s break this down.';
@@ -339,7 +346,7 @@ export default function RecordingScreen() {
   if (processing) {
     return (
       <SafeAreaView style={s.safe}>
-        <LoadingScreen message={processingMsg} submessage={params.mode === 'threaded' ? 'Building the conversation...' : 'Analysing structure, substance, concision...'} />
+        <LoadingScreen message={processingMsg} submessage="This usually takes a few seconds" />
       </SafeAreaView>
     );
   }
@@ -402,7 +409,7 @@ export default function RecordingScreen() {
         </FadeIn>
 
         <View style={s.center}>
-          <Text style={s.timer}>{timerStr}</Text>
+          <Text style={[s.timer, timeLeft <= 10 && { color: colors.error }]}>{timerStr}</Text>
 
           {isRecording && (
             <AudioWaveBars active={isRecording} color={colors.recording} height={wp(44)} />
@@ -439,7 +446,7 @@ const s = StyleSheet.create({
   cancelText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.tertiary },
   center: { alignItems: 'center' },
   timer: { fontSize: fp(64), fontWeight: typography.weight.black, color: colors.text.primary, letterSpacing: -3, marginBottom: spacing.sm },
-  recBadge: { flexDirection: 'row', alignItems: 'center', gap: wp(5), backgroundColor: colors.feedback.negativeBg, borderWidth: 1.5, borderColor: colors.feedback.negativeBorder, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(4), marginBottom: spacing.xl },
+  recBadge: { flexDirection: 'row', alignItems: 'center', gap: wp(5), backgroundColor: colors.accent.light, borderWidth: 1.5, borderColor: colors.accent.border, borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(4), marginBottom: spacing.xl },
   recDot: { width: wp(7), height: wp(7), borderRadius: wp(4), backgroundColor: colors.recording },
   recText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.recording, textTransform: 'uppercase' as const },
   procText: { fontSize: typography.size.sm, color: colors.text.tertiary, marginBottom: spacing.xl },
@@ -447,7 +454,7 @@ const s = StyleSheet.create({
   ttext: { fontSize: typography.size.sm, color: colors.text.secondary, fontStyle: 'italic', lineHeight: fp(18) },
   tplaceholder: { fontSize: typography.size.sm, color: colors.text.muted, fontStyle: 'italic' },
   spacer: { flex: 1 },
-  stopBtn: { backgroundColor: colors.bg.secondary, borderWidth: 2, borderColor: colors.feedback.negativeBorder, borderRadius: radius.lg, paddingVertical: wp(15), flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(6) },
+  stopBtn: { backgroundColor: colors.bg.secondary, borderWidth: 2, borderColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(15), flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: wp(6) },
   stopSq: { width: wp(11), height: wp(11), borderRadius: wp(3), backgroundColor: colors.recording },
   stopText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.recording },
 
@@ -457,7 +464,7 @@ const s = StyleSheet.create({
   retryTitle: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary, marginBottom: spacing.sm },
   retryReason: { fontSize: typography.size.sm, color: colors.text.secondary, textAlign: 'center', lineHeight: fp(20), marginBottom: spacing.xl, paddingHorizontal: spacing.lg },
   retryTranscript: { backgroundColor: colors.bg.tertiary, borderRadius: radius.lg, padding: spacing.lg, width: '100%', marginBottom: spacing.xl },
-  retryTranscriptLabel: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: spacing.sm },
+  retryTranscriptLabel: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: spacing.sm },
   retryTranscriptText: { fontSize: typography.size.sm, color: colors.text.secondary, fontStyle: 'italic', lineHeight: fp(20) },
   retryTips: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, width: '100%', marginBottom: spacing.xxl, ...shadows.sm },
   retryTipTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.text.primary, marginBottom: spacing.md },

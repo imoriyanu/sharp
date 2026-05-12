@@ -52,7 +52,7 @@ const s = StyleSheet.create({
   iconEmoji: { fontSize: fp(22) },
   spacer: { flex: 1 },
   title: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary },
-  badge: { fontSize: fp(9), fontWeight: typography.weight.heavy, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginTop: wp(3), marginBottom: spacing.xl },
+  badge: { fontSize: fp(10), fontWeight: typography.weight.heavy, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginTop: wp(3), marginBottom: spacing.xl },
   desc: { fontSize: fp(11), color: colors.text.secondary, textAlign: 'center', lineHeight: fp(18), marginBottom: spacing.xl },
   features: { width: '100%', marginBottom: spacing.xl },
   feat: { flexDirection: 'row', alignItems: 'center', gap: wp(8), paddingVertical: wp(4) },

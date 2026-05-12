@@ -17,12 +17,11 @@ export default function OnboardingResult() {
   const coachingInsight = (p.coachingInsight as string) || '';
   const mountedRef = useRef(true);
 
-  const DIMS = ['structure', 'concision', 'substance', 'fillerWords'] as const;
-  const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words' };
+  const DIMS = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
+  const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words', awareness: 'Awareness' };
 
   useEffect(() => {
     mountedRef.current = true;
-    // Play immediately — no delay. Prefetch from recording screen means audio is already cached.
     if (coachingInsight) {
       const spoken = `Nice work on your first try! Here's your coaching insight: ${coachingInsight}`;
       playCoachingAudio(spoken).catch(() => {});
@@ -33,7 +32,7 @@ export default function OnboardingResult() {
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        <FadeIn><ProgressDots total={4} current={3} /></FadeIn>
+        <FadeIn><ProgressDots total={5} current={4} /></FadeIn>
 
         {/* Celebration */}
         <FadeIn delay={200}>
@@ -121,7 +120,7 @@ const s = StyleSheet.create({
   celebRow: { alignItems: 'center', marginVertical: spacing.lg },
 
   scoreCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xxl, alignItems: 'center', ...shadows.lg, marginBottom: spacing.lg },
-  scoreLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.accent.primary, letterSpacing: 1.5, marginBottom: spacing.lg },
+  scoreLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.accent.primary, letterSpacing: 1.5, marginBottom: spacing.lg },
   ring: { width: wp(110), height: wp(110), borderRadius: wp(55), borderWidth: wp(5), alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   scoreContext: { fontSize: typography.size.sm, color: colors.text.tertiary, textAlign: 'center', fontWeight: typography.weight.semibold },
 
@@ -133,7 +132,7 @@ const s = StyleSheet.create({
   dimVal: { fontSize: fp(15), fontWeight: typography.weight.black, width: wp(26), textAlign: 'right' },
 
   cardEmoji: { fontSize: fp(20), marginBottom: spacing.sm },
-  cardLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: spacing.sm },
+  cardLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: spacing.sm },
 
   positiveCard: { backgroundColor: colors.feedback.positiveBg, borderWidth: 1.5, borderColor: colors.feedback.positiveBorder, borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', marginBottom: spacing.md },
   positiveText: { fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20), fontWeight: typography.weight.semibold, textAlign: 'center' },

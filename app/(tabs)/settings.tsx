@@ -54,13 +54,6 @@ export default function SettingsScreen() {
     }
   }
 
-  async function clearData() {
-    Alert.alert('Clear All Data', 'This will delete all your sessions, context, streak, and profile. Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Clear', style: 'destructive', onPress: async () => { await AsyncStorage.clear(); setProfile(null); Alert.alert('Done', 'All data cleared. Restart the app.'); } },
-    ]);
-  }
-
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -110,15 +103,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Data */}
-        <Text style={s.section}>Data</Text>
-        <View style={s.card}>
-          <TouchableOpacity style={[s.row, s.rowLast]} onPress={clearData}>
-            <Text style={[s.label, { color: colors.error }]}>Clear all data</Text>
-            <Text style={[s.value, { color: colors.error }]}>→</Text>
-          </TouchableOpacity>
-        </View>
-
         <Text style={s.section}>Account</Text>
         <View style={s.card}>
           <View style={s.row}>
@@ -148,7 +132,7 @@ export default function SettingsScreen() {
           <TouchableOpacity style={[s.row, !isPremium() && !isRevenueCatConfigured() ? s.rowLast : {}]} onPress={() => !isPremium() && router.push('/premium')} activeOpacity={isPremium() ? 1 : 0.7}>
             <View style={s.planInfo}>
               <Text style={s.label}>{getPlanName()}</Text>
-              <Text style={s.planSub}>{isPremium() ? 'All features unlocked' : 'Tap to upgrade'}</Text>
+              <Text style={s.planSub}>{isPremium() ? '3 One Shots · 2 Threaded · 2 Industry /day' : 'Unlock full coaching and unlimited practice'}</Text>
             </View>
             {isPremium() ? (
               <View style={s.proBadge}><Text style={s.proBadgeText}>PRO</Text></View>
@@ -187,15 +171,56 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <Text style={s.section}>Legal</Text>
+        <Text style={s.section}>Support</Text>
         <View style={s.card}>
-          <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => router.push('/privacy')}>
-            <Text style={s.label}>Privacy Policy</Text>
+          <TouchableOpacity style={s.row} onPress={() => {
+            Alert.prompt(
+              'Feature Request',
+              'What would make Sharp better for you?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Send', onPress: async (text?: string) => {
+                  if (!text?.trim()) return;
+                  try {
+                    const { apiPost } = require('../../src/services/api');
+                    await apiPost('/api/feature-request', { request: text.trim(), userId: user?.id || 'anonymous', timestamp: new Date().toISOString() });
+                  } catch {}
+                  Alert.alert('Thanks!', 'Your request has been noted. We read every one.');
+                }},
+              ],
+              'plain-text',
+              '',
+              'default'
+            );
+          }}>
+            <Text style={s.label}>Request a feature</Text>
+            <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => {
+            const { Linking } = require('react-native');
+            Linking.openURL('mailto:support@getsharp.app?subject=Sharp%20App%20Support');
+          }}>
+            <Text style={s.label}>Contact support</Text>
             <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={s.versionRow}><Text style={s.version}>Sharp v2.0</Text></View>
+        <Text style={s.section}>Legal</Text>
+        <View style={s.card}>
+          <TouchableOpacity style={s.row} onPress={() => router.push('/privacy')}>
+            <Text style={s.label}>Privacy Policy</Text>
+            <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => {
+            const { Linking } = require('react-native');
+            Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/');
+          }}>
+            <Text style={s.label}>Terms of Use</Text>
+            <Text style={[s.value, { color: colors.accent.primary }]}>→</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.versionRow}><Text style={s.version}>Sharp v2.2</Text></View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -230,7 +255,7 @@ const s = StyleSheet.create({
   planInfo: { flex: 1 },
   planSub: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: 1 },
   proBadge: { backgroundColor: colors.accent.primary, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
-  proBadgeText: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.inverse, letterSpacing: 1 },
+  proBadgeText: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.inverse, letterSpacing: 1 },
   versionRow: { alignItems: 'center', marginTop: spacing.lg },
   version: { fontSize: fp(10), color: colors.text.muted },
 });

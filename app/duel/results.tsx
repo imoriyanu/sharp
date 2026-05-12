@@ -102,7 +102,7 @@ const s = StyleSheet.create({
   playerScore: { fontSize: fp(38), fontWeight: typography.weight.black, letterSpacing: -1.5 },
   bar: { height: wp(5), backgroundColor: colors.borderLight, borderRadius: wp(3), width: '100%', marginVertical: wp(6), overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: wp(3) },
-  playerInsight: { fontSize: fp(9), color: colors.text.muted, lineHeight: fp(14), textAlign: 'center', marginTop: wp(4) },
+  playerInsight: { fontSize: fp(10), color: colors.text.muted, lineHeight: fp(14), textAlign: 'center', marginTop: wp(4) },
   vs: { fontSize: fp(12), fontWeight: typography.weight.black, color: colors.text.muted },
   divider: { height: 1.5, backgroundColor: colors.borderLight, marginVertical: spacing.lg },
   ghostBtn: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: wp(13), alignItems: 'center', marginBottom: spacing.sm },

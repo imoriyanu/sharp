@@ -187,7 +187,7 @@ const s = StyleSheet.create({
   content: { padding: layout.screenPadding },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   title: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary },
-  close: { fontSize: fp(22), color: colors.text.muted },
+  close: { fontSize: fp(24), color: colors.text.muted, padding: spacing.sm, minWidth: wp(44), minHeight: wp(44), textAlign: 'center' },
 
   // Hero
   heroCard: { backgroundColor: colors.streak.bg, borderWidth: 1.5, borderColor: colors.streak.border, borderRadius: radius.xl, padding: spacing.xxl, alignItems: 'center', marginBottom: spacing.md, ...shadows.md },
@@ -198,7 +198,7 @@ const s = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xl, backgroundColor: colors.bg.secondary, borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   statBox: { flex: 1, alignItems: 'center' },
   statVal: { fontSize: fp(18), fontWeight: typography.weight.black, color: colors.text.primary },
-  statLabel: { fontSize: fp(9), color: colors.text.muted, fontWeight: typography.weight.semibold, marginTop: 2 },
+  statLabel: { fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.semibold, marginTop: 2 },
   statDivider: { width: 1, height: wp(24), backgroundColor: colors.borderLight },
   freezeActive: { color: colors.text.primary },
   freezeUsed: { color: colors.text.muted },
@@ -231,7 +231,7 @@ const s = StyleSheet.create({
   gridCellDone: { backgroundColor: colors.accent.light },
   gridCellFrozen: { backgroundColor: colors.duel.bg },
   gridCellToday: { borderWidth: 2, borderColor: colors.accent.primary },
-  gridDay: { fontSize: fp(9), fontWeight: typography.weight.semibold, color: colors.text.muted },
+  gridDay: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.text.muted },
   gridDayDone: { color: colors.accent.primary },
   gridBadgeEmoji: { fontSize: fp(14) },
   gridFreezeEmoji: { fontSize: fp(12) },

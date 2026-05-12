@@ -112,6 +112,7 @@ export default function RootLayout() {
           <Stack.Screen name="duel/results" options={{ presentation: 'modal' }} />
           <Stack.Screen name="analytics/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="premium/index" options={{ presentation: 'formSheet', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="premium/interview-pack" options={{ presentation: 'formSheet', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="streak/index" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="auth/signin" options={{ presentation: 'modal' }} />
           <Stack.Screen name="session/[id]" />

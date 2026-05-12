@@ -24,7 +24,7 @@ export default function OnboardingName() {
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={s.container}>
           <FadeIn>
-            <ProgressDots total={4} current={0} />
+            <ProgressDots total={5} current={0} />
           </FadeIn>
 
           <View style={s.center}>

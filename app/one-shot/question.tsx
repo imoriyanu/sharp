@@ -198,7 +198,7 @@ export default function QuestionScreen() {
           {question && (
             <FadeIn delay={300}>
               <View style={s.diffRow}>
-                <Text style={s.diffLabel}>Difficulty</Text>
+                <Text style={s.diffLabel}>Difficulty · {(question.difficulty || 5) <= 3 ? 'Easy' : (question.difficulty || 5) <= 6 ? 'Moderate' : (question.difficulty || 5) <= 8 ? 'Hard' : 'Expert'}</Text>
                 <View style={s.dots}>
                   {Array.from({ length: 10 }).map((_, i) => (
                     <View key={i} style={[s.dot, i < (question.difficulty || 5) && s.dotOn]} />
@@ -295,21 +295,21 @@ const s = StyleSheet.create({
   newsIcon: { fontSize: fp(18) },
   newsBadge: { backgroundColor: colors.industry.bg, borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
   newsBadgeText: { fontSize: fp(8), fontWeight: typography.weight.black, color: colors.industry.text, letterSpacing: 1.5 },
-  newsTldr: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.accent.primary, letterSpacing: 2, marginBottom: spacing.sm },
+  newsTldr: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.accent.primary, letterSpacing: 2, marginBottom: spacing.sm },
   newsText: { fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(22) },
   newsTopicRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight },
-  newsTopicLabel: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted },
+  newsTopicLabel: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted },
   newsTopicText: { fontSize: fp(10), fontWeight: typography.weight.semibold, color: colors.text.secondary, flex: 1 },
   questionText: { fontSize: fp(18), color: colors.text.primary, lineHeight: fp(28), fontWeight: typography.weight.bold, marginBottom: spacing.xl },
   diffRow: { flexDirection: 'row', alignItems: 'center', gap: wp(8) },
-  diffLabel: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const },
+  diffLabel: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const },
   dots: { flexDirection: 'row', gap: wp(3) },
   dot: { width: wp(6), height: wp(6), borderRadius: wp(3), backgroundColor: colors.border },
   dotOn: { backgroundColor: colors.accent.primary },
   learnCard: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.borderLight, borderRadius: radius.xl, padding: spacing.lg, marginTop: spacing.lg },
   learnLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.primary, marginBottom: spacing.sm },
   learnHint: { fontSize: typography.size.xs, color: colors.text.tertiary, lineHeight: fp(18), marginBottom: spacing.md },
-  learnSectionLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: wp(4), marginTop: spacing.sm },
+  learnSectionLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: wp(4), marginTop: spacing.sm },
   learnLinks: { gap: spacing.sm },
   learnLink: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg.tertiary, borderRadius: radius.lg, paddingVertical: spacing.md, paddingHorizontal: spacing.md, gap: spacing.sm },
   learnLinkIcon: { fontSize: fp(12) },

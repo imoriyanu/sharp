@@ -48,8 +48,9 @@ export default function DebriefScreen() {
     );
   }
 
-  const trajLabel = debrief.trajectory === 'improving' ? 'Improving across turns' : debrief.trajectory === 'declining' ? 'Declining under pressure' : 'Held steady';
+  const trajLabel = debrief.trajectory === 'improving' ? 'Improving under pressure' : debrief.trajectory === 'declining' ? 'Lost ground under pressure' : 'Held steady under pressure';
   const trajUp = debrief.trajectory === 'improving';
+  const trajSteady = debrief.trajectory === 'steady';
 
   return (
     <SafeAreaView style={s.safe}>
@@ -68,8 +69,8 @@ export default function DebriefScreen() {
               <ScoreReveal score={debrief.overall} color={getScoreColor(debrief.overall)} />
             </View>
             <Text style={s.scoreLbl}>Thread Score</Text>
-            <View style={[s.trajBadge, trajUp ? s.trajUp : s.trajDown]}>
-              <Text style={[s.trajText, trajUp ? s.trajUpText : s.trajDownText]}>
+            <View style={[s.trajBadge, trajUp ? s.trajUp : trajSteady ? s.trajSteady : s.trajDown]}>
+              <Text style={[s.trajText, trajUp ? s.trajUpText : trajSteady ? s.trajSteadyText : s.trajDownText]}>
                 {trajUp ? '↗' : debrief.trajectory === 'declining' ? '↘' : '→'} {trajLabel}
               </Text>
             </View>
@@ -147,7 +148,7 @@ export default function DebriefScreen() {
         {/* Dodged questions */}
         {debrief.dodgedQuestions.length > 0 && (
           <FadeIn delay={700}>
-            <Text style={s.section}>Dodged</Text>
+            <Text style={s.section}>Questions to revisit</Text>
             {debrief.dodgedQuestions.map((d, i) => (
               <View key={i} style={s.dodgeCard}>
                 <Text style={s.dodgeText}>{d}</Text>
@@ -193,28 +194,30 @@ const s = StyleSheet.create({
   errorText: { fontSize: typography.size.sm, color: colors.text.muted, marginBottom: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   title: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary },
-  close: { fontSize: fp(22), color: colors.text.muted },
+  close: { fontSize: fp(24), color: colors.text.muted, padding: spacing.sm, minWidth: wp(44), minHeight: wp(44), textAlign: 'center' },
 
   scoreSection: { alignItems: 'center', marginBottom: spacing.xl },
   ring: { width: wp(100), height: wp(100), borderRadius: wp(50), borderWidth: wp(4), alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   scoreLbl: { fontSize: fp(9), fontWeight: typography.weight.bold, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },
   trajBadge: { borderRadius: radius.pill, paddingHorizontal: wp(14), paddingVertical: wp(5) },
   trajUp: { backgroundColor: colors.feedback.positiveBg },
-  trajDown: { backgroundColor: colors.feedback.negativeBg },
+  trajSteady: { backgroundColor: colors.accent.light },
+  trajDown: { backgroundColor: colors.accent.light },
   trajText: { fontSize: fp(11), fontWeight: typography.weight.bold },
   trajUpText: { color: colors.success },
-  trajDownText: { color: colors.error },
+  trajSteadyText: { color: colors.accent.primary },
+  trajDownText: { color: colors.accent.primary },
 
   sumCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, marginBottom: spacing.lg, ...shadows.md },
   sumText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22) },
 
-  section: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 2, marginTop: spacing.lg, marginBottom: spacing.md },
+  section: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginTop: spacing.lg, marginBottom: spacing.md },
 
   dimCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, ...shadows.md },
   dimRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: wp(6) },
   dimName: { fontSize: fp(11), color: colors.text.tertiary, width: wp(75), fontWeight: typography.weight.semibold },
-  dimTrack: { flex: 1, height: wp(6), backgroundColor: colors.borderLight, borderRadius: wp(3), marginHorizontal: wp(8), overflow: 'hidden' },
-  dimFill: { height: '100%', borderRadius: wp(3) },
+  dimTrack: { flex: 1, height: wp(8), backgroundColor: colors.borderLight, borderRadius: wp(4), marginHorizontal: wp(8), overflow: 'hidden' },
+  dimFill: { height: '100%', borderRadius: wp(4) },
   dimVal: { fontSize: fp(14), fontWeight: typography.weight.black, width: wp(24), textAlign: 'right' },
 
   card: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, overflow: 'hidden', ...shadows.md },
@@ -237,8 +240,8 @@ const s = StyleSheet.create({
   weakRewrite: { fontSize: typography.size.sm, color: colors.success, fontStyle: 'italic', lineHeight: fp(20) },
   weakExplanation: { fontSize: typography.size.xs, color: colors.text.tertiary, marginTop: spacing.sm, lineHeight: fp(18) },
 
-  dodgeCard: { backgroundColor: colors.feedback.negativeBg, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
-  dodgeText: { fontSize: fp(10), color: colors.error, fontWeight: typography.weight.semibold, lineHeight: fp(16) },
+  dodgeCard: { backgroundColor: colors.accent.light, borderWidth: 1, borderColor: colors.accent.border, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
+  dodgeText: { fontSize: typography.size.sm, color: colors.text.secondary, fontWeight: typography.weight.semibold, lineHeight: fp(18) },
 
   convoTurn: { marginBottom: spacing.lg },
   convoQ: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, borderTopLeftRadius: wp(4), padding: spacing.md, marginBottom: spacing.sm, maxWidth: '85%', ...shadows.sm },
