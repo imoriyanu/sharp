@@ -41,5 +41,20 @@
         "EXPO_PUBLIC_REVENUECAT_API_KEY": "appl_KsPZBWLmvNbPhWMuwsGqlXRktGy"
       }
     }
+  },
+  "submit": {
+    "preview": {
+      "ios": {
+        "appleId": "imoriyanu@gmail.com",
+        "appleTeamId": "9HQYKH65D3"
+      }
+    },
+    "production": {
+      "ios": {
+        "appleId": "imoriyanu@gmail.com",
+        "appleTeamId": "9HQYKH65D3",
+        "ascAppId": "6761378418"
+      }
+    }
   }
 }
