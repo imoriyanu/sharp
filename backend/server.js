@@ -147,17 +147,28 @@ const groq = new Groq.default({
 
 // ===== Helper: Call Claude =====
 
-async function callClaude(prompt, maxTokens = 1500) {
+async function callClaude(prompt, maxTokens = 1500, { cacheSystem } = {}) {
   resetUsageIfNewDay();
   apiUsage.anthropic.calls++;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }],
-    }, { signal: controller.signal }).finally(() => clearTimeout(timeout));
+
+    // If cacheSystem provided, send it as a cached system block (~90% input
+    // cost reduction for the static scoring prompt).
+    const createOpts = cacheSystem
+      ? {
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: maxTokens,
+          system: [{ type: 'text', text: cacheSystem, cache_control: { type: 'ephemeral' } }],
+          messages: [{ role: 'user', content: prompt }],
+        }
+      : {
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: maxTokens,
+          messages: [{ role: 'user', content: prompt }],
+        };
+    const response = await anthropic.messages.create(createOpts, { signal: controller.signal }).finally(() => clearTimeout(timeout));
 
     // Track token usage
     if (response.usage) {
@@ -380,6 +391,64 @@ Return ONLY JSON: { "queries": ["query1", "query2", "query3", "query4"] }`;
   }
 }
 
+// ===== Universal Daily Question (shared across all users for the day) =====
+// One question per day, generated server-side once, cached in memory until
+// midnight UTC. Cheaper than per-user generation and enables Duels.
+
+let dailyQuestionCache = { date: '', question: null };
+
+app.get('/api/daily-question', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    if (dailyQuestionCache.date === today && dailyQuestionCache.question) {
+      return res.json(dailyQuestionCache.question);
+    }
+
+    const prompt = `You are Sharp, a communication coach. Generate ONE universal daily challenge question that ANY professional can answer — regardless of their role, industry, or experience level.
+
+The question should test communication skills: clarity, structure, concision, or substance. It should be thought-provoking and require a genuine spoken response — not a yes/no answer.
+
+VARIETY — rotate between these styles:
+- Opinion questions ("What's your take on...?")
+- Experience questions ("Tell me about a time when...")
+- Hypothetical scenarios ("Your CEO just announced... how do you respond?")
+- Explain-it questions ("Explain [concept] to someone outside your field")
+- Pitch questions ("Convince me that...")
+- Pressure questions ("You have 30 seconds to...")
+
+Today's date: ${today} (use this as a seed for variety — different day = different style)
+
+Return ONLY JSON:
+{
+  "question": "The question text",
+  "format": "prompt",
+  "timerSeconds": 60,
+  "reasoning": "Why this question tests communication skills",
+  "targets": "which dimension this primarily tests (structure/concision/substance)",
+  "difficulty": 5,
+  "contextUsed": []
+}`;
+
+    const result = await callClaude(prompt, 500);
+    if (result?.question) {
+      dailyQuestionCache = { date: today, question: result };
+      res.json(result);
+    } else {
+      throw new Error('Invalid question response');
+    }
+  } catch (error) {
+    res.json({
+      question: "What's the most important lesson you've learned in your career so far, and how has it changed how you work?",
+      format: 'prompt',
+      timerSeconds: 60,
+      reasoning: 'Universal fallback',
+      targets: 'substance',
+      difficulty: 5,
+      contextUsed: [],
+    });
+  }
+});
+
 // ===== Question Engine =====
 
 app.post('/api/question/generate', async (req, res) => {
@@ -422,11 +491,19 @@ app.post('/api/score', async (req, res) => {
     }
     req.body.transcript = sanitizeString(req.body.transcript, MAX_TRANSCRIPT);
     req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
-    const promptFn = req.body.isOnboarding ? prompts.onboardingScoringPrompt : prompts.scoringPrompt;
-    const prompt = promptFn(req.body);
+    // Onboarding still uses the standalone prompt. For normal scoring, send
+    // the static ~4000-token system instructions as a cached system block —
+    // ~90% input cost reduction across all scoring calls.
+    let prompt, opts = {};
+    if (req.body.isOnboarding) {
+      prompt = prompts.onboardingScoringPrompt(req.body);
+    } else {
+      prompt = prompts.scoringPrompt(req.body);
+      opts = { cacheSystem: prompts.scoringSystemPrompt };
+    }
 
     // Score the answer
-    const result = await callClaude(prompt, 2000);
+    const result = await callClaude(prompt, 2000, opts);
 
     // Return immediately — quality gate runs in background for future improvement
     res.json(result);
@@ -760,6 +837,37 @@ app.get('/api/waitlist/count', (req, res) => {
     res.json({ count: list.length });
   } catch (error) {
     sendError(res, 500, error, 'Waitlist count');
+  }
+});
+
+// ===== Feature Requests (in-app feedback) =====
+
+const FEATURE_REQUESTS_FILE = path.join(__dirname, 'feature-requests.json');
+
+app.post('/api/feature-request', (req, res) => {
+  try {
+    const { request, userId, timestamp } = req.body;
+    if (!request || typeof request !== 'string') {
+      return res.status(400).json({ error: 'Request text required' });
+    }
+    let list = [];
+    try { list = JSON.parse(fs.readFileSync(FEATURE_REQUESTS_FILE, 'utf8')); } catch {}
+    list.push({ request: request.trim().slice(0, 500), userId: userId || 'anonymous', timestamp: timestamp || new Date().toISOString() });
+    fs.writeFileSync(FEATURE_REQUESTS_FILE, JSON.stringify(list, null, 2));
+    log('Feature request:', request.trim().slice(0, 100), '— total:', list.length);
+    res.json({ status: 'received', count: list.length });
+  } catch (error) {
+    sendError(res, 500, error, 'Feature request');
+  }
+});
+
+app.get('/api/feature-requests', (req, res) => {
+  try {
+    let list = [];
+    try { list = JSON.parse(fs.readFileSync(FEATURE_REQUESTS_FILE, 'utf8')); } catch {}
+    res.json({ requests: list, count: list.length });
+  } catch (error) {
+    sendError(res, 500, error, 'Feature requests list');
   }
 });
 
@@ -1193,6 +1301,74 @@ app.post('/api/notifications/test', async (req, res) => {
     res.json({ sent, token: profile.push_token.slice(0, 20) + '...', displayName: profile.display_name });
   } catch (error) {
     sendError(res, 500, error, 'Test notification');
+  }
+});
+
+// Activation sequence — targeted pushes based on days since signup
+app.post('/api/notifications/activation-check', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, display_name, push_token, created_at')
+      .not('push_token', 'is', null);
+
+    let sent = 0;
+    for (const profile of (profiles || [])) {
+      if (!profile.push_token || !profile.created_at) continue;
+
+      const daysSinceSignup = Math.floor((Date.now() - new Date(profile.created_at).getTime()) / 86400000);
+      const name = profile.display_name || 'there';
+
+      let title = '';
+      let body = '';
+
+      if (daysSinceSignup === 1) {
+        const { data: turns } = await supabase.from('turns').select('overall').eq('user_id', profile.id).limit(1);
+        const firstScore = turns?.[0]?.overall;
+        if (!firstScore) {
+          title = 'Your first score is waiting';
+          body = `${name}, try a One Shot today — it only takes 90 seconds to see where you stand.`;
+        } else {
+          title = `You scored ${firstScore.toFixed(1)} on your first try`;
+          body = 'Most people start between 5 and 7. Try a One Shot today and see if you can beat it.';
+        }
+      } else if (daysSinceSignup === 3) {
+        title = 'Ready for pressure?';
+        body = `${name}, try a Threaded Challenge — 4 follow-ups that get harder each turn. It's the closest thing to a real interview.`;
+      } else if (daysSinceSignup === 7) {
+        const { data: turns } = await supabase.from('turns').select('overall').eq('user_id', profile.id);
+        const count = turns?.length || 0;
+        if (count >= 3) {
+          const avg = (turns.reduce((s, t) => s + (t.overall || 0), 0) / count).toFixed(1);
+          title = 'One week of Sharp';
+          body = `${count} sessions, avg ${avg}. You're building something. Keep going.`;
+        } else {
+          title = 'One week in';
+          body = `${name}, you've got the app — now build the habit. One session today, 60 seconds.`;
+        }
+      } else if (daysSinceSignup === 14) {
+        const { data: streak } = await supabase.from('streaks').select('current_streak').eq('user_id', profile.id).single();
+        const currentStreak = streak?.current_streak || 0;
+        if (currentStreak >= 7) {
+          title = `${currentStreak}-day streak. You're building a real skill.`;
+          body = 'Most people quit by now. You didn\'t. That matters more than any score.';
+        } else {
+          title = 'Two weeks in — how sharp are you now?';
+          body = 'Do a One Shot today and compare it to your first. The improvement might surprise you.';
+        }
+      } else {
+        continue; // Not an activation day
+      }
+
+      const ok = await sendPushNotification(profile.push_token, title, body, { type: 'activation' });
+      if (ok) sent++;
+    }
+
+    res.json({ sent, checked: profiles?.length || 0 });
+  } catch (error) {
+    sendError(res, 500, error, 'Activation check');
   }
 });
 
