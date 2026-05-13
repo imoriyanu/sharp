@@ -30,6 +30,10 @@ export default function OnboardingRecording() {
   }, []);
 
   async function startRecording() {
+    // Double-start guard — a fast double-tap on Start would otherwise spawn
+    // two recorders and two timers. state === 'recording' is the synchronous
+    // signal we check.
+    if (state === 'recording' || recorderRef.current) return;
     try {
       setRetryMsg('');
       await stopAudio();

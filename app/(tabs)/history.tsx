@@ -64,6 +64,11 @@ export default function HistoryScreen() {
         renderItem={renderItem}
         contentContainerStyle={s.content}
         showsVerticalScrollIndicator={false}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        windowSize={5}
+        removeClippedSubviews={true}
+        initialNumToRender={10}
         ListHeaderComponent={
           <>
             <Text style={s.title}>History</Text>

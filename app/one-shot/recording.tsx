@@ -12,6 +12,7 @@ import { scoreAnswer, generateFollowUp, generateDebrief, computeProgressScore } 
 import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache, clearIndustryQuestionCache, getThreadState, saveThreadState, clearThreadState, getSessions, getSessionById } from '../../src/services/storage';
 import { trackOneShotUsage, trackThreadedUsage } from '../../src/services/premium';
 import { trackEvent, Events } from '../../src/services/analytics';
+import { captureError } from '../../src/services/errorTracking';
 
 const DEFAULT_TIMER = 90;
 
@@ -45,11 +46,19 @@ export default function RecordingScreen() {
   }, []);
 
   async function startRecording() {
+    // Double-start guard. Without this, a fast double-tap on the Start
+    // button (or a retry mid-async) can spawn two recorders + two timers.
+    // isRecording is the synchronous signal we set before any await.
+    if (isRecording || recorderRef.current) return;
     stoppingRef.current = false;
+    // Mark as starting now so any concurrent call bails immediately.
+    // The full "recording" UI state is set after recorder.record() succeeds.
+    setIsRecording(true);
     try {
       await stopAudio();
       const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
+        setIsRecording(false);
         setRetryReason('Microphone permission denied. Please enable it in Settings to use Sharp.');
         return;
       }
@@ -72,7 +81,8 @@ export default function RecordingScreen() {
       await recorder.prepareToRecordAsync();
       recorder.record();
       recorderRef.current = recorder;
-      setIsRecording(true);
+      // (isRecording was set true synchronously at the top; recorder is now
+      //  bound so the UI's "Stop" affordance can act on it.)
       trackEvent(Events.RECORDING_STARTED, { mode: params.mode });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -94,6 +104,9 @@ export default function RecordingScreen() {
       } else {
         setRetryReason('Could not start recording. Please check your microphone permissions and try again.');
       }
+      // Failure means we never entered the recording state — reset the flag
+      // so the user can tap Start again.
+      setIsRecording(false);
     }
   }
 
@@ -146,7 +159,17 @@ export default function RecordingScreen() {
       // ===== THREADED MODE: skip scoring, go directly to follow-up or debrief =====
       if (params.mode === 'threaded') {
         const thread = await getThreadState();
-        if (!thread) throw new Error('No active thread');
+        if (!thread) {
+          // Thread state was lost (app crash, AsyncStorage clear, or user
+          // backgrounded the app long enough for state to expire). Don't
+          // silently fail — give the user a friendly path to start over.
+          if (mountedRef.current) {
+            setRetryReason("Your threaded session expired. Start a new one?");
+            setProcessing(false);
+            stoppingRef.current = false;
+          }
+          return;
+        }
 
         // Add this turn
         const turnNumber = thread.turns.length + 1;
@@ -172,20 +195,24 @@ export default function RecordingScreen() {
             turns: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
           });
 
-          // Always save the session — even if user navigated away
-          await saveSession({
-            id: generateId(), type: 'threaded', scenario: thread.originalQuestion.slice(0, 50),
-            turns: thread.turns.map(t => ({
-              id: generateId(), turnNumber: t.turnNumber, question: t.question,
-              questionReasoning: '', questionTargets: 'substance' as const, questionDifficulty: 5,
-              transcript: t.transcript, scores: { structure: 0, concision: 0, substance: 0, fillerWords: 0, awareness: 0 },
-              overall: debrief.overall, summary: '', coachingInsight: debrief.summary,
-              awarenessNote: null, snippet: { original: '', problems: [], rewrite: '', explanation: '' },
-            })),
-            createdAt: thread.startedAt,
-          });
-
-          await clearThreadState();
+          // Save + clear in parallel; failures logged but don't gate navigation.
+          const threadSaves = await Promise.allSettled([
+            saveSession({
+              id: generateId(), type: 'threaded', scenario: thread.originalQuestion.slice(0, 50),
+              turns: thread.turns.map(t => ({
+                id: generateId(), turnNumber: t.turnNumber, question: t.question,
+                questionReasoning: '', questionTargets: 'substance' as const, questionDifficulty: 5,
+                transcript: t.transcript, scores: { structure: 0, concision: 0, substance: 0, fillerWords: 0, awareness: 0 },
+                overall: debrief.overall, summary: '', coachingInsight: debrief.summary,
+                awarenessNote: null, snippet: { original: '', problems: [], rewrite: '', explanation: '' },
+              })),
+              createdAt: thread.startedAt,
+            }),
+            clearThreadState(),
+          ]);
+          for (const r of threadSaves) {
+            if (r.status === 'rejected') captureError(r.reason as Error, { where: 'threaded.finalSave' });
+          }
 
           // Pre-fetch debrief audio
           if (debrief.summary) prefetchAudio(debrief.summary, 'coaching');
@@ -216,7 +243,9 @@ export default function RecordingScreen() {
             turnNumber: turnNumber + 1,
           });
 
-          // Pre-fetch follow-up audio
+          // Pre-fetch follow-up audio immediately — kicks off TTS download
+          // in parallel with the navigation transition + screen mount so
+          // audio is ready (or streaming) by the time the user lands.
           const followUpSpoken = `${followUp.reaction || ''} ${followUp.followUp || ''}`.trim();
           if (followUpSpoken) prefetchAudio(followUpSpoken, 'followup');
 
@@ -276,24 +305,31 @@ export default function RecordingScreen() {
       prefetchAudio(`${pfScoreWord} ${pfPositives} ${pfImprove} ${pfInsight}`, 'coaching');
 
       trackEvent(Events.SESSION_COMPLETED, { mode: params.mode, score: result.overall });
-      await Promise.all([clearOneShotQuestionCache(), clearIndustryQuestionCache()]);
-      await trackOneShotUsage();
 
-      // Always save the session — even if user navigated away
-      await saveSession({
-        id: generateId(), type: 'one_shot', scenario: (params.question || '').slice(0, 50),
-        turns: [{
-          id: generateId(), turnNumber: 1, question: params.question || '',
-          questionReasoning: params.reasoning || '', questionTargets: 'substance' as const, questionDifficulty: 5,
-          transcript, recordingUri: uri, scores: result.scores, overall: result.overall,
-          summary: result.summary, coachingInsight: result.coachingInsight,
-          awarenessNote: result.awarenessNote, snippet: result.weakestSnippet,
-          positives: result.positives, improvements: result.improvements,
-          communicationTip: result.communicationTip, fillerWordsFound: result.fillerWordsFound,
-          fillerCount: result.fillerCount,
-        }],
-        createdAt: new Date().toISOString(),
-      });
+      // All the post-score writes in parallel — one failure doesn't gate
+      // the others or the navigation to results.
+      const oneShotSaves = await Promise.allSettled([
+        clearOneShotQuestionCache(),
+        clearIndustryQuestionCache(),
+        trackOneShotUsage(),
+        saveSession({
+          id: generateId(), type: 'one_shot', scenario: (params.question || '').slice(0, 50),
+          turns: [{
+            id: generateId(), turnNumber: 1, question: params.question || '',
+            questionReasoning: params.reasoning || '', questionTargets: 'substance' as const, questionDifficulty: 5,
+            transcript, recordingUri: uri, scores: result.scores, overall: result.overall,
+            summary: result.summary, coachingInsight: result.coachingInsight,
+            awarenessNote: result.awarenessNote, snippet: result.weakestSnippet,
+            positives: result.positives, improvements: result.improvements,
+            communicationTip: result.communicationTip, fillerWordsFound: result.fillerWordsFound,
+            fillerCount: result.fillerCount,
+          }],
+          createdAt: new Date().toISOString(),
+        }),
+      ]);
+      for (const r of oneShotSaves) {
+        if (r.status === 'rejected') captureError(r.reason as Error, { where: 'one_shot.postScoreSaves' });
+      }
 
       // Only navigate if still on this screen
       if (!mountedRef.current) return;

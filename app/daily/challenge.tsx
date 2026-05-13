@@ -13,6 +13,7 @@ import { apiGet } from '../../src/services/api';
 import { isPremium } from '../../src/services/premium';
 import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, addRecentQuestion, getAverageScores, getRecentInsights } from '../../src/services/storage';
 import { trackEvent, Events } from '../../src/services/analytics';
+import { captureError } from '../../src/services/errorTracking';
 import type { RecordingState, GeneratedQuestion } from '../../src/types';
 
 const DEFAULT_TIMER = 60;
@@ -222,17 +223,33 @@ export default function DailyChallengeScreen() {
         recentInsights: insights,
       });
 
-      // Always save — even if user navigated away
+      // Save everything in parallel — a failure in any one of these
+      // shouldn't gate the others (e.g. AsyncStorage write fails → user
+      // should still see their score). updateStreak's result feeds the
+      // navigation params, so we resolve it specifically and let the
+      // others run as fire-and-forget with logged failures.
       const today = new Date().toISOString().split('T')[0];
-      await saveDailyResult({ score: result.overall, insight: result.coachingInsight, date: today, transcript: text });
-      trackEvent(Events.DAILY_CHALLENGE_COMPLETED, { score: result.overall });
-      await clearDailyQuestionCache();
-      const streakResult = await updateStreak();
-      await saveSession({
-        id: generateId(), type: 'daily_30', scenario: (q?.question || '').slice(0, 50),
-        turns: [{ id: generateId(), turnNumber: 1, question: q?.question || '', questionReasoning: '', questionTargets: 'concision', questionDifficulty: 5, transcript: text, recordingUri: uri, scores: result.scores, overall: result.overall, summary: result.summary, coachingInsight: result.coachingInsight, awarenessNote: result.awarenessNote, snippet: result.weakestSnippet }],
+      const sessionPayload = {
+        id: generateId(), type: 'daily_30' as const, scenario: (q?.question || '').slice(0, 50),
+        turns: [{ id: generateId(), turnNumber: 1, question: q?.question || '', questionReasoning: '', questionTargets: 'concision' as const, questionDifficulty: 5, transcript: text, recordingUri: uri, scores: result.scores, overall: result.overall, summary: result.summary, coachingInsight: result.coachingInsight, awarenessNote: result.awarenessNote, snippet: result.weakestSnippet }],
         createdAt: new Date().toISOString(),
-      });
+      };
+
+      const [dailyRes, cacheRes, streakResSettled, sessionRes] = await Promise.allSettled([
+        saveDailyResult({ score: result.overall, insight: result.coachingInsight, date: today, transcript: text }),
+        clearDailyQuestionCache(),
+        updateStreak(),
+        saveSession(sessionPayload),
+      ]);
+
+      // Log any failures so we can spot consistency drift in PostHog/Sentry.
+      if (dailyRes.status === 'rejected') captureError(dailyRes.reason as Error, { where: 'daily.saveDailyResult' });
+      if (cacheRes.status === 'rejected') captureError(cacheRes.reason as Error, { where: 'daily.clearDailyQuestionCache' });
+      if (sessionRes.status === 'rejected') captureError(sessionRes.reason as Error, { where: 'daily.saveSession' });
+      if (streakResSettled.status === 'rejected') captureError(streakResSettled.reason as Error, { where: 'daily.updateStreak' });
+      const streakResult = streakResSettled.status === 'fulfilled' ? streakResSettled.value : { newBadge: null };
+
+      trackEvent(Events.DAILY_CHALLENGE_COMPLETED, { score: result.overall });
 
       // Pre-fetch results audio
       if (result.coachingInsight) prefetchAudio(result.coachingInsight, 'coaching');
