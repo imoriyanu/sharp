@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { colors } from '../src/constants/theme';
 import { warmUpAudioMode } from '../src/services/tts';
 import { hasOnboarded, clearStaleThread } from '../src/services/storage';
-import { initPremium, syncFromRevenueCat } from '../src/services/premium';
+import { initPremium, syncFromRevenueCat, flushPendingUsageSyncs } from '../src/services/premium';
 import { initErrorTracking } from '../src/services/errorTracking';
 import { initAnalytics, trackEvent, Events } from '../src/services/analytics';
 import { fetchRemoteConfig } from '../src/services/api';
@@ -18,17 +18,33 @@ function AudioGuard() {
   return null;
 }
 
-// Sync premium status when app comes back to foreground
+// Sync premium status from RevenueCat:
+// - Once shortly after mount (initPremium intentionally doesn't await this
+//   to keep cold start fast — the local cache is trusted for the first
+//   ~2 seconds of session).
+// - Whenever the app returns to foreground (catches subscription changes
+//   that happened in the App Store while the app was backgrounded).
+// Active mid-session subscription changes are caught by the entitlement
+// listener registered in initPremium — no foreground transition needed.
 function PremiumSync() {
   const appState = useRef(AppState.currentState);
   useEffect(() => {
+    // Fire a deferred initial sync so RC has a chance to settle without
+    // blocking first paint. Failure is silent (the cache is good enough).
+    const initialSync = setTimeout(() => {
+      syncFromRevenueCat().catch(() => {});
+      flushPendingUsageSyncs().catch(() => {});
+    }, 2000);
+
     const sub = AppState.addEventListener('change', (nextState) => {
       if (appState.current.match(/inactive|background/) && nextState === 'active') {
-        syncFromRevenueCat();
+        syncFromRevenueCat().catch(() => {});
+        // Flush any usage records that failed to sync while offline.
+        flushPendingUsageSyncs().catch(() => {});
       }
       appState.current = nextState;
     });
-    return () => sub.remove();
+    return () => { clearTimeout(initialSync); sub.remove(); };
   }, []);
   return null;
 }

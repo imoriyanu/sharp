@@ -33,27 +33,79 @@ const KEYS = {
 };
 
 // ===== Cloud Migration =====
+// One-time migration from local AsyncStorage to Supabase. Safe to call on
+// every app launch — early-returns if already done.
+//
+// Hardening (vs the original):
+// - "in-progress" guard: a parallel call (e.g. from two boot paths) bails
+//   instead of running migration twice.
+// - Attempt count: after MAX_ATTEMPTS failures, mark as given-up and stop
+//   re-running on every cold start. User can manually retry via Settings.
+// - Sessions read in parallel via multiGet (much faster on heavy users).
+// - migrateLocalToCloud now batches the session upsert into a single
+//   round-trip (see sync.ts). All writes are idempotent on primary key.
+
+const MIGRATION_DONE_KEY = 'sharp:cloud_migrated';
+const MIGRATION_IN_PROGRESS_KEY = 'sharp:cloud_migration_inprogress';
+const MIGRATION_ATTEMPTS_KEY = 'sharp:cloud_migration_attempts';
+const MIGRATION_MAX_ATTEMPTS = 3;
 
 export async function runMigrationIfNeeded(): Promise<void> {
-  const migrated = await AsyncStorage.getItem('sharp:cloud_migrated');
-  if (migrated === 'true') return;
+  const migrated = await AsyncStorage.getItem(MIGRATION_DONE_KEY);
+  if (migrated === 'true' || migrated === 'failed') return;
 
-  const profile = await getUserProfile();
-  const context = await getContext();
-  const streak = await getStreak();
-  const unlockedBadges = await getUnlockedBadges();
-  const dailyResults = await getDailyHistory();
+  // Don't run two migrations concurrently. If another caller is already in
+  // flight (rare, but possible during app cold-start race), bail.
+  const inProgress = await AsyncStorage.getItem(MIGRATION_IN_PROGRESS_KEY);
+  if (inProgress === 'true') return;
 
-  // Load full sessions
-  const summaries = await getSessions();
-  const sessions: any[] = [];
-  for (const s of summaries.slice(0, 50)) {
-    const full = await getSessionById(s.id);
-    if (full) sessions.push(full);
+  // Give up after MAX_ATTEMPTS so we don't run a known-failing migration on
+  // every cold start. Mark as failed; user can retry from Settings.
+  const attemptsStr = await AsyncStorage.getItem(MIGRATION_ATTEMPTS_KEY);
+  const attempts = attemptsStr ? parseInt(attemptsStr, 10) : 0;
+  if (attempts >= MIGRATION_MAX_ATTEMPTS) {
+    await AsyncStorage.setItem(MIGRATION_DONE_KEY, 'failed');
+    return;
   }
 
-  await migrateLocalToCloud({ profile, context, sessions, streak, unlockedBadges, dailyResults });
-  await AsyncStorage.setItem('sharp:cloud_migrated', 'true');
+  await AsyncStorage.setItem(MIGRATION_IN_PROGRESS_KEY, 'true');
+  await AsyncStorage.setItem(MIGRATION_ATTEMPTS_KEY, String(attempts + 1));
+
+  try {
+    // Read all the local data in parallel.
+    const [profile, context, streak, unlockedBadges, dailyResults, summaries] = await Promise.all([
+      getUserProfile(),
+      getContext(),
+      getStreak(),
+      getUnlockedBadges(),
+      getDailyHistory(),
+      getSessions(),
+    ]);
+
+    // Load up to 50 full sessions via multiGet — single AsyncStorage round-
+    // trip instead of N sequential reads.
+    const top = summaries.slice(0, 50);
+    const detailKeys = top.map(s => `${KEYS.SESSION_DETAIL}${s.id}`);
+    const pairs = await AsyncStorage.multiGet(detailKeys);
+    const sessions: any[] = [];
+    for (const [, raw] of pairs) {
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed) sessions.push(parsed);
+      } catch {}
+    }
+
+    await migrateLocalToCloud({ profile, context, sessions, streak, unlockedBadges, dailyResults });
+    await AsyncStorage.setItem(MIGRATION_DONE_KEY, 'true');
+    // Clean up bookkeeping
+    await AsyncStorage.multiRemove([MIGRATION_IN_PROGRESS_KEY, MIGRATION_ATTEMPTS_KEY]);
+  } catch (e) {
+    // Failure: keep attempts counter, clear in-progress flag, leave done
+    // flag unset so we'll retry on next launch (up to MAX_ATTEMPTS).
+    await AsyncStorage.removeItem(MIGRATION_IN_PROGRESS_KEY);
+    __DEV__ && console.warn('Cloud migration failed, will retry next launch:', e);
+  }
 }
 
 // ===== Onboarding =====
@@ -324,13 +376,29 @@ export async function trackFeatureInterest(feature: ComingSoonFeature): Promise<
 
 // ===== Recent Insights =====
 
+// Batched read of the last N full session blobs in a single AsyncStorage
+// round-trip. Replaces sequential getSessionById loops in the helpers below.
+async function loadFullSessions(summaries: SessionSummary[], limit: number): Promise<Session[]> {
+  const slice = summaries.slice(0, limit);
+  if (slice.length === 0) return [];
+  const keys = slice.map(s => `${KEYS.SESSION_DETAIL}${s.id}`);
+  const pairs = await AsyncStorage.multiGet(keys);
+  const out: Session[] = [];
+  for (const [, raw] of pairs) {
+    if (!raw) continue;
+    const parsed = safeParse<Session | null>(raw, null);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
 export async function getRecentInsights(): Promise<string[]> {
   const sessions = await getSessions();
+  const full = await loadFullSessions(sessions, 5);
   const insights: string[] = [];
-  for (const s of sessions.slice(0, 5)) {
-    const full = await getSessionById(s.id);
-    if (full && full.turns.length > 0) {
-      const insight = full.turns[full.turns.length - 1].coachingInsight;
+  for (const s of full) {
+    if (s.turns.length > 0) {
+      const insight = s.turns[s.turns.length - 1].coachingInsight;
       if (insight) insights.push(insight);
     }
   }
@@ -344,23 +412,22 @@ export async function getRecentSessionHistory(): Promise<{
   weakestArea: string; coachingInsight: string; date: string;
 }[]> {
   const sessions = await getSessions();
+  const full = await loadFullSessions(sessions, 10);
   const history: any[] = [];
-  for (const s of sessions.slice(0, 10)) {
-    const full = await getSessionById(s.id);
-    if (full?.turns.length) {
-      const last = full.turns[full.turns.length - 1];
-      const dims = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
-      const weakest = dims.reduce((a, b) => ((last.scores[a] ?? 0) < (last.scores[b] ?? 0) ? a : b), 'structure' as typeof dims[number]);
-      history.push({
-        question: last.question.slice(0, 100),
-        transcript: last.transcript.slice(0, 150),
-        scores: last.scores,
-        overall: last.overall,
-        weakestArea: weakest,
-        coachingInsight: last.coachingInsight || '',
-        date: full.createdAt.split('T')[0],
-      });
-    }
+  for (const s of full) {
+    if (!s.turns.length) continue;
+    const last = s.turns[s.turns.length - 1];
+    const dims = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
+    const weakest = dims.reduce((a, b) => ((last.scores[a] ?? 0) < (last.scores[b] ?? 0) ? a : b), 'structure' as typeof dims[number]);
+    history.push({
+      question: last.question.slice(0, 100),
+      transcript: last.transcript.slice(0, 150),
+      scores: last.scores,
+      overall: last.overall,
+      weakestArea: weakest,
+      coachingInsight: last.coachingInsight || '',
+      date: s.createdAt.split('T')[0],
+    });
   }
   return history;
 }
@@ -370,20 +437,17 @@ export async function getRecentSessionHistory(): Promise<{
 export async function getAverageScores(): Promise<{ overall: number; structure: number; concision: number; substance: number; fillerWords: number; sessionCount: number } | null> {
   const sessions = await getSessions();
   if (sessions.length === 0) return null;
-  // We need full session data for scores — check last 10
-  const recentIds = sessions.slice(0, 10).map(s => s.id);
+  const full = await loadFullSessions(sessions, 10);
   let totalOverall = 0, totalStructure = 0, totalConcision = 0, totalSubstance = 0, totalFiller = 0, count = 0;
-  for (const id of recentIds) {
-    const full = await getSessionById(id);
-    if (full && full.turns.length > 0) {
-      const lastTurn = full.turns[full.turns.length - 1];
-      totalOverall += lastTurn.overall;
-      totalStructure += lastTurn.scores.structure;
-      totalConcision += lastTurn.scores.concision;
-      totalSubstance += lastTurn.scores.substance;
-      totalFiller += lastTurn.scores.fillerWords;
-      count++;
-    }
+  for (const s of full) {
+    if (!s.turns.length) continue;
+    const lastTurn = s.turns[s.turns.length - 1];
+    totalOverall += lastTurn.overall;
+    totalStructure += lastTurn.scores.structure;
+    totalConcision += lastTurn.scores.concision;
+    totalSubstance += lastTurn.scores.substance;
+    totalFiller += lastTurn.scores.fillerWords;
+    count++;
   }
   if (count === 0) return null;
   return {

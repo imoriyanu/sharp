@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
-import { initRevenueCat, checkEntitlement, isRevenueCatConfigured } from './revenuecat';
+import { initRevenueCat, checkEntitlement, isRevenueCatConfigured, addEntitlementListener } from './revenuecat';
 import type { PlanId, PremiumPlan, UsageLimits } from '../types';
 
 function localDateStr(date: Date = new Date()): string {
@@ -82,14 +82,32 @@ export async function checkPremiumStatus(): Promise<boolean> {
   }
 }
 
-// Call this on app start to hydrate the synchronous cache
+// Call this on app start to hydrate the synchronous cache.
+// Note: syncFromRevenueCat is intentionally NOT awaited here — the RC SDK
+// can be slow on cold network, and we don't want it to delay first paint.
+// Instead we register the entitlement listener so any actual subscription
+// change refreshes the cache immediately, and PremiumSync handles foreground
+// re-sync as a backup.
 export async function initPremium(): Promise<void> {
   // 1. Init RevenueCat SDK
   await initRevenueCat();
   // 2. Read local cache first (fast, synchronous after this)
   await checkPremiumStatus();
-  // 3. Sync with RevenueCat if configured (source of truth)
-  await syncFromRevenueCat();
+  // 3. Register an entitlement listener so a mid-session upgrade/cancellation
+  //    refreshes our cache without waiting for the next foreground.
+  addEntitlementListener(async (hasPro) => {
+    try {
+      if (hasPro && !_premiumCached) {
+        const { getDetectedPlanId } = await import('./revenuecat');
+        const planId = await getDetectedPlanId();
+        await setPremiumStatus(planId);
+      } else if (!hasPro && _premiumCached) {
+        await clearPremiumStatus();
+      }
+    } catch (e) {
+      __DEV__ && console.warn('Entitlement listener handler failed:', e);
+    }
+  });
 }
 
 // Sync premium status from RevenueCat — call on init and app foreground
@@ -201,21 +219,67 @@ function getWeekStart(): string {
 
 async function saveUsage(usage: DailyUsage): Promise<void> {
   await AsyncStorage.setItem(USAGE_KEY, JSON.stringify(usage));
-  syncUsageToCloud(usage).catch(e => __DEV__ && console.warn('Sync failed (usage):', e?.message || e));
+  syncUsageToCloud(usage).catch(e => {
+    __DEV__ && console.warn('Sync failed (usage):', e?.message || e);
+    // Queue for retry on next foreground so a Supabase outage doesn't let
+    // a multi-device user exceed their daily limits.
+    enqueueUsageSync(usage).catch(() => {});
+  });
 }
 
 async function syncUsageToCloud(usage: DailyUsage): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  const { error } = await supabase.from('usage').upsert({
+    user_id: user.id,
+    usage_date: usage.date,
+    one_shots: usage.oneShots,
+    threaded: usage.threaded,
+    threaded_this_week: usage.threadedThisWeek,
+    week_start: usage.weekStart,
+  });
+  if (error) throw error;
+}
+
+// ===== Usage sync retry queue =====
+// Persists failed usage syncs to AsyncStorage so a transient Supabase outage
+// doesn't desync. Flushed via flushPendingUsageSyncs() on app foreground.
+// Bounded so a long outage can't blow up storage.
+
+const PENDING_USAGE_KEY = 'sharp:pending_usage_sync';
+const PENDING_USAGE_MAX = 50;
+
+async function enqueueUsageSync(usage: DailyUsage): Promise<void> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    await supabase.from('usage').upsert({
-      user_id: user.id,
-      usage_date: usage.date,
-      one_shots: usage.oneShots,
-      threaded: usage.threaded,
-      threaded_this_week: usage.threadedThisWeek,
-      week_start: usage.weekStart,
-    });
+    const raw = await AsyncStorage.getItem(PENDING_USAGE_KEY);
+    let queue: DailyUsage[] = raw ? JSON.parse(raw) : [];
+    // Dedupe by usage_date — only the most recent state per day matters.
+    queue = queue.filter(u => u.date !== usage.date);
+    queue.push(usage);
+    if (queue.length > PENDING_USAGE_MAX) queue = queue.slice(queue.length - PENDING_USAGE_MAX);
+    await AsyncStorage.setItem(PENDING_USAGE_KEY, JSON.stringify(queue));
+  } catch {}
+}
+
+export async function flushPendingUsageSyncs(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_USAGE_KEY);
+    if (!raw) return;
+    const queue: DailyUsage[] = JSON.parse(raw);
+    if (!queue.length) return;
+    const stillPending: DailyUsage[] = [];
+    for (const usage of queue) {
+      try {
+        await syncUsageToCloud(usage);
+      } catch {
+        stillPending.push(usage);
+      }
+    }
+    if (stillPending.length) {
+      await AsyncStorage.setItem(PENDING_USAGE_KEY, JSON.stringify(stillPending));
+    } else {
+      await AsyncStorage.removeItem(PENDING_USAGE_KEY);
+    }
   } catch {}
 }
 

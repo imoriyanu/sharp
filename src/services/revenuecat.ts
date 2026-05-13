@@ -11,6 +11,13 @@ let _configured = false;
 let Purchases: any = null;
 let LOG_LEVEL: any = null;
 
+// Callbacks for entitlement changes. Premium service registers one of these
+// so that when RC tells us the user just upgraded mid-session, the local
+// premium cache refreshes immediately instead of waiting for the next app
+// foreground sync.
+type EntitlementListener = (hasPro: boolean) => void;
+const _entitlementListeners = new Set<EntitlementListener>();
+
 // Safely import the native module — returns null in Expo Go
 function loadPurchasesModule(): boolean {
   if (Purchases) return true;
@@ -39,9 +46,31 @@ export async function initRevenueCat(): Promise<void> {
     if (__DEV__) Purchases.setLogLevel(LOG_LEVEL.DEBUG);
     Purchases.configure({ apiKey: API_KEY });
     _configured = true;
+
+    // Listen for entitlement changes (purchase, renewal, cancellation,
+    // restore on another device). Notifying registered listeners lets the
+    // app react immediately — no need to wait for the next app foreground.
+    try {
+      Purchases.addCustomerInfoUpdateListener((info: any) => {
+        const hasPro = !!info?.entitlements?.active?.['Sharp Pro'];
+        for (const listener of _entitlementListeners) {
+          try { listener(hasPro); } catch (e) { __DEV__ && console.warn('RC listener threw:', e); }
+        }
+      });
+    } catch (e) {
+      __DEV__ && console.warn('RevenueCat: addCustomerInfoUpdateListener failed:', e);
+    }
   } catch (e) {
     __DEV__ && console.warn('RevenueCat: configure failed:', e);
   }
+}
+
+// Register a callback that fires whenever the active entitlement changes.
+// Returns an unsubscribe function. Safe to call before RC is configured —
+// the listener will still fire once RC initializes.
+export function addEntitlementListener(listener: EntitlementListener): () => void {
+  _entitlementListeners.add(listener);
+  return () => { _entitlementListeners.delete(listener); };
 }
 
 export function isRevenueCatConfigured(): boolean {

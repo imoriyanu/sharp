@@ -207,22 +207,90 @@ export async function migrateLocalToCloud(data: {
 
   __DEV__ && console.log('Starting cloud migration...');
 
-  if (data.profile) await syncProfileToCloud(data.profile);
-  if (data.context) await syncContextToCloud(data.context);
+  // Run independent writes in parallel — they don't depend on each other.
+  // All upserts are idempotent on primary key so retrying after a crash
+  // creates no duplicates.
+  const tasks: Promise<unknown>[] = [];
 
-  await syncStreakToCloud(data.streak);
+  if (data.profile) tasks.push(syncProfileToCloud(data.profile));
+  if (data.context) tasks.push(syncContextToCloud(data.context));
+  tasks.push(syncStreakToCloud(data.streak));
 
-  for (const badge of data.unlockedBadges) {
-    await syncBadgeToCloud(badge);
+  // Badges + daily results in batched upserts (single round-trip each)
+  if (data.unlockedBadges.length) {
+    tasks.push((async () => {
+      try {
+        const rows = data.unlockedBadges.map(badge_day => ({
+          user_id: userId,
+          badge_day,
+          unlocked_at: new Date().toISOString(),
+        }));
+        await supabase.from('badges').upsert(rows);
+      } catch (e) { __DEV__ && console.warn('Batch badge upsert failed:', e); }
+    })());
   }
 
-  for (const result of data.dailyResults) {
-    await syncDailyResultToCloud(result);
+  if (data.dailyResults.length) {
+    tasks.push((async () => {
+      try {
+        const rows = data.dailyResults.map(r => ({
+          user_id: userId,
+          score: r.score,
+          insight: r.insight,
+          practice_date: r.date,
+          created_at: new Date().toISOString(),
+        }));
+        await supabase.from('daily_results').upsert(rows);
+      } catch (e) { __DEV__ && console.warn('Batch daily_results upsert failed:', e); }
+    })());
   }
 
-  // Sessions last (largest dataset)
-  for (const session of data.sessions) {
-    await syncSessionToCloud(session);
+  // Sessions + their turns: batch into two upserts (one per table) rather
+  // than 1 + N per session. Idempotent on session.id / turn.id.
+  if (data.sessions.length) {
+    tasks.push((async () => {
+      try {
+        const sessionRows = data.sessions.map(s => ({
+          id: s.id,
+          user_id: userId,
+          type: s.type,
+          scenario: s.scenario,
+          created_at: s.createdAt,
+        }));
+        const turnRows = data.sessions.flatMap(s => s.turns.map(turn => ({
+          id: turn.id,
+          session_id: s.id,
+          user_id: userId,
+          turn_number: turn.turnNumber,
+          question: turn.question,
+          transcript: turn.transcript,
+          model_answer: turn.modelAnswer || null,
+          scores: turn.scores,
+          overall: turn.overall,
+          summary: turn.summary,
+          positives: turn.positives || null,
+          improvements: turn.improvements || null,
+          coaching_insight: turn.coachingInsight,
+          communication_tip: turn.communicationTip || null,
+          snippet: turn.snippet,
+          filler_words_found: turn.fillerWordsFound || [],
+          filler_count: turn.fillerCount || 0,
+          created_at: s.createdAt,
+        })));
+        // Sessions first (turns has FK to sessions.id).
+        await supabase.from('sessions').upsert(sessionRows);
+        if (turnRows.length) await supabase.from('turns').upsert(turnRows);
+      } catch (e) { __DEV__ && console.warn('Batch session/turn upsert failed:', e); }
+    })());
+  }
+
+  // Promise.allSettled — one failure doesn't tank the rest.
+  const results = await Promise.allSettled(tasks);
+  const failed = results.filter(r => r.status === 'rejected').length;
+  if (failed > 0) {
+    // Throw so the caller (storage.ts:runMigrationIfNeeded) can mark the
+    // attempt as failed and retry on next launch.
+    throw new Error(`${failed} migration tasks failed`);
   }
 
   __DEV__ && console.log('Cloud migration complete:', data.sessions.length, 'sessions synced');
