@@ -396,15 +396,23 @@ Return ONLY JSON: { "queries": ["query1", "query2", "query3", "query4"] }`;
 // midnight UTC. Cheaper than per-user generation and enables Duels.
 
 let dailyQuestionCache = { date: '', question: null };
+// Promise lock — when the cache is cold, only one request actually calls
+// Claude; concurrent requests await the same promise. Avoids N duplicate
+// generations when N users open the app at the new-day boundary.
+let dailyQuestionPromise = null;
 
-app.get('/api/daily-question', async (req, res) => {
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    if (dailyQuestionCache.date === today && dailyQuestionCache.question) {
-      return res.json(dailyQuestionCache.question);
-    }
+const DAILY_QUESTION_FALLBACK = {
+  question: "What's the most important lesson you've learned in your career so far, and how has it changed how you work?",
+  format: 'prompt',
+  timerSeconds: 60,
+  reasoning: 'Universal fallback',
+  targets: 'substance',
+  difficulty: 5,
+  contextUsed: [],
+};
 
-    const prompt = `You are Sharp, a communication coach. Generate ONE universal daily challenge question that ANY professional can answer — regardless of their role, industry, or experience level.
+async function generateDailyQuestion(today) {
+  const prompt = `You are Sharp, a communication coach. Generate ONE universal daily challenge question that ANY professional can answer — regardless of their role, industry, or experience level.
 
 The question should test communication skills: clarity, structure, concision, or substance. It should be thought-provoking and require a genuine spoken response — not a yes/no answer.
 
@@ -429,23 +437,28 @@ Return ONLY JSON:
   "contextUsed": []
 }`;
 
-    const result = await callClaude(prompt, 500);
-    if (result?.question) {
-      dailyQuestionCache = { date: today, question: result };
-      res.json(result);
-    } else {
-      throw new Error('Invalid question response');
+  const result = await callClaude(prompt, 500);
+  if (!result?.question) throw new Error('Invalid question response');
+  dailyQuestionCache = { date: today, question: result };
+  return result;
+}
+
+app.get('/api/daily-question', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    if (dailyQuestionCache.date === today && dailyQuestionCache.question) {
+      return res.json(dailyQuestionCache.question);
     }
+
+    if (!dailyQuestionPromise) {
+      dailyQuestionPromise = generateDailyQuestion(today)
+        .finally(() => { dailyQuestionPromise = null; });
+    }
+    const result = await dailyQuestionPromise;
+    res.json(result);
   } catch (error) {
-    res.json({
-      question: "What's the most important lesson you've learned in your career so far, and how has it changed how you work?",
-      format: 'prompt',
-      timerSeconds: 60,
-      reasoning: 'Universal fallback',
-      targets: 'substance',
-      difficulty: 5,
-      contextUsed: [],
-    });
+    logError('Daily question:', error?.message || error);
+    res.json(DAILY_QUESTION_FALLBACK);
   }
 });
 
@@ -873,20 +886,63 @@ app.get('/api/feature-requests', (req, res) => {
 
 // ===== RevenueCat Webhook =====
 
+// Constant-time string comparison to defend against timing attacks on the
+// webhook bearer token.
+function timingSafeEqualStrings(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  const crypto = require('crypto');
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  try { return crypto.timingSafeEqual(bufA, bufB); } catch { return false; }
+}
+
+const RC_ACTIVATE_EVENTS = new Set(['INITIAL_PURCHASE', 'RENEWAL', 'PRODUCT_CHANGE', 'UNCANCELLATION', 'NON_RENEWING_PURCHASE']);
+const RC_DEACTIVATE_EVENTS = new Set(['EXPIRATION', 'BILLING_ISSUE', 'CANCELLATION']);
+const RC_KNOWN_EVENTS = new Set([
+  ...RC_ACTIVATE_EVENTS,
+  ...RC_DEACTIVATE_EVENTS,
+  'TRANSFER', 'SUBSCRIPTION_PAUSED', 'TEST', 'INVOICE_ISSUANCE',
+]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 app.post('/api/webhooks/revenuecat', async (req, res) => {
   try {
-    // Validate authorization header
-    const authHeader = req.headers['authorization'];
+    // 1. Require the shared secret to be configured. Without this, ANY
+    //    request would be accepted — that's not OK in production.
     const expectedToken = process.env.REVENUECAT_WEBHOOK_SECRET;
-    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+    if (!expectedToken) {
+      logError('RevenueCat webhook: REVENUECAT_WEBHOOK_SECRET not configured — rejecting');
+      return res.status(503).json({ error: 'Webhook not configured' });
+    }
+
+    // 2. Validate Bearer token with constant-time compare.
+    const authHeader = String(req.headers['authorization'] || '');
+    const prefix = 'Bearer ';
+    if (!authHeader.startsWith(prefix) || !timingSafeEqualStrings(authHeader.slice(prefix.length), expectedToken)) {
+      logError(`RevenueCat webhook: unauthorized attempt from ${req.ip}`);
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    // 3. Validate body shape.
     const event = req.body?.event;
-    if (!event) return res.status(400).json({ error: 'No event' });
-
+    if (!event || typeof event !== 'object') {
+      return res.status(400).json({ error: 'No event' });
+    }
     const appUserId = event.app_user_id;
     const eventType = event.type;
+
+    if (!eventType || typeof eventType !== 'string') {
+      return res.status(400).json({ error: 'Missing event type' });
+    }
+    if (!RC_KNOWN_EVENTS.has(eventType)) {
+      log(`RevenueCat webhook: ignoring unknown event type ${eventType}`);
+      return res.json({ ok: true, skipped: 'unknown event type' });
+    }
+    if (appUserId && !UUID_RE.test(String(appUserId))) {
+      log(`RevenueCat webhook: skipping non-UUID app_user_id "${appUserId}"`);
+      return res.json({ ok: true, skipped: 'non-uuid app_user_id' });
+    }
 
     log(`RevenueCat webhook: ${eventType} for user ${appUserId || 'unknown'}`);
 
@@ -895,16 +951,12 @@ app.post('/api/webhooks/revenuecat', async (req, res) => {
       return res.json({ ok: true });
     }
 
-    // Only process events that change subscription status
-    const activateEvents = ['INITIAL_PURCHASE', 'RENEWAL', 'PRODUCT_CHANGE', 'UNCANCELLATION'];
-    const deactivateEvents = ['EXPIRATION', 'BILLING_ISSUE'];
-
-    if (activateEvents.includes(eventType) && appUserId) {
+    if (RC_ACTIVATE_EVENTS.has(eventType) && appUserId) {
       await supabase.from('profiles').update({
         is_premium: true,
         updated_at: new Date().toISOString(),
       }).eq('id', appUserId);
-    } else if (deactivateEvents.includes(eventType) && appUserId) {
+    } else if (RC_DEACTIVATE_EVENTS.has(eventType) && appUserId) {
       await supabase.from('profiles').update({
         is_premium: false,
         updated_at: new Date().toISOString(),
@@ -1091,22 +1143,33 @@ const ttsCache = new Map();
 const TTS_CACHE_MAX = 200;
 const TTS_CACHE_TTL = 3600_000; // 1h
 
+// Singleflight — pending TTS generation per cache key. Concurrent requests
+// for the same text+mode wait on the same promise instead of all hitting
+// the upstream provider.
+const ttsPending = new Map(); // key -> Promise<Buffer>
+
 function getTtsCacheKey(text, mode) {
   const crypto = require('crypto');
   return crypto.createHash('md5').update(`${mode}:${text}`).digest('hex');
 }
 
+// Size-bounded LRU-style eviction. Called on insert.
 function cleanTtsCache() {
   if (ttsCache.size <= TTS_CACHE_MAX) return;
-  const now = Date.now();
-  for (const [key, entry] of ttsCache) {
-    if (now - entry.ts > TTS_CACHE_TTL) ttsCache.delete(key);
-  }
-  if (ttsCache.size > TTS_CACHE_MAX) {
-    const oldest = [...ttsCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
-    for (let i = 0; i < oldest.length - TTS_CACHE_MAX; i++) ttsCache.delete(oldest[i][0]);
-  }
+  const oldest = [...ttsCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+  for (let i = 0; i < oldest.length - TTS_CACHE_MAX; i++) ttsCache.delete(oldest[i][0]);
 }
+
+// TTL-based eviction. Runs every 10min regardless of insertion activity, so
+// expired entries don't linger forever in low-traffic periods.
+setInterval(() => {
+  const now = Date.now();
+  let evicted = 0;
+  for (const [key, entry] of ttsCache) {
+    if (now - entry.ts > TTS_CACHE_TTL) { ttsCache.delete(key); evicted++; }
+  }
+  if (evicted) log(`[tts cache] evicted ${evicted} expired entries (${ttsCache.size} remain)`);
+}, 600_000).unref();
 
 // Kokoro voice mappings — single voice, speed variation per mode
 const KOKORO_VOICE_MODES = {
@@ -1126,43 +1189,108 @@ const ELEVENLABS_VOICE_MODES = {
   briefing:  { stability: 0.8,  similarity_boost: 0.8,  style: 0.15, use_speaker_boost: true },
 };
 
-// Streams provider response to client AND collects a copy for the cache.
-// This is the "best of both worlds" path: client gets bytes as they arrive
-// (~400-700ms TTFA), and once the full body lands we keep a buffer so the
-// next play of the same text+mode is instant.
-async function streamAndCache(providerResponse, res, cacheKey, provider) {
-  res.set({
-    'Content-Type': 'audio/mpeg',
-    'Transfer-Encoding': 'chunked',
-    'Cache-Control': 'no-cache',
-    'X-Accel-Buffering': 'no',
-    'X-TTS-Cache': 'miss',
-    'X-TTS-Provider': provider,
-  });
-  res.flushHeaders();
-
+// Drains the provider's streamed response into a complete Buffer.
+// Used by the singleflight path so multiple concurrent clients waiting on
+// the same generation can all be served the same final buffer.
+//
+// Accepts an upstreamAbort signal so a caller can cancel the upstream fetch
+// (e.g. when the originating client disconnected and no one else is waiting).
+async function drainProviderToBuffer(providerResponse, upstreamAbort) {
   const reader = providerResponse.body.getReader();
   const chunks = [];
   try {
     while (true) {
+      if (upstreamAbort?.aborted) {
+        try { await reader.cancel(); } catch {}
+        throw new Error('TTS upstream aborted');
+      }
       const { done, value } = await reader.read();
       if (done) break;
       if (value) chunks.push(Buffer.from(value));
-      if (!res.writableEnded) {
-        res.write(value);
-        if (typeof res.flush === 'function') res.flush();
-      }
     }
-    // Cache the complete buffer for subsequent requests
-    if (chunks.length) {
-      cleanTtsCache();
-      ttsCache.set(cacheKey, { data: Buffer.concat(chunks), ts: Date.now() });
-    }
-  } catch (streamErr) {
-    logError('TTS stream error:', streamErr.message);
+    return Buffer.concat(chunks);
   } finally {
-    if (!res.writableEnded) res.end();
+    try { reader.releaseLock(); } catch {}
   }
+}
+
+// Writes a complete audio buffer to the client in chunks, flushing each one
+// for fast playback. Falls back to res.send for already-cached hits where
+// we just have the buffer in hand.
+function sendAudioBuffer(res, buffer, headers) {
+  res.set(headers);
+  // For larger buffers (>32KB) write in chunks so the client can begin
+  // playback before the full buffer is on the wire.
+  if (buffer.length > 32 * 1024) {
+    res.flushHeaders();
+    const CHUNK = 16 * 1024;
+    for (let offset = 0; offset < buffer.length; offset += CHUNK) {
+      if (res.writableEnded) break;
+      res.write(buffer.subarray(offset, Math.min(offset + CHUNK, buffer.length)));
+      if (typeof res.flush === 'function') res.flush();
+    }
+    if (!res.writableEnded) res.end();
+  } else {
+    res.send(buffer);
+  }
+}
+
+// Fetches audio from the active provider into a complete Buffer.
+// Honours `upstreamAbort` so callers can cancel if no one is waiting anymore.
+async function generateTtsBuffer(text, mode, upstreamAbort) {
+  apiUsage.elevenlabs.calls++; // legacy field — tracks total TTS calls regardless of provider
+  apiUsage.elevenlabs.characters += String(text).length;
+
+  let response;
+  if (useKokoro) {
+    const voiceConfig = KOKORO_VOICE_MODES[mode] || KOKORO_VOICE_MODES.question;
+    const kokoroBaseUrl = process.env.KOKORO_TTS_URL || 'https://api.together.ai';
+    response = await fetch(`${kokoroBaseUrl}/v1/audio/speech`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.TOGETHER_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'hexgrad/Kokoro-82M',
+        input: String(text),
+        voice: voiceConfig.voice,
+        speed: voiceConfig.speed,
+        response_format: 'mp3',
+        stream: true,
+      }),
+      signal: upstreamAbort || AbortSignal.timeout(30000),
+    });
+  } else {
+    const voiceId = process.env.ELEVENLABS_VOICE_ID;
+    const voiceSettings = ELEVENLABS_VOICE_MODES[mode] || ELEVENLABS_VOICE_MODES.question;
+    response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_turbo_v2_5',
+          voice_settings: voiceSettings,
+          optimize_streaming_latency: 4,
+        }),
+        signal: upstreamAbort || AbortSignal.timeout(30000),
+      }
+    );
+  }
+
+  if (!response.ok) {
+    apiUsage.elevenlabs.errors++;
+    const errorText = await response.text();
+    logError(`${useKokoro ? 'Kokoro' : 'ElevenLabs'} TTS error:`, errorText);
+    throw new Error('Text-to-speech service unavailable');
+  }
+
+  return drainProviderToBuffer(response, upstreamAbort);
 }
 
 // Support both GET (short text via query) and POST (long text via body)
@@ -1176,8 +1304,6 @@ app.all('/api/tts', async (req, res) => {
     if (String(text).length > MAX_TTS_TEXT) {
       return res.status(400).json({ error: 'Text too long' });
     }
-
-    // Config check based on provider
     if (useKokoro && !process.env.TOGETHER_API_KEY) {
       return res.status(503).json({ error: 'TTS not configured — TOGETHER_API_KEY missing' });
     }
@@ -1186,78 +1312,72 @@ app.all('/api/tts', async (req, res) => {
     }
 
     resetUsageIfNewDay();
+    const provider = useKokoro ? 'kokoro' : 'elevenlabs';
     const cacheKey = getTtsCacheKey(String(text), mode);
 
     // Cache hit — served instantly, no provider call
     const cached = ttsCache.get(cacheKey);
     if (cached) {
       cached.ts = Date.now();
-      res.set({
+      sendAudioBuffer(res, cached.data, {
         'Content-Type': 'audio/mpeg',
-        'Content-Length': cached.data.length,
         'Cache-Control': 'public, max-age=3600',
         'X-TTS-Cache': 'hit',
-        'X-TTS-Provider': useKokoro ? 'kokoro' : 'elevenlabs',
+        'X-TTS-Provider': provider,
       });
-      return res.send(cached.data);
+      return;
     }
 
-    apiUsage.elevenlabs.calls++; // legacy field — tracks total TTS calls regardless of provider
-    apiUsage.elevenlabs.characters += String(text).length;
+    // Singleflight: if another request is already generating this exact
+    // text+mode, await the same promise. Means N concurrent clients =
+    // 1 upstream call, not N.
+    let pending = ttsPending.get(cacheKey);
+    let isOriginator = false;
+    let upstreamAbort = null;
 
-    let response;
-    if (useKokoro) {
-      // Kokoro via Together AI — stream:true keeps TTFA fast
-      const voiceConfig = KOKORO_VOICE_MODES[mode] || KOKORO_VOICE_MODES.question;
-      const kokoroBaseUrl = process.env.KOKORO_TTS_URL || 'https://api.together.ai';
-      response = await fetch(`${kokoroBaseUrl}/v1/audio/speech`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.TOGETHER_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'hexgrad/Kokoro-82M',
-          input: String(text),
-          voice: voiceConfig.voice,
-          speed: voiceConfig.speed,
-          response_format: 'mp3',
-          stream: true,
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
-    } else {
-      // ElevenLabs fallback path
-      const voiceId = process.env.ELEVENLABS_VOICE_ID;
-      const voiceSettings = ELEVENLABS_VOICE_MODES[mode] || ELEVENLABS_VOICE_MODES.question;
-      response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'xi-api-key': process.env.ELEVENLABS_API_KEY,
-          },
-          body: JSON.stringify({
-            text: text,
-            model_id: 'eleven_turbo_v2_5',
-            voice_settings: voiceSettings,
-            optimize_streaming_latency: 4,
-          }),
-          signal: AbortSignal.timeout(30000),
+    if (!pending) {
+      isOriginator = true;
+      upstreamAbort = new AbortController();
+      // After 30s without completion, abort the upstream so we don't leak.
+      const upstreamTimeout = setTimeout(() => upstreamAbort.abort(), 30_000);
+      pending = generateTtsBuffer(String(text), mode, upstreamAbort.signal)
+        .finally(() => { clearTimeout(upstreamTimeout); ttsPending.delete(cacheKey); });
+      ttsPending.set(cacheKey, pending);
+    }
+
+    // If this client disconnects AND we're the only one waiting on the
+    // singleflight (i.e. no other request is also awaiting), abort upstream.
+    // We don't know the actual waiter count, so we abort conservatively only
+    // when the originator disconnects before resolution.
+    if (isOriginator && upstreamAbort) {
+      const onClose = () => {
+        // Only abort if no other request raced in and started awaiting too.
+        // Heuristic: if ttsPending still holds our promise, presume we're
+        // alone. (A second request would have grabbed the same promise but
+        // we have no counter — accept that we may abort a tiny fraction of
+        // races where both clients disconnected simultaneously.)
+        if (ttsPending.get(cacheKey) === pending && !res.writableFinished) {
+          upstreamAbort.abort();
         }
-      );
+      };
+      res.on('close', onClose);
     }
 
-    if (!response.ok) {
-      apiUsage.elevenlabs.errors++;
-      const errorText = await response.text();
-      logError(`${useKokoro ? 'Kokoro' : 'ElevenLabs'} TTS error:`, errorText);
-      throw new Error('Text-to-speech service unavailable');
+    const buffer = await pending;
+
+    // Cache the result if originator and we got a non-empty buffer.
+    if (isOriginator && buffer && buffer.length) {
+      cleanTtsCache();
+      ttsCache.set(cacheKey, { data: buffer, ts: Date.now() });
     }
 
-    // Stream the response to the client and cache the full buffer in parallel
-    await streamAndCache(response, res, cacheKey, useKokoro ? 'kokoro' : 'elevenlabs');
+    if (res.writableEnded || res.writableFinished) return;
+    sendAudioBuffer(res, buffer, {
+      'Content-Type': 'audio/mpeg',
+      'Cache-Control': 'no-cache',
+      'X-TTS-Cache': 'miss',
+      'X-TTS-Provider': provider,
+    });
 
   } catch (error) {
     logError('TTS error:', error);
@@ -1317,6 +1437,15 @@ async function sendPushNotification(pushToken, title, body, data = {}) {
   }
 }
 
+// Log push delivery attempts to PostHog (best-effort, never throws).
+// Lets us see delivery success rate per kind without per-user log spam.
+function captureSendEvent({ userId, kind, success }) {
+  try {
+    const traces = require('./agent/traces');
+    traces.captureEvent(userId || 'anonymous', 'push_send_attempt', { kind, success });
+  } catch {}
+}
+
 // List users with push tokens — debug endpoint
 app.get('/api/notifications/debug', async (req, res) => {
   try {
@@ -1372,7 +1501,8 @@ app.post('/api/notifications/test', async (req, res) => {
   }
 });
 
-// Activation sequence — targeted pushes based on days since signup
+// Activation sequence — targeted pushes based on days since signup.
+// Batches DB queries by user_id IN (...) so 1000 users = ~3 queries total.
 app.post('/api/notifications/activation-check', async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
@@ -1382,74 +1512,121 @@ app.post('/api/notifications/activation-check', async (req, res) => {
       .select('id, display_name, push_token, created_at')
       .not('push_token', 'is', null);
 
-    let sent = 0;
-    for (const profile of (profiles || [])) {
-      if (!profile.push_token || !profile.created_at) continue;
-
-      const daysSinceSignup = Math.floor((Date.now() - new Date(profile.created_at).getTime()) / 86400000);
-      const name = profile.display_name || 'there';
-
-      let title = '';
-      let body = '';
-
-      if (daysSinceSignup === 1) {
-        const { data: turns } = await supabase.from('turns').select('overall').eq('user_id', profile.id).limit(1);
-        const firstScore = turns?.[0]?.overall;
-        if (!firstScore) {
-          title = 'Your first score is waiting';
-          body = `${name}, try a One Shot today — it only takes 90 seconds to see where you stand.`;
-        } else {
-          title = `You scored ${firstScore.toFixed(1)} on your first try`;
-          body = 'Most people start between 5 and 7. Try a One Shot today and see if you can beat it.';
-        }
-      } else if (daysSinceSignup === 3) {
-        title = 'Ready for pressure?';
-        body = `${name}, try a Threaded Challenge — 4 follow-ups that get harder each turn. It's the closest thing to a real interview.`;
-      } else if (daysSinceSignup === 7) {
-        const { data: turns } = await supabase.from('turns').select('overall').eq('user_id', profile.id);
-        const count = turns?.length || 0;
-        if (count >= 3) {
-          const avg = (turns.reduce((s, t) => s + (t.overall || 0), 0) / count).toFixed(1);
-          title = 'One week of Sharp';
-          body = `${count} sessions, avg ${avg}. You're building something. Keep going.`;
-        } else {
-          title = 'One week in';
-          body = `${name}, you've got the app — now build the habit. One session today, 60 seconds.`;
-        }
-      } else if (daysSinceSignup === 14) {
-        const { data: streak } = await supabase.from('streaks').select('current_streak').eq('user_id', profile.id).single();
-        const currentStreak = streak?.current_streak || 0;
-        if (currentStreak >= 7) {
-          title = `${currentStreak}-day streak. You're building a real skill.`;
-          body = 'Most people quit by now. You didn\'t. That matters more than any score.';
-        } else {
-          title = 'Two weeks in — how sharp are you now?';
-          body = 'Do a One Shot today and compare it to your first. The improvement might surprise you.';
-        }
-      } else {
-        continue; // Not an activation day
-      }
-
-      const ok = await sendPushNotification(profile.push_token, title, body, { type: 'activation' });
-      if (ok) sent++;
+    // Bucket users by their activation day so we only query the data we need.
+    const now = Date.now();
+    const buckets = { day1: [], day7: [], day14: [], skip: [], day3: [] };
+    for (const p of (profiles || [])) {
+      if (!p.push_token || !p.created_at) { buckets.skip.push(p); continue; }
+      const days = Math.floor((now - new Date(p.created_at).getTime()) / 86400000);
+      if (days === 1) buckets.day1.push(p);
+      else if (days === 3) buckets.day3.push(p);
+      else if (days === 7) buckets.day7.push(p);
+      else if (days === 14) buckets.day14.push(p);
+      else buckets.skip.push(p);
     }
 
-    res.json({ sent, checked: profiles?.length || 0 });
+    const day1Ids = buckets.day1.map(p => p.id);
+    const day7Ids = buckets.day7.map(p => p.id);
+    const day14Ids = buckets.day14.map(p => p.id);
+
+    // Three parallel batched queries — no per-user round-trips.
+    const [day1Turns, day7Turns, day14Streaks] = await Promise.all([
+      day1Ids.length
+        ? supabase.from('turns').select('user_id, overall').in('user_id', day1Ids).order('created_at', { ascending: true })
+        : Promise.resolve({ data: [] }),
+      day7Ids.length
+        ? supabase.from('turns').select('user_id, overall').in('user_id', day7Ids)
+        : Promise.resolve({ data: [] }),
+      day14Ids.length
+        ? supabase.from('streaks').select('user_id, current_streak').in('user_id', day14Ids)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    // Group by user_id for O(1) lookups in the per-user loop below.
+    const day1FirstScore = new Map();
+    for (const t of (day1Turns.data || [])) {
+      if (!day1FirstScore.has(t.user_id)) day1FirstScore.set(t.user_id, t.overall);
+    }
+    const day7TurnsByUser = new Map();
+    for (const t of (day7Turns.data || [])) {
+      const arr = day7TurnsByUser.get(t.user_id) || [];
+      arr.push(t.overall);
+      day7TurnsByUser.set(t.user_id, arr);
+    }
+    const day14StreakByUser = new Map((day14Streaks.data || []).map(s => [s.user_id, s.current_streak || 0]));
+
+    let sent = 0;
+    let failed = 0;
+    const sendPromises = [];
+
+    function queueSend(profile, title, body) {
+      sendPromises.push(
+        sendPushNotification(profile.push_token, title, body, { type: 'activation' })
+          .then(ok => {
+            if (ok) sent++; else failed++;
+            captureSendEvent({ userId: profile.id, kind: 'activation', success: !!ok });
+          })
+      );
+    }
+
+    for (const profile of buckets.day1) {
+      const name = profile.display_name || 'there';
+      const firstScore = day1FirstScore.get(profile.id);
+      if (firstScore) {
+        queueSend(profile, `You scored ${firstScore.toFixed(1)} on your first try`,
+          'Most people start between 5 and 7. Try a One Shot today and see if you can beat it.');
+      } else {
+        queueSend(profile, 'Your first score is waiting',
+          `${name}, try a One Shot today — it only takes 90 seconds to see where you stand.`);
+      }
+    }
+    for (const profile of buckets.day3) {
+      const name = profile.display_name || 'there';
+      queueSend(profile, 'Ready for pressure?',
+        `${name}, try a Threaded Challenge — 4 follow-ups that get harder each turn. It's the closest thing to a real interview.`);
+    }
+    for (const profile of buckets.day7) {
+      const name = profile.display_name || 'there';
+      const turns = day7TurnsByUser.get(profile.id) || [];
+      if (turns.length >= 3) {
+        const avg = (turns.reduce((s, v) => s + (v || 0), 0) / turns.length).toFixed(1);
+        queueSend(profile, 'One week of Sharp', `${turns.length} sessions, avg ${avg}. You're building something. Keep going.`);
+      } else {
+        queueSend(profile, 'One week in', `${name}, you've got the app — now build the habit. One session today, 60 seconds.`);
+      }
+    }
+    for (const profile of buckets.day14) {
+      const currentStreak = day14StreakByUser.get(profile.id) || 0;
+      if (currentStreak >= 7) {
+        queueSend(profile, `${currentStreak}-day streak. You're building a real skill.`,
+          "Most people quit by now. You didn't. That matters more than any score.");
+      } else {
+        queueSend(profile, 'Two weeks in — how sharp are you now?',
+          'Do a One Shot today and compare it to your first. The improvement might surprise you.');
+      }
+    }
+
+    // Send in parallel — Expo push service handles concurrency fine.
+    await Promise.all(sendPromises);
+
+    res.json({ sent, failed, checked: profiles?.length || 0 });
   } catch (error) {
     sendError(res, 500, error, 'Activation check');
   }
 });
 
-// Engagement check — called by cron or manually to nudge inactive users
+// Engagement check — called by cron or manually to nudge inactive users.
+// Batches DB queries by user_id IN (...) so 1000 users = ~3 queries total
+// instead of 3000 sequential lookups.
 app.post('/api/notifications/engagement-check', async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
 
-    // Find users with push tokens who haven't had a session recently (paginated)
     const PAGE_SIZE = 100;
     let offset = 0;
     let totalChecked = 0;
     let nudged = 0;
+    let failed = 0;
     let hasMore = true;
 
     while (hasMore) {
@@ -1464,55 +1641,52 @@ app.post('/api/notifications/engagement-check', async (req, res) => {
       offset += PAGE_SIZE;
       totalChecked += profiles.length;
 
-    for (const profile of profiles) {
-      if (!profile.push_token) continue;
+      const profileIds = profiles.map(p => p.id);
 
-      // Check their last session
-      const { data: sessions } = await supabase
-        .from('sessions')
-        .select('created_at, type')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(1);
+      // 3 parallel batched queries instead of 3*N sequential ones
+      const [sessionsBatch, streaksBatch, turnsBatch] = await Promise.all([
+        supabase.from('sessions').select('user_id, created_at').in('user_id', profileIds).order('created_at', { ascending: false }),
+        supabase.from('streaks').select('user_id, current_streak').in('user_id', profileIds),
+        supabase.from('turns').select('user_id, overall').in('user_id', profileIds).order('overall', { ascending: false }),
+      ]);
 
-      const lastSession = sessions?.[0];
-      const daysSince = lastSession
-        ? Math.floor((Date.now() - new Date(lastSession.created_at).getTime()) / (1000 * 60 * 60 * 24))
-        : 999;
+      // Group: last session per user, streak per user, best score per user.
+      const lastSessionByUser = new Map();
+      for (const s of (sessionsBatch.data || [])) {
+        if (!lastSessionByUser.has(s.user_id)) lastSessionByUser.set(s.user_id, s.created_at);
+      }
+      const streakByUser = new Map((streaksBatch.data || []).map(s => [s.user_id, s.current_streak || 0]));
+      const bestScoreByUser = new Map();
+      for (const t of (turnsBatch.data || [])) {
+        if (!bestScoreByUser.has(t.user_id)) bestScoreByUser.set(t.user_id, t.overall || 0);
+      }
 
-      if (daysSince < 1) continue; // Active today, skip
+      // Send loop is mostly compute + HTTP to Expo — push sends are launched
+      // in parallel below via Promise.all.
+      const sendPromises = [];
 
-      // Check their streak
-      const { data: streakData } = await supabase
-        .from('streaks')
-        .select('current_streak')
-        .eq('user_id', profile.id)
-        .single();
+      for (const profile of profiles) {
+        if (!profile.push_token) continue;
 
-      const streak = streakData?.current_streak || 0;
+        const lastCreatedAt = lastSessionByUser.get(profile.id);
+        const daysSince = lastCreatedAt
+          ? Math.floor((Date.now() - new Date(lastCreatedAt).getTime()) / 86400000)
+          : 999;
+        if (daysSince < 1) continue;
 
-      // Check their best score
-      const { data: bestTurn } = await supabase
-        .from('turns')
-        .select('overall')
-        .eq('user_id', profile.id)
-        .order('overall', { ascending: false })
-        .limit(1);
+        const streak = streakByUser.get(profile.id) || 0;
+        const bestScore = bestScoreByUser.get(profile.id) || 0;
 
-      const bestScore = bestTurn?.[0]?.overall || 0;
+        let title = '';
+        let body = '';
 
-      // Generate personalized nudge
-      let title = '';
-      let body = '';
-
-      if (streak > 3 && daysSince === 1) {
-        // Streak at risk — urgent
-        title = `Your ${streak}-day streak is at risk`;
-        body = 'One quick Daily Challenge keeps it alive. 60 seconds is all it takes.';
-      } else if (daysSince >= 3) {
-        // Been away — generate with Claude for personalization
-        try {
-          const nudgePrompt = `Generate a SHORT, personalized push notification to re-engage a communication training app user.
+        if (streak > 3 && daysSince === 1) {
+          title = `Your ${streak}-day streak is at risk`;
+          body = 'One quick Daily Challenge keeps it alive. 60 seconds is all it takes.';
+        } else if (daysSince >= 3) {
+          // Generate with Claude for personalization (TODO: cache or template for cost)
+          try {
+            const nudgePrompt = `Generate a SHORT, personalized push notification to re-engage a communication training app user.
 
 Their name: ${profile.display_name || 'there'}
 Days since last practice: ${daysSince}
@@ -1526,28 +1700,35 @@ Rules:
 - Make them want to open the app
 
 Return ONLY JSON: { "title": "...", "body": "..." }`;
-          const nudge = await callClaude(nudgePrompt, 100);
-          title = nudge?.title || 'Sharp misses you';
-          body = nudge?.body || 'Your communication skills don\'t build themselves. One session?';
-        } catch {
-          title = 'Sharp misses you';
-          body = 'Your communication skills don\'t build themselves. One quick session?';
+            const nudge = await callClaude(nudgePrompt, 100);
+            title = nudge?.title || 'Sharp misses you';
+            body = nudge?.body || "Your communication skills don't build themselves. One session?";
+          } catch {
+            title = 'Sharp misses you';
+            body = "Your communication skills don't build themselves. One quick session?";
+          }
+        } else if (daysSince >= 2) {
+          title = 'Quick check-in';
+          body = streak > 0
+            ? `Your ${streak}-day streak is waiting. 60 seconds to keep it going.`
+            : 'One Daily Challenge today? It only takes 60 seconds.';
+        } else {
+          continue;
         }
-      } else if (daysSince >= 2) {
-        title = 'Quick check-in';
-        body = streak > 0
-          ? `Your ${streak}-day streak is waiting. 60 seconds to keep it going.`
-          : 'One Daily Challenge today? It only takes 60 seconds.';
-      } else {
-        continue; // Not inactive enough to nudge
+
+        sendPromises.push(
+          sendPushNotification(profile.push_token, title, body, { type: 'engagement_nudge' })
+            .then(ok => {
+              if (ok) nudged++; else failed++;
+              captureSendEvent({ userId: profile.id, kind: 'engagement_nudge', success: !!ok });
+            })
+        );
       }
 
-      const sent = await sendPushNotification(profile.push_token, title, body, { type: 'engagement_nudge' });
-      if (sent) nudged++;
+      await Promise.all(sendPromises);
     }
-    } // end while (hasMore)
 
-    res.json({ checked: totalChecked, nudged });
+    res.json({ checked: totalChecked, nudged, failed });
   } catch (error) {
     sendError(res, 500, error, 'Engagement check');
   }

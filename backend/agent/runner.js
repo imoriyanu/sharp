@@ -5,7 +5,9 @@
 const { TOOL_DEFINITIONS, executeTool } = require('./tools');
 const { createTrace } = require('./traces');
 
-const DEFAULT_TOTAL_BUDGET_MS = 25_000; // < Railway's 30s edge timeout
+const DEFAULT_TOTAL_BUDGET_MS = 25_000;  // < Railway's 30s edge timeout
+const PER_TOOL_TIMEOUT_MS    = 3_000;    // any tool call slower than this is aborted
+const MIN_ITERATION_BUDGET   = 8_000;    // need this much budget left to start another Claude turn
 
 // ===== Public: runAgent =====
 //
@@ -53,7 +55,13 @@ async function runAgent(opts) {
 
   try {
     for (let i = 0; i < maxIterations; i++) {
-      if (Date.now() >= deadline) throw new Error('Agent budget exhausted');
+      // Bail before starting another Claude turn if budget is too tight to
+      // finish it. Otherwise we'd be paying for a generation that the edge
+      // timeout will cut off mid-response.
+      const remaining = deadline - Date.now();
+      if (remaining < MIN_ITERATION_BUDGET) {
+        throw new Error(`Agent budget exhausted (${remaining}ms left, need ${MIN_ITERATION_BUDGET}ms for another turn)`);
+      }
 
       const response = await anthropic.messages.create(
         { model, max_tokens: maxTokens, system: systemPrompt, messages, tools },
@@ -72,10 +80,23 @@ async function runAgent(opts) {
         return { result: final, requestId: trace.requestId };
       }
 
-      // Execute requested tool calls in parallel — record each
+      // Execute requested tool calls in parallel — each has its own deadline
+      // so one slow Supabase query can't eat the whole iteration budget.
       const toolResults = await Promise.all(toolUseBlocks.map(async (block) => {
         const toolStart = Date.now();
-        const output = await executeTool(block.name, block.input, ctx);
+        let output;
+        try {
+          output = await Promise.race([
+            executeTool(block.name, block.input, ctx),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error(`Tool ${block.name} timed out after ${PER_TOOL_TIMEOUT_MS}ms`)), PER_TOOL_TIMEOUT_MS)
+            ),
+          ]);
+        } catch (e) {
+          // Surface tool failure as a tool_result so the model can recover
+          // (e.g. try a different tool or bail out and produce a final).
+          output = { error: e?.message || String(e) };
+        }
         const latencyMs = Date.now() - toolStart;
         trace.recordToolCall({
           toolName: block.name,
