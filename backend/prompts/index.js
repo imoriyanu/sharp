@@ -2,34 +2,149 @@
 // These are the most important files in the codebase.
 // The quality of coaching depends entirely on these prompts.
 
+// ===== SHARED: user context block builder =====
+//
+// Replaces the old practice of pasting raw fields + JSON.stringify(documents)
+// directly into each prompt. Builds a coherent natural-language narrative
+// of who this person is, what they're working toward, what's in their
+// docs, and what patterns we've seen in their last sessions.
+//
+// Used in every coaching prompt so the model has the same rich picture
+// regardless of whether it's generating a question, scoring an answer,
+// crafting a follow-up, or producing a debrief.
+
+function nlList(items, lim = 3) {
+  if (!items || !items.length) return '';
+  return items.slice(0, lim).map(s => `  - ${String(s).slice(0, 200)}`).join('\n');
+}
+
+function formatDocument(doc) {
+  if (!doc) return '';
+  const parts = [];
+  if (doc.documentType) parts.push(`[${doc.documentType}${doc.documentSubtype ? ' / ' + doc.documentSubtype : ''}]`);
+  if (doc.filename) parts.push(doc.filename);
+  if (doc.summary) parts.push(`— ${doc.summary.slice(0, 200)}`);
+  const e = doc.structuredExtraction || doc.extraction || {};
+  const extras = [];
+  if (e.jobTitle) extras.push(`role: ${e.jobTitle}`);
+  if (e.company) extras.push(`co: ${e.company}`);
+  if (e.skills?.length) extras.push(`skills: ${e.skills.slice(0, 6).join(', ')}`);
+  if (e.achievements?.length) extras.push(`achievements: ${e.achievements.slice(0, 3).join('; ').slice(0, 200)}`);
+  if (e.keyRequirements?.length) extras.push(`requirements: ${e.keyRequirements.slice(0, 5).join(', ')}`);
+  if (e.targetRole) extras.push(`target: ${e.targetRole}`);
+  if (e.successCriteria?.length) extras.push(`success criteria: ${e.successCriteria.slice(0, 4).join(', ')}`);
+  if (extras.length) parts.push(`(${extras.join(' · ')})`);
+  return parts.join(' ');
+}
+
+function detectRecurringTheme(insights) {
+  if (!insights || insights.length < 3) return '';
+  const stop = new Set(['the','a','an','to','of','your','you','for','in','on','with','that','is','this','it','and','be','or','but','not','too','was','were','more','less','very','really','just','one','two','their']);
+  const counts = new Map();
+  for (const ins of insights) {
+    const words = String(ins).toLowerCase().match(/\b[a-z][a-z'-]{2,}\b/g) || [];
+    for (const w of new Set(words)) {
+      if (stop.has(w)) continue;
+      counts.set(w, (counts.get(w) || 0) + 1);
+    }
+  }
+  const recurring = [...counts.entries()].filter(([, c]) => c >= 3).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  if (!recurring.length) return '';
+  return recurring.map(([w, c]) => `"${w}" (×${c})`).join(', ');
+}
+
+// Returns a multi-line narrative. Empty if nothing useful — use surrounding
+// prompt template to handle the "first session" case.
+function buildUserContextBlock(context) {
+  const lines = [];
+
+  // WHO + GOAL — woven together when both exist
+  const role = context.roleText && context.roleText.trim();
+  const co = context.currentCompany && context.currentCompany.trim();
+  const goal = context.dreamRoleAndCompany && context.dreamRoleAndCompany.trim();
+  const sit = context.situationText && context.situationText.trim();
+
+  if (role || co || goal || sit) {
+    lines.push('WHO THIS PERSON IS:');
+    if (role && co) lines.push(`  Currently: ${role} at ${co}.`);
+    else if (role) lines.push(`  Role: ${role}.`);
+    else if (co) lines.push(`  Company: ${co}.`);
+    if (goal) lines.push(`  Aiming for: ${goal}.`);
+    if (sit) lines.push(`  Right now: ${sit}.`);
+    lines.push('');
+  }
+
+  // Notes — user's own words. High signal — treat as direct instructions.
+  if (context.notes && context.notes.trim()) {
+    lines.push('THEIR OWN NOTES (treat as direct preferences/instructions):');
+    lines.push(`  ${context.notes.trim().slice(0, 800)}`);
+    lines.push('');
+  }
+
+  // Documents — natural language, not JSON
+  const docs = context.documentExtractions || context.documents || [];
+  if (docs.length) {
+    lines.push('THEIR UPLOADED DOCUMENTS (reference these specifically when relevant):');
+    for (const d of docs.slice(0, 6)) {
+      const line = formatDocument(d);
+      if (line) lines.push(`  • ${line}`);
+    }
+    lines.push('');
+  }
+
+  // Performance shape — what's strong, what's weak
+  const avg = context.averageScores || context.previousScores;
+  if (avg && (avg.sessionCount || 0) > 0) {
+    lines.push(`THEIR PERFORMANCE (${avg.sessionCount} sessions tracked):`);
+    const dims = [
+      ['structure', avg.structure],
+      ['concision', avg.concision],
+      ['substance', avg.substance],
+      ['filler words', avg.fillerWords],
+    ].filter(([, v]) => v != null);
+    if (dims.length) {
+      const ranked = dims.sort((a, b) => a[1] - b[1]);
+      const weakest = ranked[0];
+      const strongest = ranked[ranked.length - 1];
+      lines.push(`  Overall avg: ${avg.overall ?? '—'}/10. Weakest: ${weakest[0]} (${weakest[1]}). Strongest: ${strongest[0]} (${strongest[1]}).`);
+    }
+    lines.push('');
+  }
+
+  // Recurring coaching theme — what the model has been telling them
+  const insights = context.recentInsights || [];
+  if (insights.length) {
+    lines.push('RECENT COACHING (what they\'ve already been told):');
+    lines.push(nlList(insights, 5));
+    const theme = detectRecurringTheme(insights);
+    if (theme) lines.push(`  → Recurring keywords: ${theme}. If you see the same pattern again, NAME it instead of repeating the advice.`);
+    lines.push('');
+  }
+
+  // Session history — quick scan of recent sessions
+  const history = context.sessionHistory || [];
+  if (history.length) {
+    lines.push('RECENT SESSIONS (most recent first):');
+    for (const s of history.slice(0, 6)) {
+      const date = s.date || s.createdAt?.slice(0, 10) || '';
+      const dim = s.weakestArea ? ` (weakest: ${s.weakestArea})` : '';
+      const q = s.question ? s.question.slice(0, 90) : '';
+      const o = s.overall != null ? ` ${s.overall}/10` : '';
+      lines.push(`  • ${date}${o}${dim}  Q: "${q}"`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trim();
+}
+
+exports.buildUserContextBlock = buildUserContextBlock;
+
 // ===== QUESTION ENGINE PROMPT =====
 
 exports.questionEnginePrompt = (context) => `You are Sharp, a communication coach who trains people to speak clearly, concisely, and with substance in ALL areas of life — not just interviews. You generate richly varied daily challenges.
 
-WHO THEY ARE:
-${context.roleText || 'No role provided yet.'}
-${context.currentCompany ? `Company: ${context.currentCompany}` : ''}
-
-THEIR SITUATION:
-${context.situationText || 'No specific situation provided yet.'}
-${context.notes ? `
-THEIR NOTES (specific requests, preferences, and extra context from the user — treat these as direct instructions):
-${context.notes}
-` : ''}
-THEIR DOCUMENTS:
-${context.documentExtractions?.length > 0
-    ? context.documentExtractions.map((d, i) => `Document ${i + 1}: ${JSON.stringify(d)}`).join('\n')
-    : 'No documents uploaded yet.'}
-
-RECENT SESSION HISTORY (last 10 sessions — use this to understand their journey, weaknesses, and what they've been practising):
-${context.sessionHistory?.length > 0
-    ? context.sessionHistory.map((s, i) => `Session ${i + 1} (${s.date}): Q: "${s.question}" — Overall: ${s.overall} — Weakest: ${s.weakestArea} — Coaching: "${s.coachingInsight}" — What they said: "${s.transcript}"`).join('\n')
-    : 'First session — no history yet.'}
-
-AVERAGE SCORES:
-${context.averageScores
-    ? `Structure: ${context.averageScores.structure}, Concision: ${context.averageScores.concision}, Substance: ${context.averageScores.substance}, Filler Words: ${context.averageScores.fillerWords} (over ${context.averageScores.sessionCount} sessions)`
-    : 'No scores yet — first session.'}
+${buildUserContextBlock(context) || 'No context yet — first session.'}
 
 HOW TO USE SESSION HISTORY:
 - If they consistently score low on one dimension, subtly design questions that FORCE that skill (low structure → ask them to explain a process step by step; low substance → ask for specific examples)
@@ -339,50 +454,20 @@ CRITICAL RULES:
 4. modelAnswer must demonstrate every principle you criticised them for missing.
 5. Never name books/authors. Coach like you've read everything and quote nothing.`;
 
-exports.scoringPrompt = (context) => `ABOUT THE SPEAKER:
-Role: ${context.roleText || 'Not provided'}
-Company: ${context.currentCompany || 'Not provided'}
-Situation: ${context.situationText || 'Not provided'}
-Dream role: ${context.dreamRoleAndCompany || 'Not provided'}${context.notes ? `
-Their notes: ${context.notes}` : ''}
-Documents: ${context.documentExtractions?.length > 0 ? JSON.stringify(context.documentExtractions) : 'None'}
-${context.documentExtractions?.length > 0 ? `
-COACHING WITH THEIR CONTEXT: You have their professional documents. Use them to make feedback specific and personal:
-- If their answer could have been stronger with a detail from their documents (a metric, project name, or specific achievement), tell them: "You have the evidence — your documents show you achieved X. Use it. Numbers from your own work are the most persuasive thing you can say."
-- If they DID reference specific details from their background, celebrate it: "That specific metric landed. When you ground your answer in real evidence, it's instantly more credible."
-- In the modelAnswer, weave in specific details from their documents where relevant. Show them how their own experience becomes the strongest material.
-- In suggestedAngles, include at least one angle that draws on their specific context or documents.` : ''}
+exports.scoringPrompt = (context) => `${buildUserContextBlock(context) || 'First session — no context yet.'}
 
-THEIR HISTORY:
-${context.previousScores
-    ? `They have completed ${context.previousScores.sessionCount} sessions.
-Average scores — Overall: ${context.previousScores.overall}, Structure: ${context.previousScores.structure}, Concision: ${context.previousScores.concision}, Substance: ${context.previousScores.substance}, Filler Words: ${context.previousScores.fillerWords}
-
-PROGRESSION RULES:
-- If this answer is BETTER than their average in any dimension, CELEBRATE IT. Say "your structure is improving" or "you're getting tighter with concision."
-- If this answer is WORSE than average, only flag it if it's a clear regression (2+ points below). Don't punish a bad day.
-- If they're a beginner (< 5 sessions), be encouraging. Focus on what's working and give ONE thing to fix.
-- If they're experienced (10+ sessions), raise the bar. Be more precise in your critique.
-- ALWAYS frame improvement: "Last time your substance was around ${context.previousScores.substance}, and today you pushed it higher" — this motivates.`
-    : 'First session — no history. Be encouraging. Set a baseline. Find genuine positives.'}
-
-${context.recentInsights?.length > 0
-    ? `RECENT COACHING INSIGHTS (from their last few sessions):
-${context.recentInsights.map((ins, i) => `${i + 1}. "${ins}"`).join('\n')}
-
-RECURRING PATTERN RULES:
-- If you notice the SAME weakness appearing that was flagged in a recent insight, call it out: "I've mentioned this before — you're still hedging when you should be direct."
-- If they've FIXED something that was previously flagged, celebrate it: "Remember when I said to lead with numbers? You did that today. That's real progress."
-- Don't repeat the exact same coaching insight. If concision was the focus last time, give a NEW angle on it or focus on something else.
-- Reference the pattern only when genuinely relevant — don't force it.`
-    : ''}
+COACHING APPLICATION:
+- If they had relevant evidence in their documents (a metric, project, achievement) and DIDN'T use it, flag it: "You have the evidence — your CV shows X. Numbers from your own work are the most persuasive thing you can say."
+- If they DID ground their answer in specific details from their background, celebrate it.
+- In the modelAnswer, weave in specifics from their documents where relevant.
+- In suggestedAngles, include at least one that draws on their specific context.
+- If you see the recurring keyword pattern from "RECENT COACHING" above appearing AGAIN in this answer, NAME the pattern explicitly — don't quietly repeat the same advice.
+- If they're a beginner (< 5 sessions tracked), be encouraging. If experienced (10+), raise the bar.
 
 QUESTION: ${context.question}
 
 THEIR ANSWER:
 "${context.transcript}"
-
-${(context.roleText || context.documentExtractions?.length > 0) ? `ROLE-SPECIFIC SCORING: Interpret substance and awareness through the lens of their role as ${context.roleText || 'a professional'}. ${context.documentExtractions?.length > 0 ? 'Their documents give you specific projects, metrics, and evidence they COULD have used — score substance partly on whether they drew on their real experience when relevant.' : ''}` : ''}
 
 Score this answer following the system instructions. Return ONLY valid JSON.`;
 
@@ -425,17 +510,9 @@ Return ONLY valid JSON:
 
 exports.followUpPrompt = (context) => `You are Sharp. Generate a follow-up question for a threaded communication challenge.
 
-Context:
-Role: ${context.roleText || 'Not provided'}
-Company: ${context.currentCompany || 'Not provided'}
-Situation: ${context.situationText || 'Not provided'}
-Dream role: ${context.dreamRoleAndCompany || 'Not provided'}${context.notes ? `
-Their notes: ${context.notes}` : ''}
-Documents: ${context.documentExtractions?.length > 0
-    ? JSON.stringify(context.documentExtractions)
-    : 'None'}
-${context.documentExtractions?.length > 0 ? `
-USE THEIR DOCUMENTS: You have access to their professional documents above. When relevant, probe on specific projects, metrics, skills, or gaps from their documents. For example, if their CV says they "led a migration" but their answer was vague about it, push for the specific numbers. If their promotion criteria mentions "stakeholder management" and they glossed over a stakeholder conflict, dig into it. The documents tell you what they CLAIM — your job is to test whether they can articulate it under pressure.` : ''}
+${buildUserContextBlock(context) || 'No prior context — generate a fresh follow-up.'}
+
+USE THEIR DOCUMENTS: When relevant, probe on specific projects, metrics, skills, or gaps from the documents listed above. If their CV says they "led a migration" but their answer was vague about it, push for the specific numbers. If their target role's success criteria mentions "stakeholder management" and they glossed over a stakeholder conflict, dig into it. The documents tell you what they CLAIM — your follow-ups test whether they can articulate it under pressure.
 
 Original question: "${context.originalQuestion || context.question}"
 
@@ -490,17 +567,9 @@ Return ONLY valid JSON (no markdown, no backticks):
 
 exports.debriefPrompt = (context) => `Analyse this complete threaded challenge. The user was practicing communication under pressure.
 
-Context:
-Role: ${context.roleText || 'Not provided'}
-Company: ${context.currentCompany || 'Not provided'}
-Situation: ${context.situationText || 'Not provided'}
-Dream role: ${context.dreamRoleAndCompany || 'Not provided'}${context.notes ? `
-Their notes: ${context.notes}` : ''}
-Documents: ${context.documentExtractions?.length > 0
-    ? JSON.stringify(context.documentExtractions)
-    : 'None'}
-${(context.roleText || context.situationText || context.documentExtractions?.length > 0) ? `
-CONNECT TO THEIR WORLD: Even if this scenario wasn't directly about their job, analyse how the skills they demonstrated (or failed to demonstrate) connect to what they actually need.${context.documentExtractions?.length > 0 ? ` Reference specific projects, metrics, or skills from their documents. If they had opportunities to cite specific evidence but didn't, flag that as a missed opportunity. If they DID use specifics from their background, celebrate it.` : ''}${context.situationText ? ` They're preparing for: ${context.situationText}. In the summary, connect the dots — "The way you handled pressure in turn 3 is exactly the muscle you'll need when..."` : ''}` : ''}
+${buildUserContextBlock(context) || 'No prior context.'}
+
+CONNECT TO THEIR WORLD: Even if this scenario wasn't directly about their job, analyse how the skills they demonstrated (or failed to demonstrate) connect to what they actually need. Reference specific projects, metrics, or skills from their documents above when relevant. If they had opportunities to cite specific evidence but didn't, flag that as a missed opportunity. If they DID use specifics from their background, celebrate it. If their "WHO THIS PERSON IS" mentions a target role or upcoming situation, connect the dots — "The way you handled pressure in turn 3 is exactly the muscle you'll need when..."
 
 Scenario: ${context.scenario || (context.turns?.[0]?.question || 'Not provided')}
 
@@ -544,19 +613,7 @@ Analyse the full thread and return ONLY valid JSON (no markdown, no backticks):
 
 exports.conversationSetupPrompt = (context) => `You are setting up a live conversational practice session for a communication coaching app called Sharp.
 
-WHO THEY ARE:
-${context.roleText || 'No role provided.'}
-${context.currentCompany ? `Company: ${context.currentCompany}` : ''}
-
-THEIR SITUATION:
-${context.situationText || 'No specific situation provided.'}
-${context.dreamRoleAndCompany ? `Goal: ${context.dreamRoleAndCompany}` : ''}
-${context.notes ? `Their notes: ${context.notes}` : ''}
-
-THEIR DOCUMENTS:
-${context.documentExtractions?.length > 0
-    ? context.documentExtractions.map((d, i) => `Document ${i + 1}: ${JSON.stringify(d)}`).join('\n')
-    : 'No documents uploaded.'}
+${buildUserContextBlock(context) || 'No context yet.'}
 
 SCENARIO TYPE: ${context.scenario}
 ${context.customPrompt ? `CUSTOM INSTRUCTIONS: ${context.customPrompt}` : ''}
@@ -591,12 +648,7 @@ exports.conversationRespondPrompt = (context) => `You are ${context.agentPersona
 SCENARIO: ${context.scenarioDescription}
 
 WHO THE USER IS (use this to make your responses realistic, but don't break character):
-${context.roleText || 'Not provided'}
-${context.currentCompany ? `Their company: ${context.currentCompany}` : ''}
-${context.situationText ? `Their situation: ${context.situationText}` : ''}
-${context.documentExtractions?.length > 0
-    ? `Their background: ${context.documentExtractions.map(d => d.summary).join('; ')}`
-    : ''}
+${buildUserContextBlock(context) || 'Not provided.'}
 
 CONVERSATION SO FAR:
 ${context.turns.map((t, i) => `${t.agentMessage ? `Agent: "${t.agentMessage}"` : ''}${t.userTranscript ? `\nUser: "${t.userTranscript}"` : ''}`).join('\n\n')}
@@ -631,14 +683,7 @@ exports.conversationDebriefPrompt = (context) => `Analyse this complete conversa
 Scenario: ${context.scenarioDescription}
 Scenario type: ${context.scenario}
 
-WHO THEY ARE:
-${context.roleText || 'Not provided'}
-${context.currentCompany ? `Company: ${context.currentCompany}` : ''}
-${context.situationText ? `Situation: ${context.situationText}` : ''}
-${context.dreamRoleAndCompany ? `Goal: ${context.dreamRoleAndCompany}` : ''}
-${context.documentExtractions?.length > 0
-    ? `Documents: ${context.documentExtractions.map(d => d.summary).join('; ')}`
-    : ''}
+${buildUserContextBlock(context) || 'No prior context.'}
 
 FULL CONVERSATION:
 ${context.turns.map((t, i) => `Turn ${i + 1}:\nAgent: "${t.agentMessage}"\nUser: "${t.userTranscript}"`).join('\n\n')}

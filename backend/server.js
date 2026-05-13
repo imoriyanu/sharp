@@ -146,8 +146,16 @@ const groq = new Groq.default({
 });
 
 // ===== Helper: Call Claude =====
+// MODELS — Sonnet for quality-critical paths (scoring, debrief, agent tool
+// use, document parse). Haiku 4.5 for fast/formulaic paths (question gen,
+// follow-up, quality gate, progress summary, conversation, engagement
+// nudges). Haiku is ~12× cheaper input + output, ~3-5× faster.
+const MODELS = {
+  SONNET: 'claude-sonnet-4-20250514',
+  HAIKU:  'claude-haiku-4-5-20251001',
+};
 
-async function callClaude(prompt, maxTokens = 1500, { cacheSystem } = {}) {
+async function callClaude(prompt, maxTokens = 1500, { cacheSystem, model = MODELS.SONNET } = {}) {
   resetUsageIfNewDay();
   apiUsage.anthropic.calls++;
   try {
@@ -158,13 +166,13 @@ async function callClaude(prompt, maxTokens = 1500, { cacheSystem } = {}) {
     // cost reduction for the static scoring prompt).
     const createOpts = cacheSystem
       ? {
-          model: 'claude-sonnet-4-20250514',
+          model,
           max_tokens: maxTokens,
           system: [{ type: 'text', text: cacheSystem, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: prompt }],
         }
       : {
-          model: 'claude-sonnet-4-20250514',
+          model,
           max_tokens: maxTokens,
           messages: [{ role: 'user', content: prompt }],
         };
@@ -364,7 +372,7 @@ Previous questions (avoid similar): ${(context.recentQuestions || []).slice(0, 5
 Return ONLY JSON: { "queries": ["query1", "query2", "query3", "query4"] }`;
 
   try {
-    const plan = await callClaude(planPrompt, 200);
+    const plan = await callClaude(planPrompt, 200, { model: MODELS.HAIKU });
     if (!plan?.queries?.length) return [];
 
     // Search all 4 in parallel — fast
@@ -482,7 +490,9 @@ app.post('/api/question/generate', async (req, res) => {
 
     const prompt = prompts.questionEnginePrompt(req.body);
     const tokens = req.body.forceFormat === 'industry' ? 1500 : 1200;
-    const result = await callClaude(prompt, tokens);
+    // Haiku: question generation is formulaic and high-volume. Per-call
+    // savings ~12×; quality drop negligible per the audit.
+    const result = await callClaude(prompt, tokens, { model: MODELS.HAIKU });
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Question generation');
@@ -529,7 +539,8 @@ app.post('/api/score', async (req, res) => {
         transcript: req.body.transcript,
         scoringResult: result,
       });
-      const evaluation = await callClaude(evalPrompt, 400);
+      // Haiku: the quality gate is a critic prompt — evaluating, not creating.
+      const evaluation = await callClaude(evalPrompt, 400, { model: MODELS.HAIKU });
       const quality = evaluation?.qualityScore || 10;
       if (quality < 7) {
         log(`[Quality Gate] Score ${quality}/10 for question: "${req.body.question.slice(0, 50)}..." — Fixes: ${evaluation.fixes?.slice(0, 100)}`);
@@ -552,7 +563,8 @@ app.post('/api/threaded/follow-up', async (req, res) => {
     req.body.transcript = sanitizeString(req.body.transcript, MAX_TRANSCRIPT);
     req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
     const prompt = prompts.followUpPrompt(req.body);
-    const result = await callClaude(prompt, 400);
+    // Haiku: v1 follow-ups are formulaic (6 styles, well-prompted).
+    const result = await callClaude(prompt, 400, { model: MODELS.HAIKU });
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Follow-up generation');
@@ -578,7 +590,7 @@ app.post('/api/v2/threaded/follow-up', async (req, res) => {
     // If userId is unverified, fall through to v1 immediately — no agent retrieval.
     if (!userId) {
       const prompt = prompts.followUpPrompt(req.body);
-      const result = await callClaude(prompt, 400);
+      const result = await callClaude(prompt, 400, { model: MODELS.HAIKU });
       return res.json(result);
     }
 
@@ -595,7 +607,7 @@ app.post('/api/v2/threaded/follow-up', async (req, res) => {
       // never sees a broken thread mid-session. Logged for investigation.
       logError('Agentic follow-up failed, falling back to v1:', agentError);
       const prompt = prompts.followUpPrompt(req.body);
-      const result = await callClaude(prompt, 400);
+      const result = await callClaude(prompt, 400, { model: MODELS.HAIKU });
       res.json(result);
     }
   } catch (error) {
@@ -671,7 +683,8 @@ Return ONLY valid JSON (no markdown):
   "encouragement": "<a short motivational line specific to their progress>"
 }`;
 
-    const result = await callClaude(prompt, 600);
+    // Haiku: progress summary is short + formulaic.
+    const result = await callClaude(prompt, 600, { model: MODELS.HAIKU });
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Progress summary');
@@ -977,7 +990,8 @@ app.post('/api/conversation/setup', async (req, res) => {
       return res.status(400).json({ error: 'scenario is required' });
     }
     const prompt = prompts.conversationSetupPrompt(req.body);
-    const result = await callClaude(prompt, 500);
+    // Haiku: persona builder for a hidden feature; speed > depth here.
+    const result = await callClaude(prompt, 500, { model: MODELS.HAIKU });
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Conversation setup');
@@ -1106,8 +1120,8 @@ app.post('/api/conversation/respond', async (req, res) => {
     }
     req.body.latestTranscript = sanitizeString(req.body.latestTranscript, MAX_TRANSCRIPT);
     const prompt = prompts.conversationRespondPrompt(req.body);
-    // Low token limit for fast responses
-    const result = await callClaude(prompt, 300);
+    // Haiku: live-voice latency-critical. Fast > deep here.
+    const result = await callClaude(prompt, 300, { model: MODELS.HAIKU });
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Conversation respond');
@@ -1734,7 +1748,8 @@ Rules:
 - Make them want to open the app
 
 Return ONLY JSON: { "title": "...", "body": "..." }`;
-            const nudge = await callClaude(nudgePrompt, 100);
+            // Haiku: engagement-nudge body is short copy; called per inactive user.
+            const nudge = await callClaude(nudgePrompt, 100, { model: MODELS.HAIKU });
             title = nudge?.title || 'Sharp misses you';
             body = nudge?.body || "Your communication skills don't build themselves. One session?";
           } catch {
