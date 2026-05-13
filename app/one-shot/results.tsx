@@ -297,7 +297,7 @@ export default function ResultsScreen() {
         ) : (
           <TouchableOpacity style={[s.mainBtn, s.mainBtnLocked]} onPress={() => router.push('/premium')} activeOpacity={0.7}>
             <Text style={s.mainBtnText}>🔒 Practice the sharper version</Text>
-            <Text style={s.mainBtnSub}>Upgrade to Pro</Text>
+            <Text style={s.mainBtnSub}>Try free for 7 days</Text>
           </TouchableOpacity>
         )}
 

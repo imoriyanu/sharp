@@ -174,7 +174,7 @@ export default function CoachingScreen() {
         {practiceState === 'idle' && !isPremium() && (
           <TouchableOpacity style={[s.mainBtn, s.mainBtnLocked]} onPress={() => router.push('/premium')} activeOpacity={0.7}>
             <Text style={s.mainBtnText}>🔒 Practice this sentence</Text>
-            <Text style={s.mainBtnSub}>Upgrade to Pro</Text>
+            <Text style={s.mainBtnSub}>Try free for 7 days</Text>
           </TouchableOpacity>
         )}
 

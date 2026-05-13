@@ -217,15 +217,18 @@ export default function PremiumScreen() {
           <View style={s.freeCompare}>
             <Text style={s.freeTitle}>Free plan includes</Text>
             <Text style={s.freeItem}>Daily Challenge (no scoring)</Text>
-            <Text style={s.freeItem}>1 One Shot per day</Text>
+            <Text style={s.freeItem}>3 One Shots per week</Text>
+            <Text style={s.freeItem}>Sharp Duels (compete with friends)</Text>
           </View>
         </FadeIn>
 
-        {/* CTA */}
+        {/* CTA — trial-first */}
         <FadeIn delay={300}>
           <TouchableOpacity style={[s.ctaBtn, purchasing && s.ctaBtnDisabled]} onPress={handlePurchase} activeOpacity={0.8} disabled={purchasing}>
-            <Text style={s.ctaText}>{purchasing ? 'Processing...' : `Get ${selectedPlan.name}`}</Text>
-            <Text style={s.ctaSub}>{selectedPlan.perMonth}{selectedPlan.period === '/year' ? ' · billed annually' : ' · cancel anytime'}</Text>
+            <Text style={s.ctaText}>{purchasing ? 'Processing...' : 'Start 7-Day Free Trial'}</Text>
+            <Text style={s.ctaSub}>
+              Then {selectedPlan.price}{selectedPlan.period} · Cancel anytime
+            </Text>
           </TouchableOpacity>
         </FadeIn>
 

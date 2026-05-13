@@ -49,7 +49,7 @@ export default function OnboardingValue() {
 
         <FadeIn delay={1800}>
           <TouchableOpacity style={s.cta} onPress={() => router.push('/onboarding/paywall')} activeOpacity={0.8}>
-            <Text style={s.ctaText}>Unlock Sharp Pro</Text>
+            <Text style={s.ctaText}>Start 7-Day Free Trial</Text>
             <Text style={s.ctaSub}>Full scoring, coaching, and pressure training</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.replace('/onboarding/welcome')} activeOpacity={0.7} style={s.skipRow}>

@@ -70,13 +70,13 @@ export default function DailyResultScreen() {
               <Text style={{ fontSize: typography.size.base, fontWeight: typography.weight.black, color: colors.text.primary, textAlign: 'center' as const, marginBottom: spacing.xs }}>
                 {weakestArea ? `Your weakest area was ${weakestArea === 'fillerWords' ? 'Filler Words' : weakestArea.charAt(0).toUpperCase() + weakestArea.slice(1)}` : 'You scored ' + score.toFixed(1)}
               </Text>
-              <Text style={{ fontSize: typography.size.sm, color: colors.text.secondary, textAlign: 'center' as const, lineHeight: fp(20) }}>Upgrade to Pro to see your full breakdown, get AI coaching, and hear the model answer.</Text>
+              <Text style={{ fontSize: typography.size.sm, color: colors.text.secondary, textAlign: 'center' as const, lineHeight: fp(20) }}>Start your 7-day free trial to see your full breakdown, get AI coaching, and hear the model answer.</Text>
             </View>
           </FadeIn>
 
           <FadeIn delay={300}>
             <TouchableOpacity style={[s.doneBtn, { backgroundColor: colors.accent.primary, borderColor: colors.accent.primary, marginBottom: spacing.sm }]} onPress={() => router.push('/premium')} activeOpacity={0.8}>
-              <Text style={[s.doneBtnText, { color: '#FFF', fontWeight: typography.weight.bold }]}>See full coaching — Upgrade to Pro</Text>
+              <Text style={[s.doneBtnText, { color: '#FFF', fontWeight: typography.weight.bold }]}>Start 7-Day Free Trial</Text>
             </TouchableOpacity>
           </FadeIn>
 

@@ -99,6 +99,9 @@ export default function OnboardingPaywall() {
             <Text style={s.heroEmoji}>👑</Text>
             <Text style={s.heroTitle}>Sharp Pro</Text>
             <Text style={s.heroSub}>Get sharper, faster.</Text>
+            <View style={s.trialPill}>
+              <Text style={s.trialPillText}>7 DAYS FREE · CANCEL ANYTIME</Text>
+            </View>
           </View>
         </FadeIn>
 
@@ -123,13 +126,13 @@ export default function OnboardingPaywall() {
         {/* Annual plan */}
         <FadeIn delay={400}>
           <TouchableOpacity style={[s.planCard, selected === 'annual' && s.planRecommended]} onPress={() => setSelected('annual')} activeOpacity={0.7} disabled={purchasing}>
-            <View style={s.recBadge}><Text style={s.recBadgeText}>Recommended</Text></View>
+            {!!annualPlan.badge && <View style={s.recBadge}><Text style={s.recBadgeText}>{annualPlan.badge}</Text></View>}
             <View style={s.planTop}>
               <Text style={s.planName}>{annualPlan.name}</Text>
-              <Text style={s.planSavings}>{annualPlan.savings}</Text>
+              {!!annualPlan.savings && <Text style={s.planSavings}>{annualPlan.savings}</Text>}
             </View>
             <Text style={s.planPrice}>{annualPerMonth}</Text>
-            <Text style={s.planBilled}>{annualPrice} billed yearly</Text>
+            <Text style={s.planBilled}>{annualPrice} billed yearly after trial</Text>
           </TouchableOpacity>
         </FadeIn>
 
@@ -138,13 +141,24 @@ export default function OnboardingPaywall() {
           <TouchableOpacity style={[s.planCard, selected === 'monthly' && s.planRecommended]} onPress={() => setSelected('monthly')} activeOpacity={0.7} disabled={purchasing}>
             <Text style={s.planName}>{monthlyPlan.name}</Text>
             <Text style={s.planPrice}>{monthlyPrice}</Text>
+            <Text style={s.planBilledSmall}>billed monthly after trial</Text>
           </TouchableOpacity>
         </FadeIn>
 
-        {/* CTA */}
+        {/* CTA — trial-first */}
         <FadeIn delay={600}>
           <TouchableOpacity style={[s.trialBtn, purchasing && { opacity: 0.6 }]} onPress={handlePurchase} activeOpacity={0.8} disabled={purchasing}>
-            {purchasing ? <ActivityIndicator color={colors.text.inverse} /> : <Text style={s.trialText}>Get {selected === 'annual' ? 'Annual' : 'Monthly'}</Text>}
+            {purchasing
+              ? <ActivityIndicator color={colors.text.inverse} />
+              : (
+                <View>
+                  <Text style={s.trialText}>Start 7-Day Free Trial</Text>
+                  <Text style={s.trialSub}>
+                    Then {selected === 'annual' ? `${annualPrice}/yr` : monthlyPrice} · Cancel anytime
+                  </Text>
+                </View>
+              )
+            }
           </TouchableOpacity>
         </FadeIn>
 
@@ -167,7 +181,7 @@ export default function OnboardingPaywall() {
         <View style={s.guaranteeCard}>
           <Text style={s.guaranteeText}>30-day money-back guarantee. Not improving? Full refund.</Text>
         </View>
-        <Text style={s.legal}>Payment will be charged to your Apple ID account at confirmation. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.</Text>
+        <Text style={s.legal}>Free for 7 days, then your selected plan auto-renews unless cancelled at least 24 hours before the trial ends. Manage anytime in Settings. Payment charged to your Apple ID at the end of the trial.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -183,6 +197,8 @@ const s = StyleSheet.create({
   heroEmoji: { fontSize: fp(40), marginBottom: spacing.sm },
   heroTitle: { fontSize: fp(28), fontWeight: typography.weight.black, color: colors.text.primary },
   heroSub: { fontSize: typography.size.sm, color: colors.text.tertiary, marginTop: wp(3) },
+  trialPill: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.pill, paddingHorizontal: wp(12), paddingVertical: wp(5), marginTop: spacing.md, borderWidth: 1, borderColor: colors.success },
+  trialPillText: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.success, letterSpacing: 1.2 },
 
   // Comparison
   compareCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, overflow: 'hidden', marginBottom: spacing.xxl, ...shadows.md },
@@ -206,9 +222,11 @@ const s = StyleSheet.create({
   planSavings: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.success, backgroundColor: colors.feedback.positiveBg, borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(2) },
   planPrice: { fontSize: fp(24), fontWeight: typography.weight.black, color: colors.accent.primary },
   planBilled: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: wp(2) },
+  planBilledSmall: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: wp(2) },
 
-  trialBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(16), alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.lg, ...shadows.accent },
-  trialText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse },
+  trialBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(14), alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.lg, ...shadows.accent },
+  trialText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse, textAlign: 'center' },
+  trialSub: { fontSize: typography.size.xs, color: colors.text.inverse, opacity: 0.85, textAlign: 'center', marginTop: 3 },
 
   restoreText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary, textAlign: 'center', paddingVertical: spacing.md },
   skipText: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.text.muted, textAlign: 'center', paddingVertical: spacing.sm, opacity: 0.7, textDecorationLine: 'underline' },
