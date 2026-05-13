@@ -1148,9 +1148,16 @@ const TTS_CACHE_TTL = 3600_000; // 1h
 // the upstream provider.
 const ttsPending = new Map(); // key -> Promise<Buffer>
 
+// Cache key includes the resolved voice + provider so a voice change
+// (e.g. am_michael -> am_adam) invalidates old cached audio rather than
+// silently serving the previous voice on cache hits.
 function getTtsCacheKey(text, mode) {
   const crypto = require('crypto');
-  return crypto.createHash('md5').update(`${mode}:${text}`).digest('hex');
+  const voice = (useKokoro
+    ? (KOKORO_VOICE_MODES[mode] || KOKORO_VOICE_MODES.question).voice
+    : 'eleven-default');
+  const provider = useKokoro ? 'kokoro' : 'elevenlabs';
+  return crypto.createHash('md5').update(`${provider}:${voice}:${mode}:${text}`).digest('hex');
 }
 
 // Size-bounded LRU-style eviction. Called on insert.
@@ -1171,13 +1178,20 @@ setInterval(() => {
   if (evicted) log(`[tts cache] evicted ${evicted} expired entries (${ttsCache.size} remain)`);
 }, 600_000).unref();
 
-// Kokoro voice mappings — single voice, speed variation per mode
+// Kokoro voice mappings.
+// Single coherent identity (American male, clear/articulate) with subtle
+// speed variation per mode. Other voices we've considered:
+//   am_michael — neutral, clear, mid-range (← chosen default)
+//   am_adam    — deeper, more authoritative
+//   am_eric    — articulate, slightly older
+//   am_onyx    — warmer, fuller
+// Swap the `voice` field below to change.
 const KOKORO_VOICE_MODES = {
-  question:  { voice: 'af_nicole', speed: 1.0  },
-  coaching:  { voice: 'af_nicole', speed: 0.9  },
-  model:     { voice: 'af_nicole', speed: 1.05 },
-  followup:  { voice: 'af_nicole', speed: 1.0  },
-  briefing:  { voice: 'af_nicole', speed: 0.95 },
+  question:  { voice: 'am_michael', speed: 1.0  },  // baseline
+  coaching:  { voice: 'am_michael', speed: 0.92 }, // slightly slower — warmer for feedback
+  model:     { voice: 'am_michael', speed: 1.05 }, // crisper for "this is how to say it"
+  followup:  { voice: 'am_michael', speed: 1.02 }, // mildly assertive for pressure
+  briefing:  { voice: 'am_michael', speed: 0.96 }, // measured for longer setup
 };
 
 // ElevenLabs voice modes — kept for fallback when TTS_PROVIDER=elevenlabs
