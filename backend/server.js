@@ -1189,55 +1189,63 @@ const ELEVENLABS_VOICE_MODES = {
   briefing:  { stability: 0.8,  similarity_boost: 0.8,  style: 0.15, use_speaker_boost: true },
 };
 
-// Drains the provider's streamed response into a complete Buffer.
-// Used by the singleflight path so multiple concurrent clients waiting on
-// the same generation can all be served the same final buffer.
-//
-// Accepts an upstreamAbort signal so a caller can cancel the upstream fetch
-// (e.g. when the originating client disconnected and no one else is waiting).
-async function drainProviderToBuffer(providerResponse, upstreamAbort) {
+// Sends a fully-realized buffer to the client. Used for cache hits and for
+// singleflight waiters (who arrive after the originator has already finished
+// fetching, so the buffer is the only thing available to them).
+function sendAudioBuffer(res, buffer, headers) {
+  res.set({ ...headers, 'Content-Length': buffer.length });
+  res.send(buffer);
+}
+
+// Originator path: opens the upstream connection, streams chunks to the
+// client AS they arrive (so TTFA stays ~400-700ms), AND accumulates a copy
+// for the cache. If the client disconnects mid-stream we keep draining
+// upstream so the cache still fills — same text will arrive instantly next
+// time. The only hard stop is the 30s abort timeout on upstream itself.
+async function streamUpstreamAndCacheBuffer(providerResponse, res, headers) {
+  res.set(headers);
+  res.flushHeaders();
+
   const reader = providerResponse.body.getReader();
   const chunks = [];
+  let clientClosed = false;
+  // Watch for client disconnect — but DON'T abort upstream on it. The
+  // upstream is cheap to drain and the cache benefit is worth it.
+  const onClose = () => { clientClosed = true; };
+  res.on('close', onClose);
+
   try {
     while (true) {
-      if (upstreamAbort?.aborted) {
-        try { await reader.cancel(); } catch {}
-        throw new Error('TTS upstream aborted');
-      }
       const { done, value } = await reader.read();
       if (done) break;
-      if (value) chunks.push(Buffer.from(value));
+      if (!value) continue;
+      // Always collect chunks for the cache, even if the client is gone.
+      chunks.push(Buffer.from(value));
+      // Only write to the client if it's still connected.
+      if (!clientClosed && !res.writableEnded) {
+        try {
+          res.write(value);
+          if (typeof res.flush === 'function') res.flush();
+        } catch {
+          // write() can throw if the underlying socket is gone — treat as
+          // client closed and keep draining for the cache.
+          clientClosed = true;
+        }
+      }
     }
-    return Buffer.concat(chunks);
   } finally {
+    res.off('close', onClose);
     try { reader.releaseLock(); } catch {}
-  }
-}
-
-// Writes a complete audio buffer to the client in chunks, flushing each one
-// for fast playback. Falls back to res.send for already-cached hits where
-// we just have the buffer in hand.
-function sendAudioBuffer(res, buffer, headers) {
-  res.set(headers);
-  // For larger buffers (>32KB) write in chunks so the client can begin
-  // playback before the full buffer is on the wire.
-  if (buffer.length > 32 * 1024) {
-    res.flushHeaders();
-    const CHUNK = 16 * 1024;
-    for (let offset = 0; offset < buffer.length; offset += CHUNK) {
-      if (res.writableEnded) break;
-      res.write(buffer.subarray(offset, Math.min(offset + CHUNK, buffer.length)));
-      if (typeof res.flush === 'function') res.flush();
+    if (!res.writableEnded) {
+      try { res.end(); } catch {}
     }
-    if (!res.writableEnded) res.end();
-  } else {
-    res.send(buffer);
   }
+  return Buffer.concat(chunks);
 }
 
-// Fetches audio from the active provider into a complete Buffer.
-// Honours `upstreamAbort` so callers can cancel if no one is waiting anymore.
-async function generateTtsBuffer(text, mode, upstreamAbort) {
+// Opens the upstream TTS connection and returns the Response object.
+// Caller is responsible for draining the body.
+async function fetchTtsResponse(text, mode, abortSignal) {
   apiUsage.elevenlabs.calls++; // legacy field — tracks total TTS calls regardless of provider
   apiUsage.elevenlabs.characters += String(text).length;
 
@@ -1259,7 +1267,7 @@ async function generateTtsBuffer(text, mode, upstreamAbort) {
         response_format: 'mp3',
         stream: true,
       }),
-      signal: upstreamAbort || AbortSignal.timeout(30000),
+      signal: abortSignal,
     });
   } else {
     const voiceId = process.env.ELEVENLABS_VOICE_ID;
@@ -1278,7 +1286,7 @@ async function generateTtsBuffer(text, mode, upstreamAbort) {
           voice_settings: voiceSettings,
           optimize_streaming_latency: 4,
         }),
-        signal: upstreamAbort || AbortSignal.timeout(30000),
+        signal: abortSignal,
       }
     );
   }
@@ -1289,8 +1297,7 @@ async function generateTtsBuffer(text, mode, upstreamAbort) {
     logError(`${useKokoro ? 'Kokoro' : 'ElevenLabs'} TTS error:`, errorText);
     throw new Error('Text-to-speech service unavailable');
   }
-
-  return drainProviderToBuffer(response, upstreamAbort);
+  return response;
 }
 
 // Support both GET (short text via query) and POST (long text via body)
@@ -1315,7 +1322,7 @@ app.all('/api/tts', async (req, res) => {
     const provider = useKokoro ? 'kokoro' : 'elevenlabs';
     const cacheKey = getTtsCacheKey(String(text), mode);
 
-    // Cache hit — served instantly, no provider call
+    // 1. Cache hit — instant, no provider call.
     const cached = ttsCache.get(cacheKey);
     if (cached) {
       cached.ts = Date.now();
@@ -1328,56 +1335,63 @@ app.all('/api/tts', async (req, res) => {
       return;
     }
 
-    // Singleflight: if another request is already generating this exact
-    // text+mode, await the same promise. Means N concurrent clients =
-    // 1 upstream call, not N.
-    let pending = ttsPending.get(cacheKey);
-    let isOriginator = false;
-    let upstreamAbort = null;
-
-    if (!pending) {
-      isOriginator = true;
-      upstreamAbort = new AbortController();
-      // After 30s without completion, abort the upstream so we don't leak.
-      const upstreamTimeout = setTimeout(() => upstreamAbort.abort(), 30_000);
-      pending = generateTtsBuffer(String(text), mode, upstreamAbort.signal)
-        .finally(() => { clearTimeout(upstreamTimeout); ttsPending.delete(cacheKey); });
-      ttsPending.set(cacheKey, pending);
-    }
-
-    // If this client disconnects AND we're the only one waiting on the
-    // singleflight (i.e. no other request is also awaiting), abort upstream.
-    // We don't know the actual waiter count, so we abort conservatively only
-    // when the originator disconnects before resolution.
-    if (isOriginator && upstreamAbort) {
-      const onClose = () => {
-        // Only abort if no other request raced in and started awaiting too.
-        // Heuristic: if ttsPending still holds our promise, presume we're
-        // alone. (A second request would have grabbed the same promise but
-        // we have no counter — accept that we may abort a tiny fraction of
-        // races where both clients disconnected simultaneously.)
-        if (ttsPending.get(cacheKey) === pending && !res.writableFinished) {
-          upstreamAbort.abort();
+    // 2. Singleflight waiter — another request is already generating this
+    //    exact text+mode. Wait for its buffer and serve from it.
+    const existingPromise = ttsPending.get(cacheKey);
+    if (existingPromise) {
+      try {
+        const buffer = await existingPromise;
+        if (!res.writableEnded) {
+          sendAudioBuffer(res, buffer, {
+            'Content-Type': 'audio/mpeg',
+            'Cache-Control': 'public, max-age=3600',
+            'X-TTS-Cache': 'singleflight',
+            'X-TTS-Provider': provider,
+          });
         }
-      };
-      res.on('close', onClose);
+      } catch (e) {
+        if (!res.headersSent) sendError(res, 502, e, 'TTS waiter');
+      }
+      return;
     }
 
-    const buffer = await pending;
+    // 3. Originator path — stream upstream chunks to this client AS they
+    //    arrive (TTFA ~400-700ms) while collecting a copy for the cache
+    //    and for any singleflight waiters that race in.
+    const upstreamAbort = new AbortController();
+    const upstreamTimeout = setTimeout(() => upstreamAbort.abort(), 30_000);
 
-    // Cache the result if originator and we got a non-empty buffer.
-    if (isOriginator && buffer && buffer.length) {
-      cleanTtsCache();
-      ttsCache.set(cacheKey, { data: buffer, ts: Date.now() });
-    }
-
-    if (res.writableEnded || res.writableFinished) return;
-    sendAudioBuffer(res, buffer, {
-      'Content-Type': 'audio/mpeg',
-      'Cache-Control': 'no-cache',
-      'X-TTS-Cache': 'miss',
-      'X-TTS-Provider': provider,
+    let resolveBuffer, rejectBuffer;
+    const bufferPromise = new Promise((resolve, reject) => {
+      resolveBuffer = resolve; rejectBuffer = reject;
     });
+    ttsPending.set(cacheKey, bufferPromise);
+
+    try {
+      const providerResponse = await fetchTtsResponse(String(text), mode, upstreamAbort.signal);
+      // Stream to client + collect for cache. If the client disconnects
+      // mid-stream we still drain upstream so the buffer (and cache) fill.
+      const buffer = await streamUpstreamAndCacheBuffer(providerResponse, res, {
+        'Content-Type': 'audio/mpeg',
+        'Transfer-Encoding': 'chunked',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+        'X-TTS-Cache': 'miss',
+        'X-TTS-Provider': provider,
+      });
+
+      if (buffer.length) {
+        cleanTtsCache();
+        ttsCache.set(cacheKey, { data: buffer, ts: Date.now() });
+      }
+      resolveBuffer(buffer);
+    } catch (e) {
+      rejectBuffer(e);
+      throw e;
+    } finally {
+      clearTimeout(upstreamTimeout);
+      ttsPending.delete(cacheKey);
+    }
 
   } catch (error) {
     logError('TTS error:', error);
