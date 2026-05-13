@@ -9,7 +9,7 @@ import { getOfferings, purchasePackage, restorePurchases, isRevenueCatConfigured
 
 const COMPARE = [
   { feature: 'Daily Challenge', free: 'No scoring', pro: 'Full coaching' },
-  { feature: 'One Shot sessions', free: '1/day', pro: '3/day' },
+  { feature: 'One Shot sessions', free: '3/week', pro: '3/day' },
   { feature: 'Threaded practice', free: '—', pro: '2/day' },
   { feature: 'Industry questions', free: '—', pro: '2/day' },
   { feature: 'Context & documents', free: '—', pro: '✓' },
@@ -152,8 +152,16 @@ export default function OnboardingPaywall() {
           <Text style={s.restoreText}>Restore purchases</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => !purchasing && router.replace('/onboarding/welcome')} disabled={purchasing}>
-          <Text style={s.skipText}>Maybe later</Text>
+        {/* Hard paywall: keep the escape hatch but demote it visually so the
+            primary action (start trial) wins the user's attention. Per 2026
+            paywall research, hard paywalls produce ~5× higher D35 trial
+            conversion than soft paywalls. */}
+        <TouchableOpacity
+          onPress={() => !purchasing && router.replace('/onboarding/welcome')}
+          disabled={purchasing}
+          hitSlop={6}
+        >
+          <Text style={s.skipText}>Continue with limited free plan</Text>
         </TouchableOpacity>
 
         <View style={s.guaranteeCard}>
@@ -203,7 +211,7 @@ const s = StyleSheet.create({
   trialText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse },
 
   restoreText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary, textAlign: 'center', paddingVertical: spacing.md },
-  skipText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.muted, textAlign: 'center', paddingVertical: spacing.md },
+  skipText: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.text.muted, textAlign: 'center', paddingVertical: spacing.sm, opacity: 0.7, textDecorationLine: 'underline' },
 
   guaranteeCard: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, alignItems: 'center' },
   guaranteeText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.success, textAlign: 'center' },

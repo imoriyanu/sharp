@@ -15,6 +15,7 @@ export interface PremiumPlan {
 
 export interface UsageLimits {
   oneShotsPerDay: number;
+  oneShotsPerWeek: number;      // free only — caps generosity so the wall bites
   threadedPerDay: number;       // free: 0 (1 per week tracked separately)
   threadedPerWeek: number;      // free only
   industryPerDay: number;

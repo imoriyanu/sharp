@@ -18,12 +18,16 @@ let _premiumCached: boolean | null = null;
 let _planIdCached: PlanId | null = null;
 
 export const PLANS: PremiumPlan[] = [
-  { id: 'annual', name: 'Annual', price: '£149.99', period: '/year', perMonth: '£12.50/mo', savings: 'Save 38%', recommended: true, badge: 'Best value' },
+  // Absolute-£ savings framing beats "Save 38%" above the £50 threshold per
+  // 2026 pricing-psychology data. "Most Popular" badge over "Best value" —
+  // social-proof effect adds 5-15% to badged-tier selection rate.
+  { id: 'annual', name: 'Annual', price: '£149.99', period: '/year', perMonth: '£12.50/mo', savings: 'Save £90', recommended: true, badge: 'Most Popular' },
   { id: 'monthly', name: 'Monthly', price: '£19.99', period: '/month', perMonth: '£19.99/mo' },
 ];
 
 export const FREE_LIMITS: UsageLimits = {
   oneShotsPerDay: 1,
+  oneShotsPerWeek: 3,           // 3/week is the BITING cap — daily is just a safety
   threadedPerDay: 0,
   threadedPerWeek: 0,
   industryPerDay: 0,
@@ -35,6 +39,7 @@ export const FREE_LIMITS: UsageLimits = {
 
 export const PREMIUM_LIMITS: UsageLimits = {
   oneShotsPerDay: 3,
+  oneShotsPerWeek: 999,         // effectively unlimited weekly for Pro
   threadedPerDay: 2,
   threadedPerWeek: 999,
   industryPerDay: 2,
@@ -177,6 +182,7 @@ function withUsageLock<T>(fn: () => Promise<T>): Promise<T> {
 interface DailyUsage {
   date: string;
   oneShots: number;
+  oneShotsThisWeek: number;    // free tier weekly cap — bites at 3/week
   threaded: number;
   industry: number;
   regenerates: number;
@@ -192,20 +198,27 @@ async function getUsage(): Promise<DailyUsage> {
 
     if (raw) {
       const usage: DailyUsage = JSON.parse(raw);
+      // Backward-compat: older records may lack oneShotsThisWeek.
+      if (usage.oneShotsThisWeek == null) usage.oneShotsThisWeek = 0;
       if (usage.date === today) {
-        // Reset weekly counter if new week
+        // Reset weekly counters if new week
         if (usage.weekStart !== weekStart) {
           usage.threadedThisWeek = 0;
+          usage.oneShotsThisWeek = 0;
           usage.weekStart = weekStart;
         }
         return usage;
       }
+      // New day but same week: keep weekly counters, reset daily.
+      if (usage.weekStart === weekStart) {
+        return { ...usage, date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0 };
+      }
     }
 
-    return { date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0, threadedThisWeek: 0, weekStart };
+    return { date: today, oneShots: 0, oneShotsThisWeek: 0, threaded: 0, industry: 0, regenerates: 0, threadedThisWeek: 0, weekStart };
   } catch {
     const today = localDateStr();
-    return { date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
+    return { date: today, oneShots: 0, oneShotsThisWeek: 0, threaded: 0, industry: 0, regenerates: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
   }
 }
 
@@ -286,7 +299,15 @@ export async function flushPendingUsageSyncs(): Promise<void> {
 export async function canDoOneShot(): Promise<{ allowed: boolean; used: number; limit: number }> {
   const limits = getLimits();
   const usage = await getUsage();
-  return { allowed: usage.oneShots < limits.oneShotsPerDay, used: usage.oneShots, limit: limits.oneShotsPerDay };
+  if (isPremium()) {
+    // Pro: daily limit only.
+    return { allowed: usage.oneShots < limits.oneShotsPerDay, used: usage.oneShots, limit: limits.oneShotsPerDay };
+  }
+  // Free: weekly cap bites first (3/week), then per-day as a safety.
+  if (usage.oneShotsThisWeek >= limits.oneShotsPerWeek) {
+    return { allowed: false, used: usage.oneShotsThisWeek, limit: limits.oneShotsPerWeek };
+  }
+  return { allowed: usage.oneShots < limits.oneShotsPerDay, used: usage.oneShotsThisWeek, limit: limits.oneShotsPerWeek };
 }
 
 export async function canDoThreaded(): Promise<{ allowed: boolean; used: number; limit: number }> {
@@ -300,7 +321,12 @@ export async function canDoThreaded(): Promise<{ allowed: boolean; used: number;
 }
 
 export function trackOneShotUsage(): Promise<void> {
-  return withUsageLock(async () => { const u = await getUsage(); u.oneShots++; await saveUsage(u); });
+  return withUsageLock(async () => {
+    const u = await getUsage();
+    u.oneShots++;
+    u.oneShotsThisWeek++;
+    await saveUsage(u);
+  });
 }
 
 export function trackThreadedUsage(): Promise<void> {
