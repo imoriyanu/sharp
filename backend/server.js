@@ -1253,6 +1253,12 @@ async function fetchTtsResponse(text, mode, abortSignal) {
   if (useKokoro) {
     const voiceConfig = KOKORO_VOICE_MODES[mode] || KOKORO_VOICE_MODES.question;
     const kokoroBaseUrl = process.env.KOKORO_TTS_URL || 'https://api.together.ai';
+    // NOTE: stream: false is REQUIRED.
+    // With stream: true, Together AI's /v1/audio/speech returns Server-Sent
+    // Events containing base64-encoded audio deltas, NOT raw MP3 bytes —
+    // AVPlayer / MediaPlayer can't parse that. With stream: false we get
+    // a single response body of real MP3 bytes (which our server then
+    // streams chunk-by-chunk to the client + caches).
     response = await fetch(`${kokoroBaseUrl}/v1/audio/speech`, {
       method: 'POST',
       headers: {
@@ -1265,7 +1271,7 @@ async function fetchTtsResponse(text, mode, abortSignal) {
         voice: voiceConfig.voice,
         speed: voiceConfig.speed,
         response_format: 'mp3',
-        stream: true,
+        stream: false,
       }),
       signal: abortSignal,
     });
