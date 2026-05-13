@@ -241,9 +241,6 @@ export default function PremiumScreen() {
 
         {/* Bottom */}
         <FadeIn delay={400}>
-          <View style={s.guaranteeCard}>
-            <Text style={s.guaranteeText}>30-day money-back guarantee. If you're not improving, we'll refund you. No questions.</Text>
-          </View>
           <Text style={s.legal}>
             Payment will be charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.
           </Text>
@@ -327,9 +324,6 @@ const s = StyleSheet.create({
   // Bottom
   restoreBtn: { alignItems: 'center', padding: spacing.lg },
   restoreText: { fontSize: typography.size.sm, color: colors.accent.primary, fontWeight: typography.weight.semibold },
-  guaranteeCard: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.lg, alignItems: 'center' },
-  guaranteeText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.success, textAlign: 'center', lineHeight: fp(20) },
-
   legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', paddingHorizontal: spacing.lg },
   bottomSpacer: { height: wp(40) },
 });

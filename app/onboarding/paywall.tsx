@@ -178,9 +178,6 @@ export default function OnboardingPaywall() {
           <Text style={s.skipText}>Continue with limited free plan</Text>
         </TouchableOpacity>
 
-        <View style={s.guaranteeCard}>
-          <Text style={s.guaranteeText}>30-day money-back guarantee. Not improving? Full refund.</Text>
-        </View>
         <Text style={s.legal}>Free for 7 days, then your selected plan auto-renews unless cancelled at least 24 hours before the trial ends. Manage anytime in Settings. Payment charged to your Apple ID at the end of the trial.</Text>
       </ScrollView>
     </SafeAreaView>
@@ -231,7 +228,5 @@ const s = StyleSheet.create({
   restoreText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary, textAlign: 'center', paddingVertical: spacing.md },
   skipText: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.text.muted, textAlign: 'center', paddingVertical: spacing.sm, opacity: 0.7, textDecorationLine: 'underline' },
 
-  guaranteeCard: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, alignItems: 'center' },
-  guaranteeText: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.success, textAlign: 'center' },
   legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', marginTop: spacing.lg, paddingHorizontal: spacing.lg },
 });
