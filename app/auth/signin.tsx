@@ -93,16 +93,20 @@ export default function AuthSignIn() {
   if (isAuthenticated) {
     return (
       <SafeAreaView style={s.safe}>
-        <View style={s.centeredFull}>
-          <FadeIn>
-            <Text style={s.successEmoji}>✓</Text>
-          </FadeIn>
-          <FadeIn delay={200}>
-            <Text style={s.successTitle}>You're in</Text>
-            <Text style={s.successSub}>Your progress is saved and synced across devices.</Text>
-          </FadeIn>
-          <FadeIn delay={400}>
-            <TouchableOpacity style={s.primaryBtn} onPress={() => router.back()} activeOpacity={0.8}>
+        <View style={s.statusWrap}>
+          <View style={s.statusContent}>
+            <FadeIn>
+              <View style={s.successBadge}>
+                <Text style={s.successBadgeIcon}>✓</Text>
+              </View>
+            </FadeIn>
+            <FadeIn delay={150}>
+              <Text style={s.statusTitle}>You're in</Text>
+              <Text style={s.statusSub}>Your progress is saved and synced across devices.</Text>
+            </FadeIn>
+          </View>
+          <FadeIn delay={300}>
+            <TouchableOpacity style={s.primaryBtn} onPress={() => router.back()} activeOpacity={0.85}>
               <Text style={s.primaryBtnText}>Continue</Text>
             </TouchableOpacity>
           </FadeIn>
@@ -115,16 +119,20 @@ export default function AuthSignIn() {
   if (confirmEmail) {
     return (
       <SafeAreaView style={s.safe}>
-        <View style={s.centeredFull}>
-          <FadeIn>
-            <Text style={s.successEmoji}>📧</Text>
-          </FadeIn>
-          <FadeIn delay={200}>
-            <Text style={s.successTitle}>Check your email</Text>
-            <Text style={s.successSub}>We sent a confirmation link to {email.trim().toLowerCase()}. Tap it to verify, then come back.</Text>
-          </FadeIn>
-          <FadeIn delay={400}>
-            <TouchableOpacity style={s.primaryBtn} onPress={() => { setConfirmEmail(false); setMode('signin'); }} activeOpacity={0.8}>
+        <View style={s.statusWrap}>
+          <View style={s.statusContent}>
+            <FadeIn>
+              <View style={s.infoBadge}>
+                <Text style={s.infoBadgeIcon}>📧</Text>
+              </View>
+            </FadeIn>
+            <FadeIn delay={150}>
+              <Text style={s.statusTitle}>Check your email</Text>
+              <Text style={s.statusSub}>We sent a confirmation link to {email.trim().toLowerCase()}. Tap it to verify, then come back.</Text>
+            </FadeIn>
+          </View>
+          <FadeIn delay={300}>
+            <TouchableOpacity style={s.primaryBtn} onPress={() => { setConfirmEmail(false); setMode('signin'); }} activeOpacity={0.85}>
               <Text style={s.primaryBtnText}>I've confirmed — sign in</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setConfirmEmail(false)} activeOpacity={0.7} style={s.ghostLink}>
@@ -156,11 +164,14 @@ export default function AuthSignIn() {
           {/* Apple Sign In */}
           {appleAvailable && (
             <FadeIn>
-              <TouchableOpacity style={s.appleBtn} onPress={handleAppleSignIn} activeOpacity={0.8} disabled={busy}>
+              <TouchableOpacity style={s.appleBtn} onPress={handleAppleSignIn} activeOpacity={0.85} disabled={busy}>
                 {appleLoading ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={s.appleBtnText}> Continue with Apple</Text>
+                  <>
+                    <Text style={s.appleBtnGlyph}></Text>
+                    <Text style={s.appleBtnText}>Continue with Apple</Text>
+                  </>
                 )}
               </TouchableOpacity>
 
@@ -250,11 +261,12 @@ const s = StyleSheet.create({
   subtitle: { fontSize: typography.size.sm, color: colors.text.tertiary, marginTop: spacing.xs, lineHeight: fp(20) },
 
   // Apple
-  appleBtn: { backgroundColor: '#000', borderRadius: radius.lg, paddingVertical: wp(16), alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
-  appleBtnText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: '#FFF' },
+  appleBtn: { flexDirection: 'row', backgroundColor: '#000', borderRadius: radius.lg, paddingVertical: wp(14), alignItems: 'center', justifyContent: 'center', gap: wp(6), marginBottom: spacing.lg },
+  appleBtnGlyph: { fontSize: fp(20), color: '#FFF', marginTop: -2 },
+  appleBtnText: { fontSize: typography.size.base, fontWeight: typography.weight.semibold, color: '#FFF', letterSpacing: -0.2 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.borderLight },
-  dividerText: { fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.semibold },
+  dividerText: { fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.semibold, textTransform: 'uppercase', letterSpacing: 1 },
 
   // Form
   formCard: { gap: spacing.md },
@@ -272,11 +284,15 @@ const s = StyleSheet.create({
   switchText: { fontSize: typography.size.sm, color: colors.text.tertiary },
   switchBold: { color: colors.accent.primary, fontWeight: typography.weight.bold },
 
-  // Success / confirm
-  centeredFull: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: layout.screenPadding, gap: spacing.md },
-  successEmoji: { fontSize: fp(48), textAlign: 'center', marginBottom: spacing.md },
-  successTitle: { fontSize: fp(24), fontWeight: typography.weight.black, color: colors.text.primary, textAlign: 'center' },
-  successSub: { fontSize: typography.size.sm, color: colors.text.tertiary, textAlign: 'center', lineHeight: fp(20), marginTop: spacing.sm, paddingHorizontal: spacing.lg },
-  ghostLink: { alignItems: 'center', paddingTop: spacing.lg },
+  // Status (success / confirm) layout
+  statusWrap: { flex: 1, paddingHorizontal: layout.screenPadding, paddingBottom: wp(20) },
+  statusContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
+  successBadge: { width: wp(80), height: wp(80), borderRadius: wp(40), backgroundColor: colors.feedback.positiveBg, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', borderWidth: 1.5, borderColor: colors.success },
+  successBadgeIcon: { fontSize: fp(36), fontWeight: typography.weight.black, color: colors.success, lineHeight: fp(40), marginTop: -2 },
+  infoBadge: { width: wp(80), height: wp(80), borderRadius: wp(40), backgroundColor: colors.bg.secondary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', ...shadows.sm },
+  infoBadgeIcon: { fontSize: fp(36) },
+  statusTitle: { fontSize: fp(28), fontWeight: typography.weight.black, color: colors.text.primary, textAlign: 'center', letterSpacing: -0.5 },
+  statusSub: { fontSize: typography.size.sm, color: colors.text.tertiary, textAlign: 'center', lineHeight: fp(22), marginTop: spacing.sm, paddingHorizontal: spacing.md },
+  ghostLink: { alignItems: 'center', paddingTop: spacing.md },
   ghostLinkText: { fontSize: typography.size.sm, color: colors.text.muted, fontWeight: typography.weight.semibold },
 });

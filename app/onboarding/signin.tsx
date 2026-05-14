@@ -83,14 +83,20 @@ export default function OnboardingSignIn() {
   if (confirmEmail) {
     return (
       <SafeAreaView style={s.safe}>
-        <View style={s.centeredFull}>
-          <FadeIn>
-            <Text style={s.confirmEmoji}>📧</Text>
-            <Text style={s.confirmTitle}>Check your email</Text>
-            <Text style={s.confirmSub}>We sent a link to {email.trim().toLowerCase()}. Tap it to verify, then come back.</Text>
-          </FadeIn>
+        <View style={s.statusWrap}>
+          <View style={s.statusContent}>
+            <FadeIn>
+              <View style={s.infoBadge}>
+                <Text style={s.infoBadgeIcon}>📧</Text>
+              </View>
+            </FadeIn>
+            <FadeIn delay={150}>
+              <Text style={s.statusTitle}>Check your email</Text>
+              <Text style={s.statusSub}>We sent a link to {email.trim().toLowerCase()}. Tap it to verify, then come back.</Text>
+            </FadeIn>
+          </View>
           <FadeIn delay={300}>
-            <TouchableOpacity style={s.primaryBtn} onPress={() => { setConfirmEmail(false); setMode('signin'); }} activeOpacity={0.8}>
+            <TouchableOpacity style={s.primaryBtn} onPress={() => { setConfirmEmail(false); setMode('signin'); }} activeOpacity={0.85}>
               <Text style={s.primaryBtnText}>I've confirmed, sign in</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setConfirmEmail(false)} activeOpacity={0.7} style={s.ghostLink}>
@@ -117,11 +123,14 @@ export default function OnboardingSignIn() {
           {/* Apple Sign In */}
           {appleAvailable && (
             <FadeIn>
-              <TouchableOpacity style={s.appleBtn} onPress={handleAppleSignIn} activeOpacity={0.8} disabled={busy}>
+              <TouchableOpacity style={s.appleBtn} onPress={handleAppleSignIn} activeOpacity={0.85} disabled={busy}>
                 {appleLoading ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={s.appleBtnText}> Continue with Apple</Text>
+                  <>
+                    <Text style={s.appleBtnGlyph}></Text>
+                    <Text style={s.appleBtnText}>Continue with Apple</Text>
+                  </>
                 )}
               </TouchableOpacity>
 
@@ -213,11 +222,12 @@ const s = StyleSheet.create({
   subtitle: { fontSize: typography.size.sm, color: colors.text.tertiary, marginTop: spacing.xs, lineHeight: fp(20) },
 
   // Apple
-  appleBtn: { backgroundColor: '#000', borderRadius: radius.lg, paddingVertical: wp(16), alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg },
-  appleBtnText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: '#FFF' },
+  appleBtn: { flexDirection: 'row', backgroundColor: '#000', borderRadius: radius.lg, paddingVertical: wp(14), alignItems: 'center', justifyContent: 'center', gap: wp(6), marginBottom: spacing.lg },
+  appleBtnGlyph: { fontSize: fp(20), color: '#FFF', marginTop: -2 },
+  appleBtnText: { fontSize: typography.size.base, fontWeight: typography.weight.semibold, color: '#FFF', letterSpacing: -0.2 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.borderLight },
-  dividerText: { fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.semibold },
+  dividerText: { fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.semibold, textTransform: 'uppercase', letterSpacing: 1 },
 
   // Form
   formCard: { gap: spacing.md },
@@ -239,11 +249,13 @@ const s = StyleSheet.create({
   skipRow: { alignItems: 'center', paddingTop: spacing.md, paddingBottom: wp(10) },
   skipText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text.muted },
 
-  // Confirm email
-  centeredFull: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: layout.screenPadding, gap: spacing.md },
-  confirmEmoji: { fontSize: fp(48), textAlign: 'center', marginBottom: spacing.md },
-  confirmTitle: { fontSize: fp(24), fontWeight: typography.weight.black, color: colors.text.primary, textAlign: 'center' },
-  confirmSub: { fontSize: typography.size.sm, color: colors.text.tertiary, textAlign: 'center', lineHeight: fp(20), marginTop: spacing.sm, paddingHorizontal: spacing.lg },
-  ghostLink: { alignItems: 'center', paddingTop: spacing.lg },
+  // Status (confirm-email) layout
+  statusWrap: { flex: 1, paddingHorizontal: layout.screenPadding, paddingBottom: wp(20) },
+  statusContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
+  infoBadge: { width: wp(80), height: wp(80), borderRadius: wp(40), backgroundColor: colors.bg.secondary, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', ...shadows.sm },
+  infoBadgeIcon: { fontSize: fp(36) },
+  statusTitle: { fontSize: fp(28), fontWeight: typography.weight.black, color: colors.text.primary, textAlign: 'center', letterSpacing: -0.5 },
+  statusSub: { fontSize: typography.size.sm, color: colors.text.tertiary, textAlign: 'center', lineHeight: fp(22), marginTop: spacing.sm, paddingHorizontal: spacing.md },
+  ghostLink: { alignItems: 'center', paddingTop: spacing.md },
   ghostLinkText: { fontSize: typography.size.sm, color: colors.text.muted, fontWeight: typography.weight.semibold },
 });
