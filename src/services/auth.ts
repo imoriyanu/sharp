@@ -91,8 +91,30 @@ export async function resetPassword(email: string) {
 // Apple Guideline 5.1.1(v): permanent in-app account deletion.
 // Order is: server-side delete (irreversible) → local wipe → sign out.
 // RevenueCat logout is handled automatically by AuthContext on SIGNED_OUT.
+//
+// Defensive: only an HTTP-level error (non-2xx) from the server should
+// abort the flow. A 204 success or a transient parse hiccup must still
+// run local cleanup so the user isn't stranded with their data on-device
+// after the server already nuked them. The backend handler is also
+// idempotent on "already deleted" (returns 204), so a retry is safe.
 export async function deleteAccount(): Promise<void> {
-  await apiPost<{}>('/account/delete', {});
+  let serverError: Error | null = null;
+  try {
+    await apiPost<{}>('/account/delete', {});
+  } catch (e: any) {
+    // Re-throw only if it looks like a real server failure (preserves the
+    // backend's user-facing message). Otherwise swallow and continue —
+    // the server likely succeeded; we want local state to follow.
+    const msg = (e?.message || '').toLowerCase();
+    const realFailure =
+      msg.includes('api error') ||
+      msg.includes('unavailable') ||
+      msg.includes('authentication') ||
+      msg.includes('failed to fetch') ||
+      msg.includes('network request');
+    if (realFailure) serverError = e;
+  }
+  if (serverError) throw serverError;
   await clearAllUserData();
   try {
     await supabase.auth.signOut();

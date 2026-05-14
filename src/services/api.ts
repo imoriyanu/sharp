@@ -53,7 +53,13 @@ export async function apiPost<T>(endpoint: string, body: any, signal?: AbortSign
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       throw new Error(error.error || `API error: ${response.status}`);
     }
-    return response.json();
+    // Some endpoints (e.g. /account/delete) return 204 No Content. Calling
+    // response.json() on an empty body throws "Unexpected end of input",
+    // so read raw text and parse only when there's something there.
+    if (response.status === 204) return {} as T;
+    const text = await response.text();
+    if (!text) return {} as T;
+    try { return JSON.parse(text) as T; } catch { return {} as T; }
   } finally {
     cleanup();
   }
