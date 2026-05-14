@@ -1453,6 +1453,14 @@ app.post('/api/account/delete', async (req, res) => {
       return res.status(503).json({ error: 'Account service unavailable. Please try again later.' });
     }
     if (!req.userId) {
+      // If a Bearer token was presented but didn't resolve to a user,
+      // the user is already deleted server-side — return 204 so the
+      // client runs local cleanup. Without any token at all, reject.
+      const hadToken = (req.headers.authorization || '').toLowerCase().startsWith('bearer ');
+      if (hadToken) {
+        agentTraces.captureEvent('anonymous', 'account_delete', { result: 'stale_token_already_deleted' });
+        return res.status(204).send();
+      }
       return res.status(401).json({ error: 'Authentication required to delete your account.' });
     }
 
