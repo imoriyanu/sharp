@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /screenshots/
+
+Sitemap: https://speaksharpai.com/sitemap.xml

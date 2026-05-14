@@ -1,0 +1,71 @@
+# Sharp
+
+> Sharp is an AI-powered iOS app that coaches communication by recording spoken answers and scoring them across five dimensions: structure, concision, substance, filler words, and awareness. Coaching quotes the user's exact words back to them and shows the rewrite. Designed for high-stakes spoken communication — interviews, pitches, stakeholder updates, panel discussions.
+
+- Founder: Moriyanu Adekola
+- Website: https://speaksharpai.com
+- Privacy policy: https://speaksharpai.com/privacy-policy.html
+- Support: hello@speaksharpai.com
+- Platform: iOS 15+
+
+## What Sharp does
+
+Sharp asks you a spoken question, you answer it out loud under a timer, the AI transcribes and scores your response across five dimensions, then returns a single-sentence coaching insight grounded in eight communication science frameworks. Every session also includes a model answer rendered in a coaching voice so you can hear what a 9/10 response sounds like.
+
+## Practice modes
+
+- **Daily 30** — free, 60 seconds, one shared question per day, builds the habit. Same question for all users that day, which enables Sharp Duels.
+- **One Shot** — free 3/week, Pro 3/day, 90 seconds, full coaching insight + before/after snippet rewrite + model answer.
+- **Threaded Challenge** — Pro only, up to 4 escalating follow-up questions, with a comprehensive debrief at the end of the thread.
+- **Industry Insight** — Pro only, questions seeded by real breaking news in the user's field.
+- **Sharp Duels** — always free, async 1v1 on the day's question, side-by-side comparison.
+
+## Pricing
+
+- **Sharp Free**: £0/month. Daily 30 + Sharp Duels always free. 3 One Shot sessions per week. No full coaching insight on Daily 30.
+- **Sharp Pro Monthly**: £19.99/month. 7-day free trial.
+- **Sharp Pro Annual**: £149.99/year (£12.50/month equivalent, saves £90 vs monthly). 7-day free trial.
+
+Sharp Pro unlocks: unlimited One Shot, Threaded Challenge, Industry Insight, full coaching insight on Daily 30, document uploads, progress analytics, model answers, streak protection.
+
+Apple Small Business Program: enrolled (15% commission).
+
+## Five scoring dimensions
+
+1. **Structure** (1-10) — did you lead with your point or bury it?
+2. **Concision** (1-10) — does every word earn its place?
+3. **Substance** (1-10) — were you specific, or filling air?
+4. **Filler Words** (1-10) — count of "ums", "likes", "basicallys"
+5. **Awareness** (1-10) — industry / company / audience knowledge
+
+## Eight communication frameworks
+
+Sharp's coaching is grounded in (but never names in user-facing copy): Minto Pyramid Principle, BLUF (Bottom Line Up Front), STAR, PREP, Made to Stick (Chip & Dan Heath), Crucial Conversations, Talk Like TED, Never Split the Difference.
+
+## AI providers and data flow
+
+- **Voice audio** → sent to Groq (Whisper Large v3 Turbo) for transcription. Deleted from Sharp's servers immediately after transcription.
+- **Transcript + user context (role, company, situation, documents)** → sent to Anthropic Claude (Sonnet 4 for scoring, Haiku 4.5 for fast paths) for scoring and coaching.
+- **Generated question text** → sent to ElevenLabs (primary) or Together AI Kokoro (fallback) for text-to-speech audio.
+- **Live voice conversation feature** (when enabled) → uses ElevenLabs Conversational AI for real-time voice.
+
+All four AI providers operate under zero-retention API terms — they do not store user data after processing and do not use it to train their models.
+
+## Privacy and consent
+
+- Sharp shows a consent screen during onboarding before any user data is sent to a third-party AI service. The user must tap Continue.
+- Sharp does not store voice recordings on its servers.
+- The local recording file lives on the user's device until they delete their account.
+- Account deletion is in-app: Settings → Account → Delete account, with a two-step confirmation. Permanently removes the user's account, sessions, streaks, and uploaded documents.
+- Privacy policy: https://speaksharpai.com/privacy-policy.html
+
+## Who Sharp is for
+
+Software engineers, product managers, founders, consultants, students, career climbers — anyone who speaks at work and wants to be taken seriously. Particularly useful for interview preparation, promotion panels, investor pitches, stakeholder updates, and academic presentations.
+
+## How Sharp is different from other tools
+
+- **vs ChatGPT**: ChatGPT reads your text. Sharp listens to your voice under timer pressure and scores on five dimensions of spoken communication.
+- **vs Yoodli**: Yoodli is more presentation- and meeting-focused. Sharp is built for timed spoken answers under pressure (interviews, pitches) with rewrites that quote your exact words.
+- **vs Poised**: Poised gives real-time meeting feedback. Sharp is deliberate practice — record, score, rehearse.
+- **vs human coaching**: A communication coach typically charges £150-500 per session. Sharp Pro is £149.99/year for unlimited practice.

@@ -4,16 +4,30 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sharp — AI Communication Coach | Train Your Voice in 30 Seconds a Day</title>
-  <meta name="description" content="Sharp scores your speaking on 5 dimensions and coaches you with AI. Prepare for interviews, promotions, and pitches. Free daily challenge.">
+  <meta name="description" content="Sharp is the AI coach that listens to how you speak and scores you on five dimensions. Interview prep, pitches, filler words. Free daily challenge, 7-day Pro trial.">
   <meta name="theme-color" content="#FAF6F0">
-  <meta property="og:title" content="Sharp — Train Your Voice. 30 Seconds a Day.">
-  <meta property="og:description" content="AI communication coach. Record, get scored on 5 dimensions, and receive real coaching for interviews, promotions, and pitches.">
+
+  <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://speaksharpai.com">
-  <meta property="og:image" content="og-image.png">
+  <meta property="og:site_name" content="Sharp">
+  <meta property="og:locale" content="en_GB">
+  <meta property="og:url" content="https://speaksharpai.com/">
+  <meta property="og:title" content="Sharp — AI Communication Coach | Train Your Voice in 30 Seconds a Day">
+  <meta property="og:description" content="AI scores your speaking on five dimensions and coaches you with feedback that quotes your exact words. Interview prep, pitches, presentations. Free daily challenge, 7-day Pro trial.">
+  <meta property="og:image" content="https://speaksharpai.com/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Sharp — AI communication coach for speaking under pressure">
+
+  <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sharp — AI Communication Coach">
+  <meta name="twitter:description" content="Score your speaking on five dimensions. Coaching that quotes your exact words. Interview prep, pitches, presentations. Free daily challenge.">
+  <meta name="twitter:image" content="https://speaksharpai.com/og-image.png">
+
   <link rel="icon" type="image/svg+xml" href="fox-icon.svg">
-  <link rel="canonical" href="https://speaksharpai.com">
+  <link rel="canonical" href="https://speaksharpai.com/">
+  <link rel="preconnect" href="https://sharp-production-2d7c.up.railway.app">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -70,7 +84,8 @@
     .hero-text { animation: fadeInUp 0.6s ease both; }
     .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-light); border: 1px solid var(--accent-border); border-radius: 999px; padding: 6px 16px; font-size: 13px; font-weight: 600; color: var(--accent-dark); margin-bottom: 20px; }
     .hero h1 { font-size: clamp(34px, 5vw, 52px); font-weight: 900; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 18px; }
-    .hero h1 .accent { color: var(--accent); }
+    .hero h1 .accent { color: var(--accent); display: inline-block; }
+    .hero-elevator { font-size: 15px; color: var(--text-tertiary); max-width: 480px; margin-bottom: 12px; line-height: 1.6; font-style: italic; }
     .hero-sub { font-size: 18px; color: var(--text-secondary); max-width: 480px; margin-bottom: 12px; line-height: 1.7; }
     .hero-use-cases { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
     .use-case { background: var(--bg-input); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
@@ -167,6 +182,49 @@
     .scoring-text ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
     .scoring-text li { font-size: 15px; color: var(--text-secondary); padding-left: 24px; position: relative; }
     .scoring-text li::before { content: ''; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    .scoring-text dl { display: flex; flex-direction: column; gap: 14px; }
+    .scoring-text dl div { padding-left: 24px; position: relative; }
+    .scoring-text dl div::before { content: ''; position: absolute; left: 0; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    .scoring-text dt { font-size: 15px; font-weight: 800; color: var(--text); display: inline; }
+    .scoring-text dd { font-size: 15px; color: var(--text-secondary); display: inline; margin-left: 4px; }
+
+    /* ===== Pricing ===== */
+    .pricing { padding: 80px 0; }
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; max-width: 920px; margin: 0 auto; }
+    .price-card { background: var(--bg-card); border: 1.5px solid var(--border); border-radius: 20px; padding: 32px 28px; position: relative; transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s; }
+    .price-card:hover { transform: translateY(-4px); border-color: var(--accent-border); box-shadow: 0 12px 40px rgba(58,42,26,0.06); }
+    .price-card.featured { border-color: var(--accent); box-shadow: 0 12px 40px rgba(192,112,80,0.12); }
+    .price-card .price-tag { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 6px; }
+    .price-card h3 { font-size: 20px; font-weight: 900; margin-bottom: 14px; }
+    .price-card .price-amount { font-size: 36px; font-weight: 900; line-height: 1; letter-spacing: -1px; color: var(--text); }
+    .price-card .price-period { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .price-card .price-equiv { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
+    .price-card ul { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+    .price-card li { font-size: 14px; color: var(--text-secondary); padding-left: 22px; position: relative; line-height: 1.5; }
+    .price-card li::before { content: '✓'; position: absolute; left: 0; top: 0; color: var(--accent); font-weight: 900; }
+    .price-savings { display: inline-block; background: var(--accent-light); color: var(--accent-dark); border-radius: 999px; padding: 4px 12px; font-size: 11px; font-weight: 800; margin-bottom: 10px; }
+    .price-trial-pill { display: inline-block; background: rgba(90,154,90,0.12); color: var(--success); border-radius: 999px; padding: 4px 12px; font-size: 11px; font-weight: 800; margin-bottom: 10px; }
+
+    /* ===== Frameworks ===== */
+    .frameworks-card { background: var(--accent-light); border: 1px solid var(--accent-border); border-radius: 16px; padding: 24px 28px; margin-top: 32px; }
+    .frameworks-card h3 { font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent-dark); margin-bottom: 8px; }
+    .frameworks-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px; }
+    .frameworks-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .framework-tag { background: var(--bg-card); border: 1px solid var(--accent-border); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; color: var(--accent-dark); }
+
+    /* ===== Comparison table ===== */
+    .compare { padding: 80px 0; background: var(--bg-card); }
+    .compare-wrap { max-width: 820px; margin: 0 auto; overflow-x: auto; }
+    .compare table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 540px; }
+    .compare caption { font-size: 12px; color: var(--text-muted); padding: 0 0 12px; text-align: left; font-weight: 600; }
+    .compare th { background: var(--bg); border-bottom: 1.5px solid var(--border); padding: 14px 12px; text-align: center; font-weight: 800; color: var(--text); font-size: 13px; }
+    .compare th:first-child { text-align: left; }
+    .compare th.us { background: var(--accent-light); color: var(--accent-dark); }
+    .compare td { padding: 12px; border-bottom: 1px solid var(--border); text-align: center; color: var(--text-secondary); }
+    .compare td:first-child { text-align: left; font-weight: 600; color: var(--text); }
+    .compare td.yes { color: var(--accent); font-weight: 900; }
+    .compare td.no { color: var(--text-muted); }
+    .compare td.partial { color: var(--text-tertiary); font-weight: 700; }
 
     /* ===== Who It's For ===== */
     .who-for { padding: 80px 0; background: var(--bg-card); }
@@ -192,7 +250,7 @@
     .faq-icon { width: 24px; height: 24px; border-radius: 50%; background: var(--bg-input); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; font-weight: 700; color: var(--text-tertiary); transition: transform 0.3s, background 0.3s; }
     .faq-item.open .faq-icon { transform: rotate(45deg); background: var(--accent-light); color: var(--accent); }
     .faq-answer { max-height: 0; overflow: hidden; transition: max-height 0.3s; }
-    .faq-item.open .faq-answer { max-height: 200px; }
+    .faq-item.open .faq-answer { max-height: 600px; }
     .faq-answer p { padding-bottom: 20px; font-size: 15px; color: var(--text-secondary); line-height: 1.7; }
 
     /* ===== Final CTA ===== */
@@ -280,7 +338,78 @@
   </style>
 
   <script type="application/ld+json">
-  { "@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Sharp", "applicationCategory": "EducationApplication", "operatingSystem": "iOS", "description": "AI-powered communication coach. Score your speaking on 5 dimensions and get sharper every day.", "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" } }
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Sharp",
+    "alternateName": "Sharp: AI Communication Coach",
+    "url": "https://speaksharpai.com/",
+    "image": "https://speaksharpai.com/og-image.png",
+    "applicationCategory": "EducationApplication",
+    "operatingSystem": "iOS 15+",
+    "description": "AI-powered communication coach. Records your spoken answers and scores them across five dimensions — structure, concision, substance, filler words, and awareness — with coaching that quotes your exact words.",
+    "featureList": [
+      "Daily 30 — one shared question per day with streak tracking",
+      "One Shot — full 90-second scored session with coaching",
+      "Threaded Challenge — four rounds of escalating follow-ups",
+      "Industry Insight — questions seeded by real news",
+      "Sharp Duels — async 1v1 on the day's question",
+      "Document-aware personalisation (CV, job descriptions)",
+      "Model answers spoken in a coaching voice"
+    ],
+    "offers": [
+      { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "GBP", "availability": "https://schema.org/InStock", "url": "https://speaksharpai.com/" },
+      { "@type": "Offer", "name": "Sharp Pro Monthly", "price": "19.99", "priceCurrency": "GBP", "availability": "https://schema.org/InStock", "url": "https://speaksharpai.com/" },
+      { "@type": "Offer", "name": "Sharp Pro Annual", "price": "149.99", "priceCurrency": "GBP", "availability": "https://schema.org/InStock", "url": "https://speaksharpai.com/" }
+    ]
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Sharp",
+    "url": "https://speaksharpai.com/",
+    "logo": "https://speaksharpai.com/fox-icon.svg",
+    "email": "hello@speaksharpai.com",
+    "founder": { "@type": "Person", "name": "Moriyanu Adekola" }
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Sharp",
+    "url": "https://speaksharpai.com/"
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "Is Sharp free?", "acceptedAnswer": { "@type": "Answer", "text": "The Daily 30 challenge and Sharp Duels are completely free, forever. You also get 3 One Shots per week on the free plan. Sharp Pro (£19.99/month or £149.99/year, with a 7-day free trial) unlocks unlimited One Shot, Threaded Challenge, and Industry Insight sessions plus full coaching on the Daily 30." } },
+      { "@type": "Question", "name": "How does the AI scoring work?", "acceptedAnswer": { "@type": "Answer", "text": "Your spoken answer is transcribed by Groq's Whisper model and analysed by Anthropic's Claude across five dimensions: Structure, Concision, Substance, Filler Words, and Awareness. The coaching is grounded in eight communication science frameworks but sounds like a mentor, not a textbook. You also get a model answer you can listen to." } },
+      { "@type": "Question", "name": "What kind of questions does Sharp ask?", "acceptedAnswer": { "@type": "Answer", "text": "Questions are tailored to your role, company, situation, and any documents you upload (CV, job description, project brief). Preparing for an interview? You'll get interview-style questions. Promotion panel? Leadership scenarios. Sharp also pulls real industry news so your Industry Insight practice stays relevant." } },
+      { "@type": "Question", "name": "Is my audio stored?", "acceptedAnswer": { "@type": "Answer", "text": "No. Your audio is sent to Groq for transcription and deleted from our servers immediately — never used to train AI models. The recording stays on your device for playback in your session history until you delete your account. All AI providers operate under zero-retention API terms." } },
+      { "@type": "Question", "name": "How is this different from practising with ChatGPT?", "acceptedAnswer": { "@type": "Answer", "text": "ChatGPT reads your text. Sharp listens to your voice. You record yourself speaking under a timer — just like the real thing — and get scored on how you actually sound, not how you type. That's the difference between knowing what to say and being able to say it." } },
+      { "@type": "Question", "name": "What are Sharp Duels?", "acceptedAnswer": { "@type": "Answer", "text": "Challenge a friend to answer the same question. You both record separately, get scored by the same AI, and compare results side by side. It's always free and it's how you make practice competitive and social." } },
+      { "@type": "Question", "name": "When does Sharp launch?", "acceptedAnswer": { "@type": "Answer", "text": "Soon. Join the waitlist and we'll email you the moment it's live on the App Store." } },
+      { "@type": "Question", "name": "What is the best AI app for interview practice?", "acceptedAnswer": { "@type": "Answer", "text": "Sharp is purpose-built for high-stakes spoken communication: it listens to your answers, scores you on five dimensions, and coaches with rewrites that quote your own words. Unlike text-based tools (ChatGPT) or presentation-focused tools (Yoodli), Sharp is designed around timed, spoken practice for interviews and pressure conversations." } },
+      { "@type": "Question", "name": "How do I stop saying um?", "acceptedAnswer": { "@type": "Answer", "text": "Sharp counts every filler word in your answer and gives you a target. The trick isn't suppression — it's giving yourself a beat to think instead of filling silence with 'um' or 'like'. Most users cut their filler rate noticeably within two weeks of daily practice." } },
+      { "@type": "Question", "name": "Does Sharp work for non-native English speakers?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Sharp is built for clarity over fluency. Many non-native speakers use it to practise structure and concision in English — the things that matter most in interviews and meetings — without the time and cost of a human coach." } },
+      { "@type": "Question", "name": "How is Sharp different from Yoodli?", "acceptedAnswer": { "@type": "Answer", "text": "Sharp is built for timed spoken answers under pressure — interviews, pitches, stakeholder updates — and scores on five dimensions with coaching that quotes your exact words and shows the rewrite. Yoodli is more presentation- and meeting-focused. Different problem, different tool." } },
+      { "@type": "Question", "name": "What communication frameworks does Sharp use?", "acceptedAnswer": { "@type": "Answer", "text": "Sharp's coaching is grounded in eight communication science frameworks including the Minto Pyramid Principle, BLUF (Bottom Line Up Front), the STAR method, the PREP framework, and principles from Made to Stick, Crucial Conversations, Talk Like TED, and Never Split the Difference. The app coaches like a mentor — it never names the books in user-facing copy, but the underlying principles inform every score and insight." } },
+      { "@type": "Question", "name": "What is the Pyramid Principle?", "acceptedAnswer": { "@type": "Answer", "text": "A communication framework by Barbara Minto where you lead with your conclusion, then give your three supporting points, then the evidence under each point. Sharp scores your structure on this principle by default — the most common feedback is 'lead with your answer, not the backstory.'" } },
+      { "@type": "Question", "name": "Can I use Sharp for sales call practice?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Set your role and context, and Sharp will generate sales discovery, objection-handling, and closing questions tailored to your industry. The Threaded Challenge mode in particular simulates a customer pushing back on your pitch." } },
+      { "@type": "Question", "name": "How much does Sharp Pro cost?", "acceptedAnswer": { "@type": "Answer", "text": "Sharp Pro is £19.99 per month, or £149.99 per year (a £90 saving — the equivalent of £12.50 per month). Both plans come with a 7-day free trial on your first sign-up. You can cancel any time in Settings > Apple ID > Subscriptions." } },
+      { "@type": "Question", "name": "Does Sharp work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Recording works offline, but scoring and coaching need an internet connection — your audio goes to our servers for transcription, then to Anthropic Claude for scoring. Once the session is scored it stays in your local history for offline review." } },
+      { "@type": "Question", "name": "Can I delete my Sharp account?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Settings > Account > Delete account permanently removes your account, sessions, streaks, and uploaded documents from our servers. Two-step confirmation prevents accidental deletion. If you have an active subscription, cancel it separately via Settings > Apple ID > Subscriptions." } }
+    ]
+  }
   </script>
 </head>
 
@@ -288,13 +417,13 @@
   <!-- Nav -->
   <nav id="nav">
     <div class="nav-inner">
-      <a href="#" class="nav-logo"><img src="fox-icon.svg" alt="" class="nav-fox">Sharp<span>.</span></a>
+      <a href="#" class="nav-logo"><img src="fox-icon.svg" alt="Sharp logo" class="nav-fox" width="32" height="32">Sharp<span>.</span></a>
       <div class="nav-links">
-        <a href="#how-it-works">How It Works</a>
-        <a href="#modes">Features</a>
-        <a href="#scoring">Scoring</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#modes">Modes</a>
+        <a href="#pricing">Pricing</a>
         <a href="#faq">FAQ</a>
-        <a href="#waitlist-bottom" class="nav-cta">Join Waitlist</a>
+        <a href="#waitlist-bottom" class="nav-cta">Join waitlist</a>
       </div>
       <button class="nav-mobile" aria-label="Menu">
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -308,8 +437,9 @@
       <div class="hero-split">
         <div class="hero-text">
           <div class="hero-badge">Coming soon to iOS</div>
-          <h1>Your AI coach for<br><span class="accent">speaking under pressure</span></h1>
-          <p class="hero-sub">Sharp listens to how you speak, scores you on 5 dimensions, and coaches you to be clearer, more concise, and more credible. 30 seconds a day.</p>
+          <h1>Your AI coach for <span class="accent">speaking under pressure</span></h1>
+          <p class="hero-elevator">Sharp is an AI-powered iOS app that coaches communication by recording your spoken answers and scoring them on five dimensions: structure, concision, substance, filler words, and awareness.</p>
+          <p class="hero-sub">Sharp listens to how you speak, scores you on five dimensions, and coaches you to be clearer, more concise, and more credible. 30 seconds a day. Free daily challenge, 7-day Pro trial.</p>
           <div class="hero-use-cases">
             <span class="use-case">Job interviews</span>
             <span class="use-case">Promotion panels</span>
@@ -386,7 +516,7 @@
         <div class="proof-stat"><div class="number">5</div><div class="label">Scoring dimensions</div></div>
         <div class="proof-stat"><div class="number">30s</div><div class="label">Daily commitment</div></div>
         <div class="proof-stat"><div class="number">8</div><div class="label">Research frameworks</div></div>
-        <div class="proof-stat"><div class="number">4</div><div class="label">Practice modes</div></div>
+        <div class="proof-stat"><div class="number">5</div><div class="label">Practice modes</div></div>
       </div>
     </div>
   </section>
@@ -423,7 +553,7 @@
   <section class="modes" id="modes">
     <div class="container">
       <div class="section-heading reveal">
-        <div class="section-tag">Four ways to train</div>
+        <div class="section-tag">Five ways to train</div>
         <h2>Every mode sharpens a different edge</h2>
         <p>From 30-second daily reps to intense multi-turn pressure drills.</p>
       </div>
@@ -440,21 +570,28 @@
           <span class="mode-emoji">&#9889;</span>
           <h3>One Shot</h3>
           <div class="mode-time">90 seconds</div>
-          <p>Full coaching session. 5-dimension scoring, model answer you can listen to, before/after snippet showing exactly how to improve.</p>
+          <p>Full coaching session. Five-dimension scoring, model answer you can listen to, before/after snippet showing exactly how to improve. Free plan gets 3 per week.</p>
         </div>
         <div class="mode-card reveal">
           <span class="mode-badge badge-pro">Pro</span>
           <span class="mode-emoji">&#9875;</span>
           <h3>Threaded Challenge</h3>
           <div class="mode-time">4 rounds</div>
-          <p>Four follow-up questions that escalate in pressure. Like a real interview where every answer gets probed deeper.</p>
+          <p>Four follow-up questions that escalate in pressure. Like a real interview where every answer gets probed deeper. Ends with a full debrief.</p>
+        </div>
+        <div class="mode-card reveal">
+          <span class="mode-badge badge-pro">Pro</span>
+          <span class="mode-emoji">&#128240;</span>
+          <h3>Industry Insight</h3>
+          <div class="mode-time">News-seeded</div>
+          <p>Questions seeded by real breaking news in your field. When someone asks "What do you think about that acquisition?" at work, you'll have something worth saying.</p>
         </div>
         <div class="mode-card reveal">
           <span class="mode-badge badge-free">Free</span>
           <span class="mode-emoji">&#9876;&#65039;</span>
           <h3>Sharp Duels</h3>
           <div class="mode-time">Async 1v1</div>
-          <p>Challenge a friend to the same question. Compare scores side by side. The sharpest speaker wins. Practice made social.</p>
+          <p>Challenge a friend to the same question. Compare scores side by side. The sharpest speaker wins. Practice made social — always free.</p>
         </div>
       </div>
     </div>
@@ -485,6 +622,67 @@
     </div>
   </section>
 
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <div class="container">
+      <div class="section-heading reveal">
+        <div class="section-tag">Pricing</div>
+        <h2>Free to start. Sharp Pro when you're serious.</h2>
+        <p>7-day free trial on every Sharp Pro plan. Cancel any time in Settings.</p>
+      </div>
+      <div class="pricing-grid">
+
+        <div class="price-card reveal">
+          <div class="price-tag">Free</div>
+          <h3>Sharp Free</h3>
+          <div class="price-amount">£0</div>
+          <div class="price-period">Always free</div>
+          <div class="price-equiv">&nbsp;</div>
+          <ul>
+            <li>Daily 30 challenge, every day</li>
+            <li>Sharp Duels — always free</li>
+            <li>3 One Shot sessions per week</li>
+            <li>Score reveal (no full coaching insight)</li>
+          </ul>
+        </div>
+
+        <div class="price-card featured reveal">
+          <div class="price-tag">Most popular</div>
+          <h3>Sharp Pro — Annual</h3>
+          <div class="price-amount">£149.99/yr</div>
+          <div class="price-period">Billed yearly</div>
+          <div class="price-equiv">£12.50/mo equivalent</div>
+          <span class="price-trial-pill">7-day free trial</span>
+          <span class="price-savings">Save £90 vs monthly</span>
+          <ul>
+            <li>Unlimited One Shot sessions</li>
+            <li>Threaded Challenge — 4-round pressure drills</li>
+            <li>Industry Insight — questions from real news</li>
+            <li>Full coaching insight on Daily 30</li>
+            <li>Document uploads (CV, JD, briefs)</li>
+            <li>Model answers in a coaching voice</li>
+            <li>Progress analytics + streak protection</li>
+          </ul>
+        </div>
+
+        <div class="price-card reveal">
+          <div class="price-tag">Pro</div>
+          <h3>Sharp Pro — Monthly</h3>
+          <div class="price-amount">£19.99/mo</div>
+          <div class="price-period">Billed monthly</div>
+          <div class="price-equiv">&nbsp;</div>
+          <span class="price-trial-pill">7-day free trial</span>
+          <ul>
+            <li>Everything in Sharp Pro Annual</li>
+            <li>Flexible — cancel any time</li>
+            <li>Best for short-term prep</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
   <!-- Scoring -->
   <section class="scoring" id="scoring">
     <div class="container">
@@ -496,13 +694,28 @@
           <div class="section-tag">AI Scoring</div>
           <h2>Five dimensions. Zero guesswork.</h2>
           <p>Every answer is scored on the dimensions that actually matter. Not "good job" — real numbers, real criticism, real coaching grounded in communication science.</p>
-          <ul>
-            <li><strong>Structure</strong> — Did you lead with the answer, not the backstory?</li>
-            <li><strong>Concision</strong> — Could you have said it in half the words?</li>
-            <li><strong>Substance</strong> — Did you use evidence, numbers, specifics?</li>
-            <li><strong>Filler Words</strong> — How many "ums," "likes," and "basicallys"?</li>
-            <li><strong>Awareness</strong> — Do you understand your industry context?</li>
-          </ul>
+          <dl>
+            <div><dt>Structure</dt><dd>— Did you lead with the answer, not the backstory?</dd></div>
+            <div><dt>Concision</dt><dd>— Could you have said it in half the words?</dd></div>
+            <div><dt>Substance</dt><dd>— Did you use evidence, numbers, specifics?</dd></div>
+            <div><dt>Filler Words</dt><dd>— How many "ums," "likes," and "basicallys"?</dd></div>
+            <div><dt>Awareness</dt><dd>— Do you understand your industry context?</dd></div>
+          </dl>
+
+          <div class="frameworks-card">
+            <h3>Grounded in eight frameworks</h3>
+            <p>Sharp's coaching draws on eight communication science frameworks. We never name them in user-facing copy — the app coaches like a mentor who has read everything and quotes nothing — but the principles inform every score and insight.</p>
+            <div class="frameworks-list">
+              <span class="framework-tag">Minto Pyramid Principle</span>
+              <span class="framework-tag">BLUF</span>
+              <span class="framework-tag">STAR</span>
+              <span class="framework-tag">PREP</span>
+              <span class="framework-tag">Made to Stick</span>
+              <span class="framework-tag">Crucial Conversations</span>
+              <span class="framework-tag">Talk Like TED</span>
+              <span class="framework-tag">Never Split the Difference</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -544,13 +757,58 @@
         <h2>Questions? Answers.</h2>
       </div>
       <div class="faq-list">
-        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Is Sharp free?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>The Daily 30 challenge and Sharp Duels are completely free, forever. One Shot and Threaded Challenge require Sharp Pro for unlimited access — but you get free tries every day.</p></div></div>
-        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>How does the AI scoring work?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Your spoken answer is transcribed in real-time and analysed by AI across 5 dimensions. The coaching is grounded in 8 communication science frameworks — but it sounds like a mentor, not a textbook. You also get a model answer you can listen to.</p></div></div>
-        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What kind of questions does Sharp ask?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Questions are tailored to your role, company, and situation. Preparing for an interview? You'll get interview-style questions. Promotion panel? Leadership scenarios. Sharp even pulls real industry news so your practice stays relevant to the real world.</p></div></div>
-        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Is my audio stored?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>No. Your audio is transcribed in real-time and immediately discarded. We never store recordings on our servers. Your practice data stays on your device.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Is Sharp free?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>The Daily 30 challenge and Sharp Duels are completely free, forever. You also get 3 One Shots per week on the free plan. Sharp Pro (£19.99/month or £149.99/year, with a 7-day free trial) unlocks unlimited One Shot, Threaded Challenge, and Industry Insight sessions plus full coaching on the Daily 30.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>How much does Sharp Pro cost?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Sharp Pro is £19.99 per month, or £149.99 per year (a £90 saving — the equivalent of £12.50 per month). Both plans come with a 7-day free trial on your first sign-up. You can cancel any time in Settings &gt; Apple ID &gt; Subscriptions.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>How does the AI scoring work?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Your spoken answer is transcribed by Groq's Whisper model and analysed by Anthropic's Claude across five dimensions: Structure, Concision, Substance, Filler Words, and Awareness. The coaching is grounded in eight communication science frameworks but sounds like a mentor, not a textbook. You also get a model answer you can listen to.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What kind of questions does Sharp ask?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Questions are tailored to your role, company, situation, and any documents you upload (CV, job description, project brief). Preparing for an interview? You'll get interview-style questions. Promotion panel? Leadership scenarios. Sharp also pulls real industry news so your Industry Insight practice stays relevant.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Is my audio stored?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>No. Your audio is sent to Groq for transcription and deleted from our servers immediately — never used to train AI models. The recording stays on your device for playback in your session history until you delete your account. All AI providers operate under zero-retention API terms.</p></div></div>
         <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>How is this different from practising with ChatGPT?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>ChatGPT reads your text. Sharp listens to your voice. You record yourself speaking under a timer — just like the real thing — and get scored on how you actually sound, not how you type. That's the difference between knowing what to say and being able to say it.</p></div></div>
-        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What are Sharp Duels?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Challenge a friend to answer the same question. You both record separately, get scored by the same AI, and compare results side by side. It's free and it's how you make practice competitive and social.</p></div></div>
-        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>When does Sharp launch?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Soon! Join the waitlist above and we'll email you the moment it's live on the App Store.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What is the best AI app for interview practice?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Sharp is purpose-built for high-stakes spoken communication: it listens to your answers, scores you on five dimensions, and coaches with rewrites that quote your own words. Unlike text-based tools (ChatGPT) or presentation-focused tools (Yoodli), Sharp is designed around timed, spoken practice for interviews and pressure conversations.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>How do I stop saying um?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Sharp counts every filler word in your answer and gives you a target. The trick isn't suppression — it's giving yourself a beat to think instead of filling silence with "um" or "like." Most users cut their filler rate noticeably within two weeks of daily practice.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Does Sharp work for non-native English speakers?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Yes. Sharp is built for clarity over fluency. Many non-native speakers use it to practise structure and concision in English — the things that matter most in interviews and meetings — without the time and cost of a human coach.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>How is Sharp different from Yoodli?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Sharp is built for timed spoken answers under pressure — interviews, pitches, stakeholder updates — and scores on five dimensions with coaching that quotes your exact words and shows the rewrite. Yoodli is more presentation- and meeting-focused. Different problem, different tool.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What communication frameworks does Sharp use?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Sharp's coaching is grounded in eight communication science frameworks including the Minto Pyramid Principle, BLUF (Bottom Line Up Front), the STAR method, the PREP framework, and principles from Made to Stick, Crucial Conversations, Talk Like TED, and Never Split the Difference. The app coaches like a mentor — it never names the books in user-facing copy, but the underlying principles inform every score and insight.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What is the Pyramid Principle?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>A communication framework by Barbara Minto where you lead with your conclusion, then give your three supporting points, then the evidence under each point. Sharp scores your structure on this principle by default — the most common feedback is "lead with your answer, not the backstory."</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Can I use Sharp for sales call practice?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Yes. Set your role and context, and Sharp will generate sales discovery, objection-handling, and closing questions tailored to your industry. The Threaded Challenge mode in particular simulates a customer pushing back on your pitch.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>What are Sharp Duels?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Challenge a friend to answer the same question. You both record separately, get scored by the same AI, and compare results side by side. It's always free and it's how you make practice competitive and social.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Does Sharp work offline?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Recording works offline, but scoring and coaching need an internet connection — your audio goes to our servers for transcription, then to Anthropic Claude for scoring. Once the session is scored it stays in your local history for offline review.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>Can I delete my Sharp account?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Yes. Settings &gt; Account &gt; Delete account permanently removes your account, sessions, streaks, and uploaded documents from our servers. Two-step confirmation prevents accidental deletion. If you have an active subscription, cancel it separately via Settings &gt; Apple ID &gt; Subscriptions.</p></div></div>
+        <div class="faq-item"><button class="faq-question" onclick="this.parentElement.classList.toggle('open')"><span>When does Sharp launch?</span><div class="faq-icon">+</div></button><div class="faq-answer"><p>Soon. Join the waitlist above and we'll email you the moment it's live on the App Store.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section class="compare" id="compare">
+    <div class="container">
+      <div class="section-heading reveal">
+        <div class="section-tag">Sharp vs the alternatives</div>
+        <h2>Why Sharp, specifically</h2>
+        <p>Different tools solve different communication problems. Here's where Sharp fits.</p>
+      </div>
+      <div class="compare-wrap reveal">
+        <table>
+          <caption>Sharp vs other AI speaking tools (as of 2026)</caption>
+          <thead>
+            <tr>
+              <th></th>
+              <th class="us">Sharp</th>
+              <th>ChatGPT</th>
+              <th>Yoodli</th>
+              <th>Poised</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Listens to your voice</td><td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            <tr><td>Scores on 5 communication dimensions</td><td class="yes">✓</td><td class="no">✗</td><td class="partial">Partial</td><td class="no">✗</td></tr>
+            <tr><td>Coaching that quotes your exact words</td><td class="yes">✓</td><td class="no">✗</td><td class="partial">Partial</td><td class="no">✗</td></tr>
+            <tr><td>Timer pressure (interview simulation)</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+            <tr><td>Multi-turn pressure thread</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+            <tr><td>Async 1v1 with friends</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+            <tr><td>Model answer in a coaching voice</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td></tr>
+            <tr><td>Real-time meeting feedback</td><td class="no">✗</td><td class="no">✗</td><td class="no">✗</td><td class="yes">✓</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </section>
@@ -573,9 +831,10 @@
   <footer>
     <div class="container">
       <div class="footer-inner">
-        <div class="footer-brand"><img src="fox-icon.svg" alt="">Sharp<span>.</span></div>
+        <div class="footer-brand"><img src="fox-icon.svg" alt="Sharp logo" width="28" height="28">Sharp<span>.</span></div>
         <div class="footer-links">
           <a href="privacy-policy.html">Privacy Policy</a>
+          <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a>
           <a href="mailto:hello@speaksharpai.com">Contact</a>
         </div>
       </div>
