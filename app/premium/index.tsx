@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet, Alert, ActivityIndicator, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -201,8 +201,8 @@ export default function PremiumScreen() {
                   <View style={[s.radio, active && s.radioOn]}>{active && <View style={s.radioDot} />}</View>
                   <View style={s.planInfo}>
                     <Text style={[s.planName, active && s.planNameActive]}>{plan.name}</Text>
-                    <Text style={s.planPrice}>{plan.perMonth}</Text>
-                    {plan.period === '/year' && <Text style={s.planBilled}>{plan.price}/year</Text>}
+                    <Text style={s.planPrice}>{plan.period === '/year' ? `${plan.price}/year` : plan.perMonth}</Text>
+                    {plan.period === '/year' && <Text style={s.planPerMonth}>{plan.perMonth} equivalent</Text>}
                   </View>
                   {plan.savings && <View style={s.savingsBadge}><Text style={s.savingsText}>{plan.savings}</Text></View>}
                   {plan.badge && <View style={[s.badge, plan.recommended ? s.badgeAccent : s.badgeGhost]}><Text style={[s.badgeText, plan.recommended && s.badgeTextAccent]}>{plan.badge}</Text></View>}
@@ -241,6 +241,15 @@ export default function PremiumScreen() {
 
         {/* Bottom */}
         <FadeIn delay={400}>
+          <View style={s.legalLinksRow}>
+            <TouchableOpacity onPress={() => router.push('/privacy')} hitSlop={6}>
+              <Text style={s.legalLink}>Privacy Policy</Text>
+            </TouchableOpacity>
+            <Text style={s.legalDot}>·</Text>
+            <TouchableOpacity onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')} hitSlop={6}>
+              <Text style={s.legalLink}>Terms of Use</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={s.legal}>
             Payment will be charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.
           </Text>
@@ -300,8 +309,8 @@ const s = StyleSheet.create({
   planInfo: { flex: 1 },
   planName: { fontSize: typography.size.sm, fontWeight: typography.weight.black, color: colors.text.primary },
   planNameActive: { color: colors.accent.primary },
-  planPrice: { fontSize: fp(18), fontWeight: typography.weight.black, color: colors.text.primary, marginTop: wp(2) },
-  planBilled: { fontSize: fp(10), color: colors.text.muted, marginTop: wp(1) },
+  planPrice: { fontSize: fp(22), fontWeight: typography.weight.black, color: colors.text.primary, marginTop: wp(2), letterSpacing: -0.3 },
+  planPerMonth: { fontSize: fp(10), color: colors.text.muted, marginTop: wp(2) },
   savingsBadge: { backgroundColor: colors.success, borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(3) },
   savingsText: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.inverse, letterSpacing: 0.5 },
   badge: { position: 'absolute', top: -wp(10), right: wp(16), borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
@@ -324,6 +333,9 @@ const s = StyleSheet.create({
   // Bottom
   restoreBtn: { alignItems: 'center', padding: spacing.lg },
   restoreText: { fontSize: typography.size.sm, color: colors.accent.primary, fontWeight: typography.weight.semibold },
+  legalLinksRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
+  legalLink: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.accent.primary, textDecorationLine: 'underline' },
+  legalDot: { fontSize: fp(11), color: colors.text.muted, paddingHorizontal: spacing.xs },
   legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', paddingHorizontal: spacing.lg },
   bottomSpacer: { height: wp(40) },
 });

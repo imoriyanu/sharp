@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -131,8 +131,8 @@ export default function OnboardingPaywall() {
               <Text style={s.planName}>{annualPlan.name}</Text>
               {!!annualPlan.savings && <Text style={s.planSavings}>{annualPlan.savings}</Text>}
             </View>
-            <Text style={s.planPrice}>{annualPerMonth}</Text>
-            <Text style={s.planBilled}>{annualPrice} billed yearly after trial</Text>
+            <Text style={s.planPrice}>{annualPrice}/yr</Text>
+            <Text style={s.planPerMonth}>{annualPerMonth} equivalent · billed yearly after trial</Text>
           </TouchableOpacity>
         </FadeIn>
 
@@ -141,7 +141,7 @@ export default function OnboardingPaywall() {
           <TouchableOpacity style={[s.planCard, selected === 'monthly' && s.planRecommended]} onPress={() => setSelected('monthly')} activeOpacity={0.7} disabled={purchasing}>
             <Text style={s.planName}>{monthlyPlan.name}</Text>
             <Text style={s.planPrice}>{monthlyPrice}</Text>
-            <Text style={s.planBilledSmall}>billed monthly after trial</Text>
+            <Text style={s.planPerMonth}>billed monthly after trial</Text>
           </TouchableOpacity>
         </FadeIn>
 
@@ -177,6 +177,16 @@ export default function OnboardingPaywall() {
         >
           <Text style={s.skipText}>Continue with limited free plan</Text>
         </TouchableOpacity>
+
+        <View style={s.legalLinksRow}>
+          <TouchableOpacity onPress={() => router.push('/privacy')} hitSlop={6}>
+            <Text style={s.legalLink}>Privacy Policy</Text>
+          </TouchableOpacity>
+          <Text style={s.legalDot}>·</Text>
+          <TouchableOpacity onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')} hitSlop={6}>
+            <Text style={s.legalLink}>Terms of Use</Text>
+          </TouchableOpacity>
+        </View>
 
         <Text style={s.legal}>Free for 7 days, then your selected plan auto-renews unless cancelled at least 24 hours before the trial ends. Manage anytime in Settings. Payment charged to your Apple ID at the end of the trial.</Text>
       </ScrollView>
@@ -217,9 +227,8 @@ const s = StyleSheet.create({
   planTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   planName: { fontSize: typography.size.md, fontWeight: typography.weight.black, color: colors.text.primary },
   planSavings: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.success, backgroundColor: colors.feedback.positiveBg, borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(2) },
-  planPrice: { fontSize: fp(24), fontWeight: typography.weight.black, color: colors.accent.primary },
-  planBilled: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: wp(2) },
-  planBilledSmall: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: wp(2) },
+  planPrice: { fontSize: fp(28), fontWeight: typography.weight.black, color: colors.accent.primary, letterSpacing: -0.5 },
+  planPerMonth: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: wp(3) },
 
   trialBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(14), alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.lg, ...shadows.accent },
   trialText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse, textAlign: 'center' },
@@ -228,5 +237,8 @@ const s = StyleSheet.create({
   restoreText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary, textAlign: 'center', paddingVertical: spacing.md },
   skipText: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.text.muted, textAlign: 'center', paddingVertical: spacing.sm, opacity: 0.7, textDecorationLine: 'underline' },
 
-  legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', marginTop: spacing.lg, paddingHorizontal: spacing.lg },
+  legalLinksRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.xs, marginTop: spacing.lg },
+  legalLink: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.accent.primary, textDecorationLine: 'underline' },
+  legalDot: { fontSize: fp(11), color: colors.text.muted, paddingHorizontal: spacing.xs },
+  legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
 });
