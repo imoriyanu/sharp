@@ -4,7 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../src/constants/theme';
 import { warmUpAudioMode } from '../src/services/tts';
-import { hasOnboarded, clearStaleThread } from '../src/services/storage';
+import { hasOnboarded, hasAIConsent, clearStaleThread } from '../src/services/storage';
 import { initPremium, syncFromRevenueCat, flushPendingUsageSyncs } from '../src/services/premium';
 import { initErrorTracking } from '../src/services/errorTracking';
 import { initAnalytics, trackEvent, Events } from '../src/services/analytics';
@@ -66,12 +66,17 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   const [onboarded, setOnboarded] = useState(true); // default true to avoid flash
 
   useEffect(() => {
-    Promise.all([hasOnboarded(), initPremium(), clearStaleThread(), initErrorTracking(), initAnalytics(), fetchRemoteConfig(), prewarmAtBoot()]).then(([val]) => {
+    Promise.all([hasOnboarded(), hasAIConsent(), initPremium(), clearStaleThread(), initErrorTracking(), initAnalytics(), fetchRemoteConfig(), prewarmAtBoot()]).then(([onboardedVal, consentVal]) => {
       trackEvent(Events.APP_OPENED);
-      setOnboarded(val);
+      setOnboarded(onboardedVal);
       setChecked(true);
-      if (!val) {
+      if (!onboardedVal) {
         setTimeout(() => router.replace('/onboarding'), 50);
+      } else if (!consentVal) {
+        // Existing/restored users who completed onboarding before consent
+        // shipped, or signed in fresh on a new device. Apple requires
+        // disclosure before any third-party AI call.
+        setTimeout(() => router.replace('/onboarding/ai-consent'), 50);
       }
     }).catch(() => {
       // If storage fails, let the user through rather than freezing
@@ -105,6 +110,7 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding/name" />
           <Stack.Screen name="onboarding/signin" />
           <Stack.Screen name="onboarding/challenge-intro" />
+          <Stack.Screen name="onboarding/ai-consent" />
           <Stack.Screen name="onboarding/recording" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="onboarding/result" options={{ animation: 'fade' }} />
           <Stack.Screen name="onboarding/value" />

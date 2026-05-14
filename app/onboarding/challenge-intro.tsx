@@ -49,7 +49,7 @@ export default function ChallengeIntro() {
         </View>
 
         <FadeIn delay={1300}>
-          <TouchableOpacity style={s.cta} onPress={() => router.push('/onboarding/recording')} activeOpacity={0.8}>
+          <TouchableOpacity style={s.cta} onPress={() => router.push('/onboarding/ai-consent')} activeOpacity={0.8}>
             <Text style={s.ctaText}>Start speaking</Text>
           </TouchableOpacity>
           <Text style={s.hint}>Speak naturally, there are no wrong answers</Text>

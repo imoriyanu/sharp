@@ -128,6 +128,73 @@ export async function setOnboardingStep(step: number): Promise<void> {
   await AsyncStorage.setItem('sharp:onboarding_step', String(step));
 }
 
+// ===== AI Consent =====
+// One-time gate before any user data hits a third-party AI provider.
+// v1 suffix lets us re-prompt if disclosure scope changes (new provider).
+
+const AI_CONSENT_KEY = 'sharp:ai_consent_v1';
+
+export async function hasAIConsent(): Promise<boolean> {
+  const val = await AsyncStorage.getItem(AI_CONSENT_KEY);
+  return val === 'true';
+}
+
+export async function setAIConsent(): Promise<void> {
+  await AsyncStorage.setItem(AI_CONSENT_KEY, 'true');
+}
+
+// ===== Account Deletion: full local wipe =====
+// Removes every `sharp:*` key written by this app. The session:<id> entries
+// have variable suffixes, so we fetch all keys once and filter by prefix.
+// Everything else is enumerated explicitly to avoid clobbering keys outside
+// our namespace (paranoid: if a future maintainer renames a constant, the
+// explicit list will fail loudly rather than miss data silently).
+
+export async function clearAllUserData(): Promise<void> {
+  const fixedKeys = [
+    KEYS.CONTEXT,
+    KEYS.SESSIONS,
+    KEYS.DAILY_QUESTION_CACHE,
+    KEYS.RECENT_QUESTIONS,
+    KEYS.STREAK,
+    KEYS.STREAK_HISTORY,
+    KEYS.STREAK_BADGES,
+    KEYS.DAILY_HISTORY,
+    KEYS.DAILY_LAST_DATE,
+    KEYS.DUELS,
+    KEYS.FEATURE_INTEREST,
+    KEYS.USER_PROFILE,
+    MIGRATION_DONE_KEY,
+    MIGRATION_IN_PROGRESS_KEY,
+    MIGRATION_ATTEMPTS_KEY,
+    AI_CONSENT_KEY,
+    'sharp:onboarded',
+    'sharp:onboarding_step',
+    'sharp:oneshot_question_cache',
+    'sharp:threaded_question_cache',
+    'sharp:industry_question_cache',
+    'sharp:active_conversation',
+    'sharp:active_thread',
+    'sharp:premium_status',
+    'sharp:daily_usage',
+    'sharp:pending_usage_sync',
+    'sharp:pref_audio',
+    'sharp:pref_haptics',
+    'sharp:summary_cache',
+  ];
+
+  // Variable-suffix keys (sharp:session:<id>) need an enumerate + filter pass.
+  let dynamicKeys: string[] = [];
+  try {
+    const all = await AsyncStorage.getAllKeys();
+    dynamicKeys = all.filter(k => k.startsWith(KEYS.SESSION_DETAIL));
+  } catch {
+    // If getAllKeys fails we still wipe the fixed list — partial is better than none.
+  }
+
+  await AsyncStorage.multiRemove([...fixedKeys, ...dynamicKeys]);
+}
+
 // ===== User Profile =====
 
 export async function getUserProfile(): Promise<UserProfile | null> {

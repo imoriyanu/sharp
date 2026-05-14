@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, layout, wp, fp } from '../../src/constants/theme';
 
-const LAST_UPDATED = '28 March 2026';
+const LAST_UPDATED = '14 May 2026';
 
 export default function PrivacyPolicyScreen() {
   const router = useRouter();
@@ -34,21 +34,35 @@ export default function PrivacyPolicyScreen() {
         <Section title="How We Use Your Data">
           {`• To transcribe your audio (via Groq/Whisper)
 • To generate coaching feedback (via Anthropic/Claude)
-• To generate text-to-speech audio (via ElevenLabs)
+• To generate text-to-speech audio (via ElevenLabs and Together AI)
 • To personalise questions to your role and industry
 • To track your progress over time
 • To enforce usage limits on your plan`}
+        </Section>
+
+        <Section title="AI Processing & Consent">
+          {`Before any of your data is sent to a third-party AI service, Sharp shows you a consent screen describing exactly what is sent, who it is sent to, and why. You must explicitly tap "Continue" before any AI call is made. You can revoke consent at any time by deleting your account in Settings.
+
+When you consent, the following data is sent to the providers below for processing:
+• Your audio recording → Groq (for transcription, then deleted)
+• Your transcript and context → Anthropic (for scoring + coaching)
+• Generated question text → ElevenLabs or Together AI (for text-to-speech audio)
+
+All four providers operate under zero-retention API terms — they do not store your data after processing and do not use it to train their models. This provides protection equivalent to what is described in this policy.`}
         </Section>
 
         <Section title="Third-Party Services">
           {`We use the following services to process your data:
 • Anthropic (Claude) — AI coaching and scoring
 • Groq (Whisper) — Audio transcription
-• ElevenLabs — Text-to-speech
-• Supabase — Account storage and sync
+• ElevenLabs — Text-to-speech (primary)
+• Together AI (Kokoro) — Text-to-speech (backup)
+• Supabase — Account storage and sync (hosted in the EU)
 • Railway — Backend hosting
+• RevenueCat — Subscription management
+• PostHog — Anonymised product analytics
 
-Your audio is sent to Groq for transcription and immediately deleted after processing. Your transcripts are sent to Anthropic for scoring. These services process your data under their own privacy policies.`}
+Your audio is sent to Groq for transcription and deleted after processing. Your transcripts and context are sent to Anthropic for scoring. AI providers operate under zero-retention API terms.`}
         </Section>
 
         <Section title="Data Storage">
@@ -69,11 +83,10 @@ You can delete all your data at any time from Settings > Clear All Data.`}
         <Section title="Your Rights">
           {`You can:
 • View all your data in the app (History, Context, Settings)
-• Delete all your data from Settings > Clear All Data
-• Request a copy of your data by emailing us
-• Delete your account by emailing us
+• Delete your account at any time: Settings > Account > Delete Account. This permanently removes all your data from our servers and your device.
+• Request a copy of your data by emailing privacy@sharp-app.com
 
-For data requests, contact: privacy@sharp-app.com`}
+For other privacy questions, contact: privacy@sharp-app.com`}
         </Section>
 
         <Section title="Children">
