@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from './supabase';
+import { apiPost } from './api';
+import { clearAllUserData } from './storage';
 
 export async function signInWithApple() {
   const credential = await AppleAuthentication.signInAsync({
@@ -84,4 +86,18 @@ export async function getSession() {
 export async function resetPassword(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email);
   if (error) throw error;
+}
+
+// Apple Guideline 5.1.1(v): permanent in-app account deletion.
+// Order is: server-side delete (irreversible) → local wipe → sign out.
+// RevenueCat logout is handled automatically by AuthContext on SIGNED_OUT.
+export async function deleteAccount(): Promise<void> {
+  await apiPost<{}>('/account/delete', {});
+  await clearAllUserData();
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    // If signOut fails after deletion, the session token is already orphaned
+    // server-side — local clearAllUserData() already wiped credentials.
+  }
 }

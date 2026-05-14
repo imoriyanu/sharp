@@ -9,7 +9,7 @@ import { getUserProfile, saveUserProfile, trackFeatureInterest } from '../../src
 import { isPremium, getPlanName, syncFromRevenueCat } from '../../src/services/premium';
 import { restorePurchases, isRevenueCatConfigured, getManagementUrl } from '../../src/services/revenuecat';
 import { useAuth } from '../../src/context/AuthContext';
-import { signOut } from '../../src/services/auth';
+import { signOut, deleteAccount } from '../../src/services/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { UserProfile } from '../../src/types';
 
@@ -43,6 +43,48 @@ export default function SettingsScreen() {
     await saveUserProfile(updated);
     setProfile(updated);
     setEditingName(false);
+  }
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account, sessions, streaks, and uploaded documents from our servers. It cannot be undone.\n\nIf you have an active subscription, you must also cancel it separately in Settings > Apple ID > Subscriptions.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.prompt(
+              'Are you sure?',
+              'Type DELETE to confirm.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete forever',
+                  style: 'destructive',
+                  onPress: async (input?: string) => {
+                    if ((input || '').trim().toUpperCase() !== 'DELETE') {
+                      Alert.alert('Not deleted', 'You must type DELETE to confirm.');
+                      return;
+                    }
+                    try {
+                      await deleteAccount();
+                      router.replace('/onboarding');
+                    } catch (e: any) {
+                      Alert.alert('Could not delete account', e?.message || 'Please try again or contact support.');
+                    }
+                  },
+                },
+              ],
+              'plain-text',
+              '',
+              'default'
+            );
+          },
+        },
+      ],
+    );
   }
 
   async function pickAvatar() {
@@ -110,15 +152,21 @@ export default function SettingsScreen() {
             <Text style={s.value}>{isAuthenticated ? user?.email : 'Not signed in'}</Text>
           </View>
           {isAuthenticated ? (
-            <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => {
-              Alert.alert('Sign out', 'Are you sure?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Sign out', style: 'destructive', onPress: async () => { await signOut(); } },
-              ]);
-            }}>
-              <Text style={[s.label, { color: colors.error }]}>Sign out</Text>
-              <Text style={[s.value, { color: colors.error }]}>→</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity style={s.row} onPress={() => {
+                Alert.alert('Sign out', 'Are you sure?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Sign out', style: 'destructive', onPress: async () => { await signOut(); } },
+                ]);
+              }}>
+                <Text style={[s.label, { color: colors.error }]}>Sign out</Text>
+                <Text style={[s.value, { color: colors.error }]}>→</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.row, s.rowLast]} onPress={confirmDeleteAccount}>
+                <Text style={[s.label, { color: colors.error, fontWeight: typography.weight.bold }]}>Delete account</Text>
+                <Text style={[s.value, { color: colors.error }]}>→</Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <TouchableOpacity style={[s.row, s.rowLast]} onPress={() => router.push('/auth/signin')}>
               <Text style={[s.label, { color: colors.accent.primary }]}>Sign in</Text>

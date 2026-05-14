@@ -105,6 +105,10 @@ app.use('/api/v2/score', rateLimit(10));
 // Soft-fails (req.userId = null) so the endpoint can fall back to the v1 prompt.
 app.use('/api/v2', makeVerifyUser(supabase));
 
+// Same middleware on /api/account — but the handler enforces 401 if userId is null
+// (deletion is irreversible, must be auth-gated for real).
+app.use('/api/account', makeVerifyUser(supabase));
+
 // ===== API Usage Monitoring =====
 
 const apiUsage = {
@@ -1434,6 +1438,44 @@ app.all('/api/tts', async (req, res) => {
     } else if (!res.writableEnded) {
       res.end();
     }
+  }
+});
+
+// ===== Account Deletion =====
+// Apple Guideline 5.1.1(v): in-app account deletion. Calls
+// supabase.auth.admin.deleteUser; all user_id-keyed rows cascade-delete on
+// auth.users. Idempotent — returns 204 on success and on "already deleted"
+// so a double-tap from the client never surfaces an error.
+
+app.post('/api/account/delete', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(503).json({ error: 'Account service unavailable. Please try again later.' });
+    }
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Authentication required to delete your account.' });
+    }
+
+    const userId = req.userId;
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+      // "User not found" => already deleted, treat as success (idempotent).
+      if (msg.includes('not found') || msg.includes('does not exist')) {
+        agentTraces.captureEvent(userId, 'account_delete', { result: 'already_deleted' });
+        return res.status(204).send();
+      }
+      logError('Account delete failed:', error);
+      agentTraces.captureEvent(userId, 'account_delete', { result: 'error', message: error.message });
+      return res.status(500).json({ error: 'Could not delete account. Please try again or contact support.' });
+    }
+
+    agentTraces.captureEvent(userId, 'account_delete', { result: 'success' });
+    return res.status(204).send();
+  } catch (e) {
+    logError('Account delete unexpected error:', e);
+    return res.status(500).json({ error: 'Could not delete account. Please try again or contact support.' });
   }
 });
 
