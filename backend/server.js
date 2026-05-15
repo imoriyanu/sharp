@@ -629,6 +629,12 @@ app.post('/api/threaded/follow-up', async (req, res) => {
         pressure_level: result?.pressureLevel,
         coach_regen: regenFired,
         has_brief: !!req.body?.characterBrief,
+        // Reaction system telemetry — lets us watch escalation patterns,
+        // surface-acceptance rate (= lost-user-mid-scene), and which signal
+        // reads correlate with which reactions.
+        reaction_type: result?.reactionType || null,
+        signal_read: result?.signalRead || null,
+        prior_reactions: Array.isArray(req.body?.reactionHistory) ? req.body.reactionHistory.length : 0,
       });
     } catch (_) {}
     res.json(result);
