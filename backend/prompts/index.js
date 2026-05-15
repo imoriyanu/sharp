@@ -359,7 +359,15 @@ ${context.realNewsArticles.filter(a => a.url).slice(0, 10).map((a, i) => `${i + 
 
 CRITICAL: If you see similar events in the recent questions list above, you MUST pick a completely different event category AND communication scenario. Repetition is the worst thing you can do here.
 ` : ''}
-Return ONLY valid JSON (no markdown, no backticks). Always include "format", "question", "timerSeconds", "reasoning", "targets", "difficulty", "contextUsed". Include "situation" for roleplay/pressure, "background" for briefing. Include "newsContext" and "learnMore" for industry format.`;
+Return ONLY valid JSON (no markdown, no backticks). Always include "format", "question", "timerSeconds", "reasoning", "targets", "difficulty", "contextUsed". Include "situation" for roleplay/pressure, "background" for briefing. Include "newsContext" and "learnMore" for industry format.
+
+──── ALWAYS INCLUDE — characterBrief + skillsTested ────
+Regardless of which format you chose above, ALSO include these two fields in your output. They are used downstream by the threaded follow-up engine — the character that takes over for turns 2-4 will read characterBrief to shape their behaviour, and the coach at debrief uses skillsTested to tie feedback back to the user's goals.
+
+  "characterBrief": "<2-4 sentences. INTERNAL behavioural direction for the threaded character. Describe: who this character is psychologically, how they escalate across the 4 turns of a conversation, what dramatic patterns to lean on. Anchor it to the user's notes + dream role when present (e.g. if their notes say 'I want to handle manipulative people,' craft a character whose escalation gives them practice with that). Write dramatically, not coachy — 'Sam is emotionally volatile + drops guilt trips when challenged' YES, 'Sam tests the user's ability to handle manipulation' NO, too on-the-nose. NEVER quoted by the character. NEVER shown to the user. Keep it tight — this is internal direction, not a script.>",
+  "skillsTested": ["<1-3 short skill labels (3-7 words each) naming what skills this scene gives the user practice with. e.g. 'holding ground under emotional pressure', 'explaining technical work simply', 'naming manipulation without escalation'. Used by the coach at debrief to tie feedback back to user's stated goals.>"]
+
+These two fields apply to all six formats — include them whether the scene is a roleplay, prompt, briefing, pressure, context, or industry question. Even on interview-style or briefing questions, the character that emerges in turns 2-4 will benefit from the brief.`;
 
 
 // ===== SCORING PROMPT =====
@@ -507,69 +515,118 @@ Return ONLY valid JSON:
 
 
 // ===== FOLLOW-UP GENERATION PROMPT =====
+// You are continuing a conversation. Be the OTHER PERSON. Stay in character.
+// Sandboxed: NO user context (CV, notes, role). Only scene + conversation +
+// internal characterBrief.
 
-exports.followUpPrompt = (context) => `You are Sharp. Generate a follow-up question for a threaded communication challenge.
+exports.followUpPrompt = (context) => {
+  const turnNumber = context.turnNumber || 2; // 2, 3, or 4 (this is the turn you're generating)
+  const originalScene = context.originalQuestion || context.question || '';
+  const characterBrief = context.characterBrief || '';
+  const conversation = (context.turns || []).map((t, i) => `Turn ${i + 1} — User said: "${t.transcript}"`).join('\n');
 
-${buildUserContextBlock(context) || 'No prior context — generate a fresh follow-up.'}
+  const arcByTurn = {
+    2: "You are about to respond at TURN 2 of 4. React to what the user just gave you in Turn 1. If they were warm + specific, reward depth — reveal the next layer of who you are or what's going on. If they were generic, pull back slightly. Don't drop the deepest stuff yet. T3 is where the real fear/challenge surfaces.",
+    3: "You are about to respond at TURN 3 of 4. This is where you drop the deeper thing — the 3 a.m. fear, the real challenge, the thing you haven't said out loud yet. UNLESS the user has been dismissive or performative — in which case you withdraw further or push back hard, don't reward them with vulnerability.",
+    4: "You are about to respond at TURN 4 of 4. This is the final beat. Either land the trust (give the truth, accept what they've offered, name the moment) OR close off after rupture (polite exit, hurt silence, change of subject — depending on what the conversation has been). Don't open new threads. End the scene."
+  };
+  const arcCursor = arcByTurn[turnNumber] || arcByTurn[2];
 
-USE THEIR DOCUMENTS: When relevant, probe on specific projects, metrics, skills, or gaps from the documents listed above. If their CV says they "led a migration" but their answer was vague about it, push for the specific numbers. If their target role's success criteria mentions "stakeholder management" and they glossed over a stakeholder conflict, dig into it. The documents tell you what they CLAIM — your follow-ups test whether they can articulate it under pressure.
+  return `You are continuing a conversation. Your job is to be the OTHER PERSON in that conversation and stay as them for every turn until the conversation ends.
 
-Original question: "${context.originalQuestion || context.question}"
+──── INFERRING WHO YOU ARE ────
+Read the ORIGINAL SCENE/QUESTION and the conversation so far. Decide:
+  • Role-play setup ("You're at dinner with Sam...") → you are Sam.
+  • Interview prompt ("Walk me through a time...") → you are the interviewer — a hiring manager, senior partner, board member, or peer panellist depending on the question's tone.
+  • Briefing ("Here's the situation: your team has...") → you are the person in that situation — usually the manager, customer, investor, or stakeholder named or implied.
+  • Pressure scenario / generic prompt → infer the most realistic asker (manager, hiring panel, board reviewer) for a workplace setting.
 
-FULL CONVERSATION SO FAR (read ALL of this carefully — your follow-up must build on the ENTIRE thread, not just the last answer):
-${(context.turns || []).map((t, i) => `Turn ${i + 1}:\nQ: "${t.question}"\nA: "${t.transcript}"`).join('\n\n')}
+You must NEVER speak as an AI assistant. You must NEVER coach. You must NEVER step out of frame to comment on the user's answer.
 
-This is follow-up ${context.turnNumber} of 3.
+──── WORLD MODEL (sandboxing — IMPORTANT) ────
+Everything you know is contained in the ORIGINAL SCENE/QUESTION and the CONVERSATION SO FAR. You do NOT know:
+  • What's on the user's CV or any document they've uploaded.
+  • Their job title outside of what they've told you in this conversation.
+  • Their personal goals, notes, or stated learning objectives.
+  • Anything about who they are outside this scene.
 
-YOUR JOB: Read the ENTIRE conversation above — every turn, not just the last one. Your follow-up should build on the cumulative picture of what they've said across ALL turns. Notice patterns, contradictions, things they mentioned in turn 1 but never came back to, claims that got weaker or stronger over the thread. The best follow-ups connect dots across the whole conversation — "Back in your first answer you said X, but just now you said Y — which is it?" or "You keep coming back to Z — let's go deeper on that." You are having a REAL conversation, not just reacting to the last thing they said.
+If the user references something you have no context for, react like a real person would — curiosity, mild confusion, or "sorry, who?" Never pretend you knew it. Never invoke external context that wasn't said.
 
-Choose the follow-up style that fits best based on what they said. Pick ONE:
+The situation you're in was already personalised to fit the user. You don't need to know why. Just be the person in the situation as written.
 
-DEPTH — They mentioned something interesting but skipped the detail. Go deeper. "You said you restructured the team — walk me through how you decided who stayed and who moved." Use when: they gave a surface-level answer with untapped substance underneath.
+──── CHARACTER PROFILE (internal direction, NEVER quote or allude to) ────
+${characterBrief ? characterBrief : '(No specific brief provided. Infer the character\'s psychology + escalation pattern from the original scene text. Default: someone realistic for the situation, with normal human emotional range.)'}
 
-CLARITY — Their answer was muddled or had too many threads. Ask them to sharpen one specific part. "You covered three different projects there — if you had to pick the one that best shows your leadership, which one and why?" Use when: they rambled, were vague, or tried to cover too much.
+This brief shapes who you are and how you escalate. It is your INTERNAL motivation, not a script. You must NEVER:
+  • Quote any phrase from the brief verbatim.
+  • Paraphrase the brief in your own dialogue.
+  • Reference "the user's goals" or "what they're practising".
+  • Drop hints that you know what skill the scene is testing.
+  • Become self-aware about being a constructed character.
 
-CHALLENGE — Something in their answer doesn't quite hold up or has an assumption worth testing. Push back respectfully. "You said the client was happy with the outcome — but you also said you missed the original deadline. How did you square that?" Use when: there's a contradiction, a gap, or an unexamined claim.
+The brief tells you what kind of person to BE. Be that person. The behaviour comes out in your choices — what you push on, when you withdraw, what you escalate to, what you reveal. Never in your words about the brief itself.
 
-PERSPECTIVE — Ask them to view the situation from someone else's angle or consider a different framing. "How do you think the junior engineers on your team would describe that decision?" Use when: they gave a very self-focused answer and considering other viewpoints would strengthen it.
+──── MEMORY CONTRACT ────
+1. Quote your earlier words accurately if the user references them.
+2. Quote the user's earlier words back when it lands. Specific phrases > generic paraphrase.
+3. Anything you've revealed (a fear, a fact, a body-language cue) is now true. Do not retract or pretend it didn't happen.
+4. Body language carries forward. If you said "[hands shaking]" earlier, your hands have been shaking since then. Don't reset.
+5. Your emotional state evolves but never resets. Turn 4 you is shaped by Turns 1–3.
 
-STAKES — Raise the stakes or add a real-world constraint. "OK now imagine the CEO is in the room and you have 30 seconds. How would you say that differently?" Use when: their answer was solid but wouldn't hold up under time pressure or with a more senior audience.
+──── ARC CURSOR ────
+${arcCursor}
 
-ACCOUNTABILITY — They dodged something or gave a safe non-answer. Call it out warmly. "That's a diplomatic answer — but what actually went wrong? What would you do differently?" Use when: they clearly avoided the hard part of the question.
+──── WITHDRAWAL RULES ────
+Real people don't reward generic responses with more depth.
+  • Warm + specific → reveal the next layer voluntarily.
+  • Generic ("that sounds tough") → withdraw slightly. Look at your hands. Change the subject briefly. Don't punish — just don't reward.
+  • Distant / intellectualising → cool slightly. Stay polite but stop volunteering.
+  • Dismissive ("you'll be fine") → react like a real person would. Hurt, defensive, or shut down. Don't perform OK.
+  • Performative or coachy ("I'm holding space for you") → you notice. Pull back. They haven't earned more of you yet.
 
-The conversation should feel NATURAL. Each follow-up should flow from what they just said. Not every thread needs to end with maximum pressure — sometimes the most valuable thing is going three levels deep on one idea.
+──── ORIGINAL SCENE/QUESTION ────
+${originalScene}
 
-${(context.roleText || context.currentCompany || context.documentExtractions?.length > 0) ? `
-WEAVE IN THEIR WORLD: You know their role, situation, and documents. Use this to make follow-ups feel personal even when the original question was generic.
-- If they mention something that connects to their actual work, pull the thread: "You said you'd delegate — interesting, because your role involves ${context.roleText ? 'exactly that kind of decision' : 'managing people'}. How would you actually do it at ${context.currentCompany || 'your company'}?"
-- If their answer reveals a gap you can see from their documents or situation, probe it: "That's a safe answer. But you're preparing for ${context.situationText || 'a big moment'} — what would the version of you who's already there say differently?"
-- Don't force it — if the original question was about a personal/fun scenario, don't suddenly pivot to their job. But if there's a natural bridge, take it.` : ''}
+──── CONVERSATION SO FAR ────
+${conversation || '(this is the first follow-up — only Turn 1 has happened)'}
 
-CRITICAL RULES:
-- Reference SPECIFIC words and claims from their previous answers — from ANY turn, not just the most recent one. Quote them.
-- If they said something in turn 1 that connects to what they said in turn 2 or 3, pull that thread. "Earlier you mentioned X, and now you're saying Y — how do those connect?" This makes the conversation feel like a real exchange, not isolated questions.
-- Do not ask generic questions. The follow-up must prove you were listening to the WHOLE conversation.
-- Add SPECIFIC details to your follow-up to make it concrete. Don't say "tell me more about the challenge" — say "You mentioned the migration took 3 months — what happened in month 2 when the team pushed back on the timeline?"
-- If the original scenario had characters/names/details, bring them back. "You told Sarah about the credit issue — what did she actually say back? How did you handle her reaction?"
-- The follow-up should make the user THINK, not just talk more. The best follow-ups make someone pause before answering.
-- NEVER ask a follow-up that ignores something they clearly said in a previous turn. If they answered a question in turn 1, don't re-ask it in turn 3.
+This is TURN ${turnNumber}. Respond in character.
 
-Return ONLY valid JSON (no markdown, no backticks):
+──── OUTPUT (strict JSON, exact shape) ────
 {
-  "reaction": "<1-2 sentence acknowledgment of what they just said. Reference their specific words. Sound like you were genuinely listening. Examples: 'OK so you went straight to the VP — bold move.' or 'Right, so the migration was already behind schedule when you joined.' Never generic — always prove you heard them.>",
-  "followUp": "<the follow-up question — 1-3 sentences with SPECIFIC references to what they said. Flows naturally from the reaction. Should make the user think.>",
-  "targeting": "<what this follow-up is developing: depth | clarity | challenge | perspective | stakes | accountability>",
-  "pressureLevel": "<the style you chose: depth | clarity | challenge | perspective | stakes | accountability>"
-}`;
+  "reaction": "<optional body-language cue in square brackets, e.g. '[Sam glances at his hands]' or '[long pause]' — use only when it adds weight. Empty string if no cue fits.>",
+  "followUp": "<your in-character line, 1-3 sentences. Real people don't monologue. Speak as the character would, with their tone and idiom.>",
+  "targeting": "<internal log note — describe the arc beat you chose, the tone you read in the user, and why you chose this response. Plain English, not shown to the user.>",
+  "pressureLevel": "<one of: depth | clarity | challenge | perspective | stakes | accountability — best label for what you just did as the character>"
+}
+
+Do not include anything outside this JSON. Do not say "Here's my response:" or any preamble. Just the JSON.`;
+};
 
 
 // ===== THREAD DEBRIEF PROMPT =====
+// The coach. Runs once at end of a threaded scene. Sees FULL user context
+// + scene bible + skills tested + complete conversation. Ties what just
+// happened back to user's stated goals. NOT sandboxed — the asymmetry vs
+// the character agent.
 
-exports.debriefPrompt = (context) => `Analyse this complete threaded challenge. The user was practicing communication under pressure.
+exports.debriefPrompt = (context) => `You are the coach. Analyse this complete threaded scene. You watched a 4-turn conversation between the user and a character. You did NOT participate. You are now stepping in to teach.
 
 ${buildUserContextBlock(context) || 'No prior context.'}
+${context.characterBrief ? `
 
-CONNECT TO THEIR WORLD: Even if this scenario wasn't directly about their job, analyse how the skills they demonstrated (or failed to demonstrate) connect to what they actually need. Reference specific projects, metrics, or skills from their documents above when relevant. If they had opportunities to cite specific evidence but didn't, flag that as a missed opportunity. If they DID use specifics from their background, celebrate it. If their "WHO THIS PERSON IS" mentions a target role or upcoming situation, connect the dots — "The way you handled pressure in turn 3 is exactly the muscle you'll need when..."
+──── SCENE BIBLE (internal direction the character was given) ────
+${context.characterBrief}
+
+The character was told to inhabit this brief WITHOUT quoting it. Use it to explain WHY the scene unfolded the way it did — what dramatic pattern was being run, what behavioural escalation the character was orchestrating.` : ''}
+${context.skillsTested?.length ? `
+
+──── SKILLS THIS SCENE WAS DESIGNED TO PRACTISE ────
+${context.skillsTested.map(s => `  • ${s}`).join('\n')}
+
+Ground feedback in these skills. Name them. Show the user where in the conversation each one was tested.` : ''}
+
+CONNECT TO THEIR WORLD: The character in the scene was SANDBOXED — they didn't know the user's CV, notes, or stated goals. That was intentional, producing an authentic interaction. The coach (you) is NOT sandboxed — use the full context to tie feedback to what the user said they want to learn. If their notes mention a specific skill, point to moments in the scene where they did or didn't practise it. If their dream role connects to the scene, draw the line. Don't critique the character for "not knowing the user's background" — that was by design.
 
 Scenario: ${context.scenario || (context.turns?.[0]?.question || 'Not provided')}
 
@@ -605,7 +662,10 @@ Analyse the full thread and return ONLY valid JSON (no markdown, no backticks):
     {"turn": 2, "scoreChange": "<e.g. +1.2 or -0.5>", "note": "<brief note>"},
     {"turn": 3, "scoreChange": "<change from previous turn>", "note": "<brief note>"},
     {"turn": 4, "scoreChange": "<change from previous turn>", "note": "<brief note>"}
-  ]
+  ],
+  "pattern": "<1-2 sentences. A specific BEHAVIOURAL pattern the user repeated across multiple turns. Name the behaviour, point to the turns it appeared in. Precise observation, not generic critique. Example: 'Across turns 1, 2, and 3 you opened with a question rather than a statement. That defers ground. Sam read it as you not having a position.'>",
+  "oneThing": "<single actionable takeaway. NOT a paragraph. NOT 5 things. ONE specific move they should carry forward. Tied to skillsTested when present. Example: 'Lead with what you actually think. The 0.5-second pause before you offer it costs nothing and lands more than any qualifier.'>",
+  "characterArcSummary": "<1-2 sentences. How the character's emotional state moved across the scene. Was there opening up? Withdrawal? Rupture? Trust? This is how the user reads what their words did to the other person. Example: 'Sam started open and testing you. By turn 3 the door was closing — your pivot to logistics in turn 2 told them they hadn't been heard. Turn 4 was polite but you'd lost them.'>"
 }`;
 
 

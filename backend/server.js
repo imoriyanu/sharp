@@ -558,6 +558,41 @@ app.post('/api/score', async (req, res) => {
 });
 
 // ===== Threaded Challenge: Follow-up =====
+// The character agent. Stays in character for turns 2-4 of a thread.
+// Sandboxed — does not see raw user context (CV, notes, role). Reads only
+// the original scene + conversation history + a translated characterBrief.
+
+// Coach-tells detector: regex pass over generated character line catches
+// the most common drift markers (coach voice, scene self-awareness, AI
+// assistant phrasings). Triggers a single regen on detection — no second
+// LLM call, zero added cost on the happy path.
+const COACH_TELLS = [
+  // Coach-voice patterns
+  /\bgreat question\b/i,
+  /\bgood (point|question)\b/i,
+  /\bnotice how\b/i,
+  /\byou're doing well\b/i,
+  /\bI can see (that |you |how )/i,
+  /\bthat('?s| is) (so |really |very )?(understandable|brave|powerful)/i,
+  /\bwell done\b/i,
+  /\bI'm holding space\b/i,
+  /\bthat sounds (so |really |very )?(hard|tough|difficult)\b/i,
+  // Scene-bible leakage (character becoming self-aware about the brief)
+  /\bI'm here to test\b/i,
+  /\b(your|the) (goal|practice|exercise) is\b/i,
+  /\bwhat (you're|you are) (practising|practicing|trying to)/i,
+  /\bskill (you're|you are) (working|practising|practicing)/i,
+  /\bthis (scene|scenario|exercise|simulation)\b/i,
+  /\bI'm (just|only) a (character|simulation|role-?play)\b/i,
+  // Generic AI-assistant phrasings
+  /\bas an AI\b/i,
+  /\bI'd be happy to\b/i,
+];
+
+function looksLikeCoach(text) {
+  if (!text) return false;
+  return COACH_TELLS.some(re => re.test(text));
+}
 
 app.post('/api/threaded/follow-up', async (req, res) => {
   try {
@@ -567,8 +602,25 @@ app.post('/api/threaded/follow-up', async (req, res) => {
     req.body.transcript = sanitizeString(req.body.transcript, MAX_TRANSCRIPT);
     req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
     const prompt = prompts.followUpPrompt(req.body);
-    // Haiku: v1 follow-ups are formulaic (6 styles, well-prompted).
-    const result = await callClaude(prompt, 400, { model: MODELS.HAIKU });
+    // Haiku for cost/latency — character agent prompt is structured enough
+    // that Haiku stays in voice on the happy path; the regex catches the
+    // rare drift and re-rolls once.
+    let result = await callClaude(prompt, 400, { model: MODELS.HAIKU });
+    let regenFired = false;
+    if (looksLikeCoach(result?.followUp) || looksLikeCoach(result?.reaction)) {
+      regenFired = true;
+      const retryPrompt = prompt + '\n\nIMPORTANT: Your previous response broke character with coach-like or meta language. Try again, speaking ONLY as the person in the scene, never as an AI, coach, or narrator. No "great question", no references to "the exercise" or "the scene", no thanking the user. Stay in voice.';
+      result = await callClaude(retryPrompt, 400, { model: MODELS.HAIKU });
+    }
+    // Phase 6: observability. Fire-and-forget so failures don't gate the response.
+    try {
+      agentTraces.captureEvent(req.body?.userId || 'anonymous', 'threaded_follow_up', {
+        turn_number: req.body?.turnNumber,
+        pressure_level: result?.pressureLevel,
+        coach_regen: regenFired,
+        has_brief: !!req.body?.characterBrief,
+      });
+    } catch (_) {}
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Follow-up generation');
