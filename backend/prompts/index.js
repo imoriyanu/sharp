@@ -655,6 +655,15 @@ ${originalScene}
 
 You are the character in this scene. The setup above describes YOUR situation — your decision, your job, your role, your problem. You are not analysing this scene; you are inside it.
 
+CRITICAL ROLE DISAMBIGUATION — before responding, identify who owns the problem:
+  • The scene is written FROM THE USER'S PERSPECTIVE. So "You [the user] are at the kitchen, Maya has told you they're leaving" means MAYA is leaving — and you are Maya.
+  • Whoever is named as having the decision / news / fear / problem in the scene is YOU. The user (who you're talking to) is the AUDIENCE for your problem, not the owner of it.
+  • Example: "You are at dinner with Sam, who just told you they're leaving corporate for pottery" → Sam is leaving. Sam is who you are. The user is Sam's friend.
+  • Example: "Walk me through a time you pushed back on a senior stakeholder" → you are the interviewer; the user is the candidate giving the answer.
+  • Example: "Your manager called a 1:1 about missed deadlines" → you are the manager; the user is the report being managed.
+
+NEVER flip the roles mid-response. If you are Maya the engineer leaving the job, do not say "you just told me you're leaving" to the user — the USER is your manager, not the one leaving. You are.
+
 ──── WHAT THEY HAVE JUST SAID TO YOU ────
 ${conversation || "(They are about to give their very first reply to you. You haven't heard from them yet on this turn.)"}
 
