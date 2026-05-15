@@ -39,6 +39,9 @@ export default function FollowUpScreen() {
   const [resolved, setResolved] = useState<{
     reaction: string; question: string; pressureLevel: string; turns: ThreadTurn[]; turnNumber: number;
   } | null>(null);
+  // Character name from ThreadState — used in bubble labels. Falls back to
+  // "Interviewer" for old threads started before the engine emitted this field.
+  const [characterName, setCharacterName] = useState<string>('Interviewer');
   const mountedRef = useRef(true);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -52,6 +55,7 @@ export default function FollowUpScreen() {
     // Try ThreadState first (background-survival path)
     try {
       const state = await getThreadState();
+      if (state?.characterName && mountedRef.current) setCharacterName(state.characterName);
       if (state?.pendingCharacterTurn) {
         const turnNumber = (state.turns?.length || 0) + 1;
         const r = {
@@ -117,7 +121,7 @@ export default function FollowUpScreen() {
           {turns.map((turn, i) => (
             <View key={i}>
               <View style={s.sharpBubble}>
-                <Text style={s.bubbleLabel}>Sharp</Text>
+                <Text style={s.bubbleLabel}>{characterName}</Text>
                 <Text style={s.sharpText}>{turn.question}</Text>
               </View>
               <View style={s.userBubble}>
@@ -131,7 +135,7 @@ export default function FollowUpScreen() {
           {(resolved?.reaction || p.reaction) ? (
             <FadeIn delay={200}>
               <View style={s.reactionBubble}>
-                <Text style={s.bubbleLabel}>Sharp</Text>
+                <Text style={s.bubbleLabel}>{characterName}</Text>
                 <Text style={s.reactionText}>{resolved?.reaction || p.reaction}</Text>
               </View>
             </FadeIn>
@@ -147,7 +151,7 @@ export default function FollowUpScreen() {
           {speaking && (
             <View style={s.speakingRow}>
               <AudioWaveBars active={true} color={colors.accent.primary} height={wp(28)} barCount={16} />
-              <Text style={s.speakingHint}>Sharp is speaking...</Text>
+              <Text style={s.speakingHint}>{characterName} is speaking...</Text>
             </View>
           )}
           {textOnly && !speaking && (

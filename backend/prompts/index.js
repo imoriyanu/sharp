@@ -361,13 +361,14 @@ CRITICAL: If you see similar events in the recent questions list above, you MUST
 ` : ''}
 Return ONLY valid JSON (no markdown, no backticks). Always include "format", "question", "timerSeconds", "reasoning", "targets", "difficulty", "contextUsed". Include "situation" for roleplay/pressure, "background" for briefing. Include "newsContext" and "learnMore" for industry format.
 
-──── ALWAYS INCLUDE — characterBrief + skillsTested ────
-Regardless of which format you chose above, ALSO include these two fields in your output. They are used downstream by the threaded follow-up engine — the character that takes over for turns 2-4 will read characterBrief to shape their behaviour, and the coach at debrief uses skillsTested to tie feedback back to the user's goals.
+──── ALWAYS INCLUDE — characterBrief + skillsTested + characterName ────
+Regardless of which format you chose above, ALSO include these three fields in your output. characterBrief shapes the threaded character agent's behaviour (turns 2-4). skillsTested is read by the coach at debrief. characterName is shown to the user as the bubble label in threaded chat — it replaces the generic app label so the conversation reads like a real person.
 
   "characterBrief": "<2-4 sentences. INTERNAL behavioural direction for the threaded character. Describe: who this character is psychologically, how they escalate across the 4 turns of a conversation, what dramatic patterns to lean on. Anchor it to the user's notes + dream role when present (e.g. if their notes say 'I want to handle manipulative people,' craft a character whose escalation gives them practice with that). Write dramatically about THIS specific character, not coachy — 'volatile, drops guilt trips when challenged, expects validation' YES, 'tests the user's ability to handle manipulation' NO (too on-the-nose). Use the actual character's name + traits from your scenario above — do NOT default to any specific name. NEVER quoted by the character. NEVER shown to the user. Keep it tight — internal direction, not a script.>",
-  "skillsTested": ["<1-3 short skill labels (3-7 words each) naming what skills this scene gives the user practice with. e.g. 'holding ground under emotional pressure', 'explaining technical work simply', 'naming manipulation without escalation'. Used by the coach at debrief to tie feedback back to user's stated goals.>"]
+  "skillsTested": ["<1-3 short skill labels (3-7 words each) naming what skills this scene gives the user practice with. e.g. 'holding ground under emotional pressure', 'explaining technical work simply', 'naming manipulation without escalation'. Used by the coach at debrief to tie feedback back to user's stated goals.>"],
+  "characterName": "<SHORT display label (1-3 words) for the character speaking in the scene. SHOWN to the user as the bubble label in threaded chat. Choose what feels natural for the scene: for a roleplay with a named character, use that first name ('Maya', 'Sam', 'Theo'). For an interview-style prompt, use a role label ('Interviewer', 'Hiring Manager', 'Recruiter'). For a briefing, use the person in the scene ('Manager', 'Skip-level', 'Stakeholder'). For a pressure scenario, use the asker's role ('CTO', 'Investor', 'Customer'). For industry, 'Interviewer'. Never use 'Sharp', 'AI', 'Coach', or anything that breaks the fourth wall. Keep it short — this is a chat label, not a sentence.>"
 
-These two fields apply to all six formats — include them whether the scene is a roleplay, prompt, briefing, pressure, context, or industry question. Even on interview-style or briefing questions, the character that emerges in turns 2-4 will benefit from the brief.`;
+These three fields apply to all six formats — include them whether the scene is a roleplay, prompt, briefing, pressure, context, or industry question. Even on interview-style or briefing questions, the character that emerges in turns 2-4 will benefit from the brief and the user needs a believable name on the bubble.`;
 
 
 // ===== SCORING PROMPT =====
@@ -1006,3 +1007,47 @@ Return ONLY valid JSON (no markdown):
   "suggestedAngles": ["<2-3 different ways they could introduce themselves — each one specific to details from THEIR answer, not generic templates>"],
   "modelAnswer": "<A 9/10 self-introduction built from THEIR details. Use their name, role, projects, interests — whatever they mentioned. Make it sound natural and spoken. 3-5 sentences. This should make them think: wow, that's ME but better. The contrast between their answer and this one IS the coaching.>"
 }`;
+
+
+// ===== CROSS-SESSION PATTERN EXTRACTION =====
+// Run on-demand from the analytics screen (7-day cache + invalidate after +5
+// new sessions). Reads the user's last 10-20 scored sessions and surfaces 2-3
+// behavioural patterns that repeat ACROSS sessions — the meta-insights no
+// single session can give. Sonnet for quality; cost is small because cached.
+
+exports.patternExtractionPrompt = (context) => `You are Sharp, a communication coach. You have access to a user's last ${context.sessionCount} practice sessions. Your job is to find behavioural PATTERNS that repeat across sessions — the meta-insights no single session can reveal.
+
+THEIR CONTEXT:
+${buildUserContextBlock(context) || 'No context provided.'}
+
+THEIR SESSIONS (newest first):
+${JSON.stringify(context.sessions || [], null, 2)}
+
+YOUR JOB:
+Find 2-3 patterns that show up REPEATEDLY across these sessions. Each pattern must be:
+- SPECIFIC: a named behaviour, not "you could be clearer". "You hedge 60% of your openings with 'I think' or 'kind of'." YES. "You should be more confident." NO.
+- EVIDENCE-BASED: quote 2-3 actual phrases from their real transcripts (use the "transcript" field). Quote exactly — these are the user's own words, used to prove the pattern exists.
+- QUANTIFIED WHERE POSSIBLE: tie the pattern to a real score impact. "Drops your Concision score by ~1.5 points on average." Or to frequency: "Shows up in 7 of your last 10 sessions."
+- ACTIONABLE: one thing they can do RIGHT NOW to break the pattern.
+
+FORBIDDEN — these will get the response rejected and overwritten:
+- Generic praise: "You're improving!", "You're doing great!", "Great progress!"
+- Vague advice: "Be more concise.", "Try to be specific.", "Work on your structure."
+- Coach-voice meta: "I notice that...", "I'm holding space...", "I see you...", "Great question!", "Notice how..."
+- Single-session observations. A pattern requires EVIDENCE FROM AT LEAST 3 DIFFERENT SESSIONS.
+- Repeating the existing per-session coaching insights verbatim. The user has already seen those — you are looking ACROSS sessions, not summarising one.
+
+If you cannot find 2 patterns with real evidence from at least 3 sessions, return an empty patterns array. Do NOT fabricate patterns to fill the count.
+
+OUTPUT — strict JSON, no markdown:
+{
+  "patterns": [
+    {
+      "pattern": "<one sentence describing the specific repeated behaviour>",
+      "evidence": ["<exact quote 1>", "<exact quote 2>", "<exact quote 3>"],
+      "impact": "<one sentence quantifying the cost or frequency>",
+      "oneThing": "<one sentence — a single concrete action to break the pattern>"
+    }
+  ]
+}`;
+

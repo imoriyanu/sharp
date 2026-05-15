@@ -6,7 +6,7 @@ import { useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { getUserProfile, saveUserProfile, trackFeatureInterest } from '../../src/services/storage';
-import { isPremium, getPlanName, syncFromRevenueCat } from '../../src/services/premium';
+import { isPremium, getPlanName, syncFromRevenueCat, getUsageDisplay, type UsageDisplay } from '../../src/services/premium';
 import { restorePurchases, isRevenueCatConfigured, getManagementUrl } from '../../src/services/revenuecat';
 import { useAuth } from '../../src/context/AuthContext';
 import { signOut, deleteAccount } from '../../src/services/auth';
@@ -21,6 +21,7 @@ export default function SettingsScreen() {
   const { user, isAuthenticated } = useAuth();
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [usage, setUsage] = useState<UsageDisplay | null>(null);
 
   useEffect(() => {
     // Load persisted preferences once
@@ -28,12 +29,14 @@ export default function SettingsScreen() {
     AsyncStorage.getItem('sharp:pref_haptics').then(v => { if (v !== null) setHaptics(v === 'true'); });
   }, []);
 
-  // Reload profile every time screen gains focus (catches auth changes from modal)
+  // Reload profile + usage every time screen gains focus (catches auth changes
+  // from modal + usage tick after a One Shot / Threaded finishes elsewhere).
   useFocusEffect(useCallback(() => {
     getUserProfile().then(p => {
       setProfile(p);
       if (p) setNameInput(p.displayName);
     });
+    getUsageDisplay().then(setUsage).catch(() => setUsage(null));
   }, []));
 
   async function saveName() {
@@ -180,7 +183,7 @@ export default function SettingsScreen() {
           <TouchableOpacity style={[s.row, !isPremium() && !isRevenueCatConfigured() ? s.rowLast : {}]} onPress={() => !isPremium() && router.push('/premium')} activeOpacity={isPremium() ? 1 : 0.7}>
             <View style={s.planInfo}>
               <Text style={s.label}>{getPlanName()}</Text>
-              <Text style={s.planSub}>{isPremium() ? '3 One Shots · 2 Threaded · 2 Industry /day' : 'Unlock full coaching and unlimited practice'}</Text>
+              <Text style={s.planSub}>{formatUsageSub(usage)}</Text>
             </View>
             {isPremium() ? (
               <View style={s.proBadge}><Text style={s.proBadgeText}>PRO</Text></View>
@@ -272,6 +275,22 @@ export default function SettingsScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+// Plan card subline. Pro = today's daily counters. Free = "X/3 One Shots this
+// week" framing since the weekly cap is the one that actually bites for free.
+// Falls back to the upgrade prompt when usage hasn't loaded yet (offline / cold).
+function formatUsageSub(u: UsageDisplay | null): string {
+  if (!u) return isPremium() ? '3 One Shots · 2 Threaded · 2 Industry /day' : 'Unlock full coaching and unlimited practice';
+  if (u.isPremium) {
+    return `${u.oneShots.used}/${u.oneShots.cap} One Shots · ${u.threaded.used}/${u.threaded.cap} Threaded · ${u.industry.used}/${u.industry.cap} Industry · today`;
+  }
+  // Free tier: cap > 0 means usable; cap = 0 means locked behind paywall.
+  const parts: string[] = [];
+  if (u.oneShots.cap > 0) parts.push(`${u.oneShots.used}/${u.oneShots.cap} One Shots this week`);
+  if (u.threaded.cap > 0) parts.push(`${u.threaded.used}/${u.threaded.cap} Threaded`);
+  if (parts.length === 0) return 'Unlock full coaching and unlimited practice';
+  return parts.join(' · ');
 }
 
 const s = StyleSheet.create({

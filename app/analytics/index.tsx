@@ -5,12 +5,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { LoadingScreen, FadeIn, AudioWaveBars } from '../../src/components/Animations';
 import { playCoachingAudio, stopAudio } from '../../src/services/tts';
-import { getProgressData, getContext, getSessions, type ProgressData } from '../../src/services/storage';
-import { generateProgressSummary } from '../../src/services/scoring';
+import { getProgressData, getContext, getSessions, getRecentSessionSummariesForAnalysis, type ProgressData } from '../../src/services/storage';
+import { generateProgressSummary, extractPatterns } from '../../src/services/scoring';
 import { isPremium } from '../../src/services/premium';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { CrossSessionPattern } from '../../src/types';
 
 const SUMMARY_CACHE_KEY = 'sharp:summary_cache';
+const PATTERN_CACHE_KEY = 'sharp:patterns_cache';
+const PATTERN_CACHE_DAYS = 7;
+const PATTERN_INVALIDATE_AT_NEW_SESSIONS = 5;
 
 const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words', awareness: 'Awareness' };
 
@@ -26,6 +30,8 @@ export default function AnalyticsScreen() {
   const [summary, setSummary] = useState<{ spokenSummary: string; highlights: string[]; focusArea: string; encouragement: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [speaking, setSpeaking] = useState(false);
+  const [patterns, setPatterns] = useState<CrossSessionPattern[]>([]);
+  const [patternsLoading, setPatternsLoading] = useState(false);
   const mountedRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -75,6 +81,58 @@ export default function AnalyticsScreen() {
       }
     } else {
       setLoading(false);
+    }
+
+    // Patterns load separately — non-blocking. The summary is the hero, the
+    // patterns are the deeper insight; user shouldn't wait on them.
+    loadPatterns(progress.totalSessions).catch(() => {});
+  }
+
+  async function loadPatterns(totalSessions: number) {
+    if (totalSessions < 5) return; // backend also gates this — match the threshold
+
+    // Cache hit: 7 days fresh AND session count hasn't drifted by >= 5
+    try {
+      const cachedRaw = await AsyncStorage.getItem(PATTERN_CACHE_KEY);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        const ageMs = Date.now() - new Date(cached.extractedAt).getTime();
+        const ageDays = ageMs / (1000 * 60 * 60 * 24);
+        const drift = totalSessions - (cached.sessionCount || 0);
+        if (ageDays < PATTERN_CACHE_DAYS && drift < PATTERN_INVALIDATE_AT_NEW_SESSIONS) {
+          if (mountedRef.current) setPatterns(cached.patterns || []);
+          return;
+        }
+      }
+    } catch (_) { /* cache miss → fetch fresh */ }
+
+    if (mountedRef.current) setPatternsLoading(true);
+    try {
+      const [sessions, ctx] = await Promise.all([
+        getRecentSessionSummariesForAnalysis(15),
+        getContext(),
+      ]);
+      const report = await extractPatterns({
+        sessions,
+        roleText: ctx?.roleText || '',
+        currentCompany: ctx?.currentCompany || '',
+        situationText: ctx?.situationText || '',
+        dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+        notes: ctx?.notes || '',
+      }, abortRef.current?.signal);
+      if (!mountedRef.current) return;
+      const got = report.patterns || [];
+      setPatterns(got);
+      await AsyncStorage.setItem(PATTERN_CACHE_KEY, JSON.stringify({
+        patterns: got,
+        sessionCount: totalSessions,
+        extractedAt: new Date().toISOString(),
+      }));
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
+      __DEV__ && console.warn('Pattern extraction failed:', e?.message || e);
+    } finally {
+      if (mountedRef.current) setPatternsLoading(false);
     }
   }
 
@@ -172,6 +230,41 @@ export default function AnalyticsScreen() {
             </View>
           </View>
         </FadeIn>
+
+        {/* Cross-session patterns — meta-insights no single session can give.
+            Renders above the per-session chart so it lands first on scroll. */}
+        {patterns.length > 0 && (
+          <>
+            <Text style={s.section}>Patterns across your sessions</Text>
+            <FadeIn delay={150}>
+              {patterns.map((p, i) => (
+                <View key={i} style={s.patternCard}>
+                  <Text style={s.patternHeadline}>{p.pattern}</Text>
+                  {p.impact ? <Text style={s.patternImpact}>{p.impact}</Text> : null}
+                  {p.evidence && p.evidence.length > 0 && (
+                    <View style={s.patternEvidence}>
+                      <Text style={s.patternEvidenceLabel}>Where it shows up</Text>
+                      {p.evidence.slice(0, 3).map((q, j) => (
+                        <Text key={j} style={s.patternEvidenceQuote}>"{q}"</Text>
+                      ))}
+                    </View>
+                  )}
+                  {p.oneThing ? (
+                    <View style={s.patternFix}>
+                      <Text style={s.patternFixLabel}>One thing to try</Text>
+                      <Text style={s.patternFixText}>{p.oneThing}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+            </FadeIn>
+          </>
+        )}
+        {patternsLoading && patterns.length === 0 && data.totalSessions >= 5 && (
+          <View style={s.patternLoading}>
+            <Text style={s.patternLoadingText}>Looking for patterns across your sessions…</Text>
+          </View>
+        )}
 
         {/* Score trend chart */}
         {data.overallTrend.length > 1 && (
@@ -323,6 +416,20 @@ const s = StyleSheet.create({
 
   // Section
   section: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.md, marginTop: spacing.lg },
+
+  // Patterns — the meta-insight section. Higher visual weight than summary
+  // (terracotta left rule + cream card) so it reads as the key finding.
+  patternCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.md, borderLeftWidth: 4, borderLeftColor: colors.accent.primary, ...shadows.md },
+  patternHeadline: { fontSize: typography.size.md, color: colors.text.primary, fontWeight: typography.weight.bold, lineHeight: fp(24) },
+  patternImpact: { fontSize: typography.size.sm, color: colors.text.tertiary, marginTop: spacing.sm, lineHeight: fp(20) },
+  patternEvidence: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.borderLight },
+  patternEvidenceLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: spacing.sm },
+  patternEvidenceQuote: { fontSize: typography.size.sm, color: colors.text.secondary, fontStyle: 'italic', lineHeight: fp(20), marginBottom: wp(4) },
+  patternFix: { marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.feedback.positiveBg, borderRadius: radius.md },
+  patternFixLabel: { fontSize: fp(9), fontWeight: typography.weight.black, color: colors.success, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: wp(4) },
+  patternFixText: { fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20), fontWeight: typography.weight.semibold },
+  patternLoading: { padding: spacing.lg, alignItems: 'center' },
+  patternLoadingText: { fontSize: typography.size.xs, color: colors.text.muted, fontStyle: 'italic' as const },
 
   // Chart
   chartCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.md, ...shadows.md },

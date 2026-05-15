@@ -97,6 +97,7 @@ app.use('/api/threaded', rateLimit(15));    // 15 threaded calls per minute
 app.use('/api/transcribe', rateLimit(10));  // 10 transcriptions per minute
 app.use('/api/tts', rateLimit(20));         // 20 TTS calls per minute
 app.use('/api/progress', rateLimit(5));     // 5 progress summaries per minute
+app.use('/api/analytics', rateLimit(3));    // 3 pattern extractions per minute (Sonnet, cached client-side)
 app.use('/api/conversation', rateLimit(20)); // 20 conversation calls per minute (fast back-and-forth)
 app.use('/api/v2/threaded', rateLimit(15)); // mirror v1 limits for the agentic variant
 app.use('/api/v2/score', rateLimit(10));
@@ -760,6 +761,69 @@ Return ONLY valid JSON (no markdown):
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Progress summary');
+  }
+});
+
+// ===== Cross-Session Pattern Extraction =====
+// Surfaces 2-3 behavioural patterns that repeat across the user's recent
+// sessions. Run on-demand from the analytics screen; client caches 7 days +
+// invalidates after +5 new sessions. Sonnet for quality (catches subtle
+// repetition that Haiku would miss). Coach-tells regex sanity-checks the
+// output to keep generic praise out.
+
+const PATTERN_FORBIDDEN = [
+  /\bgreat (job|work|progress|question)\b/i,
+  /\byou'?re (improving|doing (well|great)|getting better)\b/i,
+  /\bI (notice|see|hold space|observe)\b/i,
+  /\bnotice how\b/i,
+  /\bkeep (it )?up\b/i,
+  /\bbe more (concise|specific|clear)\b/i,
+  /\bwork on (your )?(structure|concision|substance|clarity)\b/i,
+  /\btry to be (more )?(concise|specific|clear)\b/i,
+];
+
+function looksLikeGenericCoachOutput(text) {
+  if (!text || typeof text !== 'string') return false;
+  return PATTERN_FORBIDDEN.some(re => re.test(text));
+}
+
+app.post('/api/analytics/patterns', async (req, res) => {
+  try {
+    const { sessions, roleText, currentCompany, situationText, dreamRoleAndCompany, notes } = req.body || {};
+    const safeSessions = Array.isArray(sessions) ? sessions.slice(0, 20) : [];
+    if (safeSessions.length < 5) {
+      // Not enough data — return empty patterns. Client renders an empty state.
+      return res.json({ patterns: [], sessionsAnalysed: safeSessions.length, reason: 'not_enough_data' });
+    }
+
+    const prompt = prompts.patternExtractionPrompt({
+      sessionCount: safeSessions.length,
+      sessions: safeSessions,
+      roleText: sanitizeString(roleText, 200),
+      currentCompany: sanitizeString(currentCompany, 200),
+      situationText: sanitizeString(situationText, 2000),
+      dreamRoleAndCompany: sanitizeString(dreamRoleAndCompany, 200),
+      notes: sanitizeString(notes, 3000),
+    });
+
+    const result = await callClaude(prompt, 1200, { model: MODELS.SONNET });
+
+    // Sanity check: filter out patterns whose pattern/oneThing reads like
+    // generic coach output. Keeps the surface area opinionated rather than
+    // sliding back into "you should be more concise" mush.
+    const patterns = Array.isArray(result.patterns) ? result.patterns : [];
+    const filtered = patterns.filter(p =>
+      p &&
+      typeof p.pattern === 'string' &&
+      Array.isArray(p.evidence) &&
+      p.evidence.length >= 2 &&
+      !looksLikeGenericCoachOutput(p.pattern) &&
+      !looksLikeGenericCoachOutput(p.oneThing)
+    );
+
+    res.json({ patterns: filtered, sessionsAnalysed: safeSessions.length });
+  } catch (error) {
+    sendError(res, 500, error, 'Pattern extraction');
   }
 });
 

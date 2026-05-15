@@ -1,6 +1,6 @@
 import { apiPost } from './api';
 import { FEATURES } from '../constants/features';
-import type { ScoringResult, UserContext, GeneratedQuestion, FollowUp, ThreadDebrief, ReactionTrailEntry } from '../types';
+import type { ScoringResult, UserContext, GeneratedQuestion, FollowUp, ThreadDebrief, ReactionTrailEntry, CrossSessionPatternReport, SessionForAnalysis } from '../types';
 
 // Note: userId is no longer passed in request bodies — the backend verifies
 // the user from the Authorization header attached by apiPost in api.ts.
@@ -163,6 +163,21 @@ export async function generateProgressSummary(params: {
   currentCompany: string;
 }, signal?: AbortSignal): Promise<{ spokenSummary: string; highlights: string[]; focusArea: string; encouragement: string }> {
   return apiPost('/progress/summary', params, signal);
+}
+
+// Cross-session pattern extraction. Run on-demand from the analytics screen
+// (the screen handles caching via AsyncStorage — see analytics/index.tsx).
+// Returns 2-3 evidence-backed behavioural patterns from the user's recent
+// sessions, or an empty array if there isn't enough data (<5 sessions).
+export async function extractPatterns(params: {
+  sessions: SessionForAnalysis[];
+  roleText: string;
+  currentCompany: string;
+  situationText: string;
+  dreamRoleAndCompany: string;
+  notes?: string;
+}, signal?: AbortSignal): Promise<CrossSessionPatternReport> {
+  return apiPost('/analytics/patterns', params, signal);
 }
 
 export async function generateDebrief(params: {

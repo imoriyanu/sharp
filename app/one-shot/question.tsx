@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Modal, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, useEffect, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +21,7 @@ export default function QuestionScreen() {
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [regenLeft, setRegenLeft] = useState<number | null>(null);
+  const [showDifficultyInfo, setShowDifficultyInfo] = useState(false);
   const mountedRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -197,16 +198,34 @@ export default function QuestionScreen() {
 
           {question && (
             <FadeIn delay={300}>
-              <View style={s.diffRow}>
+              <TouchableOpacity style={s.diffRow} onPress={() => setShowDifficultyInfo(true)} activeOpacity={0.6}>
                 <Text style={s.diffLabel}>Difficulty · {(question.difficulty || 5) <= 3 ? 'Easy' : (question.difficulty || 5) <= 6 ? 'Moderate' : (question.difficulty || 5) <= 8 ? 'Hard' : 'Expert'}</Text>
                 <View style={s.dots}>
                   {Array.from({ length: 10 }).map((_, i) => (
                     <View key={i} style={[s.dot, i < (question.difficulty || 5) && s.dotOn]} />
                   ))}
                 </View>
-              </View>
+                <Text style={s.diffHelp}>ⓘ</Text>
+              </TouchableOpacity>
             </FadeIn>
           )}
+
+          {/* Difficulty explainer modal */}
+          <Modal visible={showDifficultyInfo} animationType="fade" transparent onRequestClose={() => setShowDifficultyInfo(false)}>
+            <TouchableOpacity style={s.modalBackdrop} activeOpacity={1} onPress={() => setShowDifficultyInfo(false)}>
+              <TouchableOpacity activeOpacity={1} style={s.modalCard} onPress={() => {}}>
+                <Text style={s.modalTitle}>About difficulty</Text>
+                <Text style={s.modalText}>Difficulty is set by the question engine based on your role, situation, and history. Harder questions probe deeper, raise the stakes, or apply more pressure.</Text>
+                <Text style={s.modalSection}>Scoring scales with difficulty</Text>
+                <Text style={s.modalText}>A 7 on a 9/10 question shows more than a 9 on an easy one. Sharp accounts for this when computing your progress score.</Text>
+                <Text style={s.modalSection}>The bands</Text>
+                <Text style={s.modalText}>1-3 Easy · 4-6 Moderate · 7-8 Hard · 9-10 Expert. Use the regenerate button if a question doesn't fit.</Text>
+                <TouchableOpacity style={s.modalCloseBtn} onPress={() => setShowDifficultyInfo(false)} activeOpacity={0.8}>
+                  <Text style={s.modalCloseText}>Got it</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
 
           {/* Learn more — real articles + search */}
           {question?.format === 'industry' && question.learnMore && (
@@ -272,6 +291,7 @@ export default function QuestionScreen() {
                   // to stated goals.
                   ...(question.characterBrief ? { characterBrief: question.characterBrief } : {}),
                   ...(question.skillsTested ? { skillsTested: question.skillsTested } : {}),
+                  ...(question.characterName ? { characterName: question.characterName } : {}),
                 });
               }
               router.push({ pathname: '/one-shot/recording', params: { question: question?.question || '', mode: isThreaded ? 'threaded' : 'one_shot', reasoning: question?.reasoning || '', timerSeconds: String(question?.timerSeconds || 90) } });
@@ -316,6 +336,15 @@ const s = StyleSheet.create({
   dots: { flexDirection: 'row', gap: wp(3) },
   dot: { width: wp(6), height: wp(6), borderRadius: wp(3), backgroundColor: colors.border },
   dotOn: { backgroundColor: colors.accent.primary },
+  diffHelp: { fontSize: fp(11), color: colors.text.muted, marginLeft: wp(4) },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(58,42,26,0.4)', alignItems: 'center', justifyContent: 'center', padding: layout.screenPadding },
+  modalCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, width: '100%', maxWidth: wp(380), ...shadows.lg },
+  modalTitle: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary, marginBottom: spacing.md },
+  modalSection: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginTop: spacing.md, marginBottom: spacing.sm },
+  modalText: { fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20) },
+  modalCloseBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(13), alignItems: 'center', marginTop: spacing.xl, ...shadows.accent },
+  modalCloseText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse },
   learnCard: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.borderLight, borderRadius: radius.xl, padding: spacing.lg, marginTop: spacing.lg },
   learnLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.primary, marginBottom: spacing.sm },
   learnHint: { fontSize: typography.size.xs, color: colors.text.tertiary, lineHeight: fp(18), marginBottom: spacing.md },

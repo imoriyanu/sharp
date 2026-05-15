@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature, UploadedDocument, ConversationState } from '../types';
+import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature, UploadedDocument, ConversationState, SessionForAnalysis } from '../types';
 import { STREAK_BADGES } from '../constants/badges';
 import { syncProfileToCloud, syncContextToCloud, syncSessionToCloud, syncStreakToCloud, syncBadgeToCloud, syncDailyResultToCloud, migrateLocalToCloud, uploadDocumentToStorage, syncDocumentToCloud, deleteDocumentFromCloud } from './sync';
 
@@ -181,6 +181,7 @@ export async function clearAllUserData(): Promise<void> {
     'sharp:pref_audio',
     'sharp:pref_haptics',
     'sharp:summary_cache',
+    'sharp:patterns_cache',
   ];
 
   // Variable-suffix keys (sharp:session:<id>) need an enumerate + filter pass.
@@ -514,6 +515,40 @@ export async function getRecentSessionHistory(): Promise<{
     });
   }
   return history;
+}
+
+// ===== Cross-Session Pattern Analysis =====
+// Returns the last N scored sessions in the shape the pattern-extraction
+// prompt consumes. Skips unscored turns (Threaded zero-sentinel) so they
+// don't pollute the input. Trims long transcripts to keep the prompt size
+// under control.
+
+export async function getRecentSessionSummariesForAnalysis(limit: number = 15): Promise<SessionForAnalysis[]> {
+  const summaries = await getSessions();
+  const full = await loadFullSessions(summaries, limit);
+  const out: SessionForAnalysis[] = [];
+  for (const s of full) {
+    if (!s.turns.length) continue;
+    const last = s.turns[s.turns.length - 1];
+    if (isUnscored(last.scores)) continue;
+    out.push({
+      type: s.type,
+      question: (last.question || '').slice(0, 200),
+      transcript: (last.transcript || '').slice(0, 400),
+      overall: last.overall,
+      scores: {
+        structure: last.scores.structure ?? 0,
+        concision: last.scores.concision ?? 0,
+        substance: last.scores.substance ?? 0,
+        fillerWords: last.scores.fillerWords ?? 0,
+        awareness: last.scores.awareness ?? 0,
+      },
+      ...(last.snippet?.original ? { weakestSnippet: { original: last.snippet.original.slice(0, 200), rewrite: (last.snippet.rewrite || '').slice(0, 200) } } : {}),
+      ...(last.coachingInsight ? { coachingInsight: last.coachingInsight.slice(0, 200) } : {}),
+      date: s.createdAt.split('T')[0],
+    });
+  }
+  return out;
 }
 
 // ===== Score History =====

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, Modal, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
@@ -11,6 +11,32 @@ import { isPremium } from '../../src/services/premium';
 
 const DIMS = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
 const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words', awareness: 'Awareness' };
+
+// Tap a dimension to see what it measures + how to read the score. Descriptions
+// avoid book/framework names per project rule. All scored 1-10; for filler
+// words, higher = cleaner speech (10 = zero fillers).
+const DIM_INFO: Record<string, { what: string; scale: string }> = {
+  structure: {
+    what: 'How clearly your answer was organised. Did you lead with the point, signpost the flow, and land it cleanly?',
+    scale: '5 = jumbled or buried lead. 7 = clear shape, can be tighter. 9 = hook first, signposted, lands hard.',
+  },
+  concision: {
+    what: 'Whether you said it in the right number of words. Tight beats long — every line should carry weight.',
+    scale: '5 = padded or hedged. 7 = mostly tight, a few extra phrases. 9 = nothing wasted.',
+  },
+  substance: {
+    what: 'How real and specific you were. Numbers, named projects, concrete moves — not abstractions or platitudes.',
+    scale: '5 = generalities. 7 = some specifics, some vagueness. 9 = specific enough to verify.',
+  },
+  fillerWords: {
+    what: 'How clean your speech was. "Um", "like", "you know", "kind of" — higher score = fewer fillers.',
+    scale: '5 = noticeable fillers throughout. 7 = a handful. 10 = zero fillers detected.',
+  },
+  awareness: {
+    what: 'How well you read the room — industry, company, role context. Did your answer feel situationally sharp?',
+    scale: '5 = generic answer that could fit anywhere. 7 = appropriate fit. 9 = sharp references that show insight.',
+  },
+};
 
 function safeParse<T>(json: string | undefined, fallback: T): T {
   if (!json) return fallback;
@@ -47,6 +73,7 @@ export default function ResultsScreen() {
   const [playing, setPlaying] = React.useState<string | null>(null);
   const [textOnly, setTextOnly] = React.useState(false);
   const [showReasoning, setShowReasoning] = React.useState(false);
+  const [openDim, setOpenDim] = React.useState<string | null>(null);
   const mountedRef = React.useRef(true);
 
   useEffect(() => {
@@ -126,21 +153,43 @@ export default function ResultsScreen() {
           </View>
         </FadeIn>
 
-        {/* Dimensions */}
+        {/* Dimensions — tap a row to see what it measures + how to read the score */}
         <FadeIn delay={200}>
           <View style={s.card}>
             {DIMS.map((dim) => {
               const val = scores[dim] || 0;
               return (
-                <View key={dim} style={[s.dim, dim === 'awareness' && s.dimSep]}>
+                <TouchableOpacity key={dim} style={[s.dim, dim === 'awareness' && s.dimSep]} onPress={() => setOpenDim(dim)} activeOpacity={0.6}>
                   <Text style={s.dimName}>{DIM_LABELS[dim]}</Text>
                   <View style={s.dimTrack}><View style={[s.dimFill, { width: `${val * 10}%`, backgroundColor: getScoreColor(val) }]} /></View>
                   <Text style={[s.dimVal, { color: getScoreColor(val) }]}>{val}</Text>
-                </View>
+                  <Text style={s.dimHelp}>ⓘ</Text>
+                </TouchableOpacity>
               );
             })}
           </View>
         </FadeIn>
+
+        {/* Dimension info modal */}
+        <Modal visible={!!openDim} animationType="fade" transparent onRequestClose={() => setOpenDim(null)}>
+          <TouchableOpacity style={s.modalBackdrop} activeOpacity={1} onPress={() => setOpenDim(null)}>
+            <TouchableOpacity activeOpacity={1} style={s.modalCard} onPress={() => {}}>
+              {openDim && (
+                <>
+                  <Text style={s.modalTitle}>{DIM_LABELS[openDim]}</Text>
+                  <Text style={s.modalScore}>Your score: <Text style={{ color: getScoreColor((scores as Record<string, number>)[openDim] || 0), fontWeight: typography.weight.black }}>{(scores as Record<string, number>)[openDim] || 0}/10</Text></Text>
+                  <Text style={s.modalSection}>What it measures</Text>
+                  <Text style={s.modalText}>{DIM_INFO[openDim].what}</Text>
+                  <Text style={s.modalSection}>How to read it</Text>
+                  <Text style={s.modalText}>{DIM_INFO[openDim].scale}</Text>
+                  <TouchableOpacity style={s.modalClose} onPress={() => setOpenDim(null)} activeOpacity={0.8}>
+                    <Text style={s.modalCloseText}>Got it</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
 
         {/* What went well */}
         {positives ? (
@@ -348,6 +397,16 @@ const s = StyleSheet.create({
   dimTrack: { flex: 1, height: wp(8), backgroundColor: colors.borderLight, borderRadius: wp(4), marginHorizontal: wp(8), overflow: 'hidden' },
   dimFill: { height: '100%', borderRadius: wp(4) },
   dimVal: { fontSize: fp(14), fontWeight: typography.weight.black, width: wp(24), textAlign: 'right' },
+  dimHelp: { fontSize: fp(11), color: colors.text.muted, marginLeft: wp(6), width: wp(14), textAlign: 'center' },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(58,42,26,0.4)', alignItems: 'center', justifyContent: 'center', padding: layout.screenPadding },
+  modalCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, width: '100%', maxWidth: wp(380), ...shadows.lg },
+  modalTitle: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary, marginBottom: spacing.sm },
+  modalScore: { fontSize: typography.size.sm, color: colors.text.tertiary, marginBottom: spacing.lg },
+  modalSection: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginTop: spacing.md, marginBottom: spacing.sm },
+  modalText: { fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20) },
+  modalClose: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(13), alignItems: 'center', marginTop: spacing.xl, ...shadows.accent },
+  modalCloseText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse },
 
   section: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 2, marginBottom: spacing.md },
 

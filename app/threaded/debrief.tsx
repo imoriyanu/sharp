@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,13 +20,43 @@ const THREAD_DIM_LABELS: Record<string, string> = {
   consistency: 'Consistency',
 };
 
+// Tap a thread dimension to see what it measures + how to read it. Thread
+// dimensions differ from One Shot — they're about behaviour ACROSS turns, not
+// a single answer.
+const THREAD_DIM_INFO: Record<string, { what: string; scale: string }> = {
+  communicationClarity: {
+    what: 'How cleanly each turn landed. Could the other person follow what you meant without re-reading?',
+    scale: '5 = had to guess what you meant. 7 = mostly clear, some hedging. 9 = every turn landed first try.',
+  },
+  handlingPressure: {
+    what: 'How you held up when pushed back on. Did you stand your ground without escalating, or fold or flare?',
+    scale: '5 = folded or escalated. 7 = held the line but stiffly. 9 = stayed warm, held the point, made them think.',
+  },
+  conciseness: {
+    what: 'Whether each turn stayed tight under pressure. Long answers under pressure usually lose the point.',
+    scale: '5 = rambled when challenged. 7 = mostly tight. 9 = sharp, every word earning its place.',
+  },
+  substance: {
+    what: 'Whether your answers carried real specifics — names, numbers, concrete moves — instead of abstractions.',
+    scale: '5 = generalities. 7 = some specifics. 9 = consistently grounded in real detail.',
+  },
+  consistency: {
+    what: 'Whether your story stayed coherent across turns. Did the version of events match from turn 1 to turn 4?',
+    scale: '5 = noticeable drift. 7 = small inconsistencies. 9 = same point, same stance, same facts throughout.',
+  },
+};
+
 export default function DebriefScreen() {
   const router = useRouter();
-  const p = useLocalSearchParams<{ debrief: string; turns: string }>();
+  const p = useLocalSearchParams<{ debrief: string; turns: string; characterName?: string }>();
   const debrief = safeParse<ThreadDebrief | null>(p.debrief, null);
   const turns = safeParse<ThreadTurn[]>(p.turns, []);
+  // Character label for the conversation transcript. Falls back to
+  // "Interviewer" for old saved threads without this param.
+  const characterName = (p.characterName && p.characterName.length > 0) ? p.characterName : 'Interviewer';
 
   const [textOnly, setTextOnly] = useState(false);
+  const [openDim, setOpenDim] = useState<string | null>(null);
 
   useEffect(() => {
     if (debrief?.summary) {
@@ -94,21 +124,43 @@ export default function DebriefScreen() {
           </FadeIn>
         )}
 
-        {/* Thread dimensions */}
+        {/* Thread dimensions — tap a row to see what it measures + how to read */}
         <FadeIn delay={300}>
           <Text style={s.section}>Thread Dimensions</Text>
           <View style={s.dimCard}>
             {Object.entries(debrief.threadScores).map(([key, val]) => (
-              <View key={key} style={s.dimRow}>
+              <TouchableOpacity key={key} style={s.dimRow} onPress={() => setOpenDim(key)} activeOpacity={0.6}>
                 <Text style={s.dimName}>{THREAD_DIM_LABELS[key] || key}</Text>
                 <View style={s.dimTrack}>
                   <View style={[s.dimFill, { width: `${(val as number) * 10}%`, backgroundColor: getScoreColor(val as number) }]} />
                 </View>
                 <Text style={[s.dimVal, { color: getScoreColor(val as number) }]}>{val}</Text>
-              </View>
+                <Text style={s.dimHelp}>ⓘ</Text>
+              </TouchableOpacity>
             ))}
           </View>
         </FadeIn>
+
+        {/* Dimension info modal */}
+        <Modal visible={!!openDim} animationType="fade" transparent onRequestClose={() => setOpenDim(null)}>
+          <TouchableOpacity style={s.modalBackdrop} activeOpacity={1} onPress={() => setOpenDim(null)}>
+            <TouchableOpacity activeOpacity={1} style={s.modalCard} onPress={() => {}}>
+              {openDim && THREAD_DIM_INFO[openDim] && (
+                <>
+                  <Text style={s.modalTitle}>{THREAD_DIM_LABELS[openDim] || openDim}</Text>
+                  <Text style={s.modalScore}>Your score: <Text style={{ color: getScoreColor((debrief.threadScores as any)[openDim] || 0), fontWeight: typography.weight.black }}>{(debrief.threadScores as any)[openDim] || 0}/10</Text></Text>
+                  <Text style={s.modalSection}>What it measures</Text>
+                  <Text style={s.modalText}>{THREAD_DIM_INFO[openDim].what}</Text>
+                  <Text style={s.modalSection}>How to read it</Text>
+                  <Text style={s.modalText}>{THREAD_DIM_INFO[openDim].scale}</Text>
+                  <TouchableOpacity style={s.modalCloseBtn} onPress={() => setOpenDim(null)} activeOpacity={0.8}>
+                    <Text style={s.modalCloseText}>Got it</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Turn by turn */}
         <FadeIn delay={400}>
@@ -193,7 +245,7 @@ export default function DebriefScreen() {
           {turns.map((turn, i) => (
             <View key={i} style={s.convoTurn}>
               <View style={s.convoQ}>
-                <Text style={s.convoLabel}>Sharp · Turn {turn.turnNumber}</Text>
+                <Text style={s.convoLabel}>{characterName} · Turn {turn.turnNumber}</Text>
                 <Text style={s.convoText}>{turn.question}</Text>
               </View>
               <View style={s.convoA}>
@@ -261,6 +313,16 @@ const s = StyleSheet.create({
   dimTrack: { flex: 1, height: wp(8), backgroundColor: colors.borderLight, borderRadius: wp(4), marginHorizontal: wp(8), overflow: 'hidden' },
   dimFill: { height: '100%', borderRadius: wp(4) },
   dimVal: { fontSize: fp(14), fontWeight: typography.weight.black, width: wp(24), textAlign: 'right' },
+  dimHelp: { fontSize: fp(11), color: colors.text.muted, marginLeft: wp(6), width: wp(14), textAlign: 'center' },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(58,42,26,0.4)', alignItems: 'center', justifyContent: 'center', padding: layout.screenPadding },
+  modalCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, width: '100%', maxWidth: wp(380), ...shadows.lg },
+  modalTitle: { fontSize: typography.size.title, fontWeight: typography.weight.black, color: colors.text.primary, marginBottom: spacing.sm },
+  modalScore: { fontSize: typography.size.sm, color: colors.text.tertiary, marginBottom: spacing.lg },
+  modalSection: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginTop: spacing.md, marginBottom: spacing.sm },
+  modalText: { fontSize: typography.size.sm, color: colors.text.primary, lineHeight: fp(20) },
+  modalCloseBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(13), alignItems: 'center', marginTop: spacing.xl, ...shadows.accent },
+  modalCloseText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse },
 
   card: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, overflow: 'hidden', ...shadows.md },
   turnRow: { padding: spacing.lg },

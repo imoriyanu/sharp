@@ -356,6 +356,34 @@ export function trackConversationUsage(): Promise<void> {
   return Promise.resolve();
 }
 
+// Public usage snapshot for Settings / dashboard chips. Returns the today's
+// counters + applicable caps so the caller can render "2/3 used" style strings.
+// Free: weekly One Shots + Threaded cap (the biting limits). Pro: per-day caps.
+// One Shot uses the weekly counter for free (the cap that actually bites);
+// Threaded uses weekly for free (weekly cap = 0) and daily for Pro.
+export interface UsageDisplay {
+  isPremium: boolean;
+  oneShots: { used: number; cap: number };
+  threaded: { used: number; cap: number };
+  industry: { used: number; cap: number };
+}
+
+export async function getUsageDisplay(): Promise<UsageDisplay> {
+  const usage = await getUsage();
+  const limits = getLimits();
+  const pro = isPremium();
+  return {
+    isPremium: pro,
+    oneShots: pro
+      ? { used: usage.oneShots, cap: limits.oneShotsPerDay }
+      : { used: usage.oneShotsThisWeek, cap: limits.oneShotsPerWeek },
+    threaded: pro
+      ? { used: usage.threaded, cap: limits.threadedPerDay }
+      : { used: usage.threadedThisWeek, cap: limits.threadedPerWeek },
+    industry: { used: usage.industry || 0, cap: limits.industryPerDay },
+  };
+}
+
 // Regenerate is PER QUESTION — tracked in-memory, resets on new question load
 let _regenCount = 0;
 

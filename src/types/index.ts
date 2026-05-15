@@ -98,6 +98,11 @@ export interface GeneratedQuestion {
   // user. Optional for backward-compat with old generations.
   characterBrief?: string;
   skillsTested?: string[];
+  // Display name for the character in threaded mode (e.g. "Maya", "Sam",
+  // "Interviewer", "Manager"). Shown in chat bubbles + debrief turn-by-turn
+  // labels. Replaces hardcoded "Sharp" so the conversation reads like a real
+  // person, not the app. Optional — old generations + non-threaded modes ignore.
+  characterName?: string;
 }
 
 export type QuestionTarget =
@@ -265,6 +270,10 @@ export interface ThreadState {
   // character stays consistent + on the intended escalation arc.
   characterBrief?: string;
   skillsTested?: string[];
+  // Display name for the character in threaded UI (chat bubbles, debrief
+  // labels). Set at thread start from the question engine output. Falls back
+  // to "Interviewer" on old threads where this field wasn't set.
+  characterName?: string;
   // Most recent character turn from the API. Persisted so backgrounding the
   // app on the follow-up screen doesn't lose the next question (nav params
   // are ephemeral; ThreadState is not).
@@ -406,6 +415,35 @@ export interface ConversationDebrief {
   turnByTurn: { turn: number; note: string; score: number }[];
   coachingInsight: string;
   modelExchange?: string; // How an ideal version of the hardest turn would sound
+}
+
+// ===== Cross-Session Patterns =====
+// Surfaced on the analytics screen. Behavioural patterns that repeat across
+// the user's recent sessions — the meta-insights no single session can give.
+
+export interface CrossSessionPattern {
+  pattern: string;        // "You hedge 60% of your openings"
+  evidence: string[];     // 2-3 short quote-backs from real sessions
+  impact: string;         // "Drops your Concision score by ~1.5 points on average"
+  oneThing: string;       // "Open with the answer, then the reasoning"
+}
+
+export interface CrossSessionPatternReport {
+  patterns: CrossSessionPattern[];
+  sessionsAnalysed: number;
+  reason?: string;        // 'not_enough_data' when patterns is empty by design
+}
+
+// Shape the backend prompt consumes — produced by getRecentSessionSummariesForAnalysis
+export interface SessionForAnalysis {
+  type: string;
+  question: string;
+  transcript: string;
+  overall: number;
+  scores: { structure: number; concision: number; substance: number; fillerWords: number; awareness: number };
+  weakestSnippet?: { original: string; rewrite: string };
+  coachingInsight?: string;
+  date: string;
 }
 
 // ===== Coming Soon Types =====

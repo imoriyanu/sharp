@@ -3,10 +3,11 @@ import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Polyline, Circle, Line } from 'react-native-svg';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
-import { getSessions } from '../../src/services/storage';
-import type { SessionSummary } from '../../src/types';
+import { getSessions, getStreak } from '../../src/services/storage';
+import type { SessionSummary, Streak } from '../../src/types';
 
 const TYPE_LABELS: Record<string, string> = { daily_30: 'Daily', one_shot: 'One Shot', threaded: 'Threaded', duel: 'Duel', conversation: 'Conversation' };
 const TYPE_EMOJI: Record<string, string> = { daily_30: '☀️', one_shot: '⚡', threaded: '⚓', duel: '⚔️', conversation: '💬' };
@@ -14,20 +15,62 @@ const TYPE_BG: Record<string, string> = { daily_30: colors.daily.bg, threaded: c
 const FILTER_OPTIONS = ['All', 'Daily', 'One Shot', 'Threaded'] as const;
 const FILTER_MAP: Record<string, string | null> = { All: null, Daily: 'daily_30', 'One Shot': 'one_shot', Threaded: 'threaded' };
 
+// Sparkline of overall scores. Renders a smooth-ish line + dot on the latest
+// point. Older points fade so the eye lands on momentum, not noise.
+function Sparkline({ scores }: { scores: number[] }) {
+  if (scores.length < 2) return null;
+  const W = wp(295);
+  const H = wp(56);
+  const padX = 6;
+  const padY = 6;
+  const xStep = (W - padX * 2) / (scores.length - 1);
+  const yScale = (H - padY * 2) / 10;
+  const pts = scores.map((sc, i) => `${padX + i * xStep},${H - padY - sc * yScale}`).join(' ');
+  const last = scores[scores.length - 1];
+  const lastX = padX + (scores.length - 1) * xStep;
+  const lastY = H - padY - last * yScale;
+  return (
+    <Svg width={W} height={H}>
+      {/* mid reference at score 5 */}
+      <Line x1={padX} y1={H - padY - 5 * yScale} x2={W - padX} y2={H - padY - 5 * yScale} stroke={colors.borderLight} strokeWidth={1} strokeDasharray="3,3" />
+      <Polyline points={pts} stroke={colors.accent.primary} strokeWidth={2} fill="none" />
+      <Circle cx={lastX} cy={lastY} r={4} fill={colors.accent.primary} />
+    </Svg>
+  );
+}
+
 export default function HistoryScreen() {
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [streak, setStreak] = useState<Streak | null>(null);
   const [filter, setFilter] = useState<string>('All');
 
   const loadSessions = useCallback(async () => {
-    const data = await getSessions();
+    const [data, streakData] = await Promise.all([getSessions(), getStreak()]);
     setSessions(data);
+    setStreak(streakData);
   }, []);
 
   useFocusEffect(useCallback(() => { loadSessions(); }, []));
 
   const filtered = filter === 'All' ? sessions : sessions.filter(s => s.type === FILTER_MAP[filter]);
   const avgScore = filtered.length > 0 ? (filtered.reduce((sum, s) => sum + s.overall, 0) / filtered.length).toFixed(1) : null;
+
+  // Sparkline: last 14 sessions, oldest-first. Sessions list is newest-first
+  // so we reverse the slice. Skip zero scores (e.g. unscored threaded turns
+  // that snuck in pre-bugfix) so they don't drag the trend line to the floor.
+  const trendScores = filtered
+    .slice(0, 14)
+    .reverse()
+    .map(s => s.overall)
+    .filter(sc => sc > 0);
+
+  // Streak chip logic: ≥2 = celebrate, 1 = keep-it-going, 0 with history = soft CTA.
+  const currentStreak = streak?.currentStreak || 0;
+  let streakChip: { kind: 'fire' | 'soft' | 'cta'; text: string } | null = null;
+  if (currentStreak >= 2) streakChip = { kind: 'fire', text: `🔥 ${currentStreak}-day streak` };
+  else if (currentStreak === 1) streakChip = { kind: 'soft', text: 'Day 1 — keep it going' };
+  else if (sessions.length > 0) streakChip = { kind: 'cta', text: 'Start a streak — do the Daily' };
 
   const renderItem = useCallback(({ item: sess }: { item: SessionSummary }) => {
     const date = new Date(sess.createdAt);
@@ -78,6 +121,43 @@ export default function HistoryScreen() {
                 {avgScore && <Text style={s.statText}>Avg: <Text style={[s.statHighlight, { color: getScoreColor(parseFloat(avgScore)) }]}>{avgScore}</Text></Text>}
               </View>
             )}
+
+            {/* Streak chip — celebrates momentum or nudges back into the daily habit */}
+            {streakChip && (
+              <TouchableOpacity
+                style={[
+                  s.streakChip,
+                  streakChip.kind === 'fire' && s.streakChipFire,
+                  streakChip.kind === 'soft' && s.streakChipSoft,
+                  streakChip.kind === 'cta' && s.streakChipCta,
+                ]}
+                onPress={() => router.push(streakChip.kind === 'cta' ? '/daily/challenge' : '/streak')}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  s.streakChipText,
+                  streakChip.kind === 'fire' && s.streakChipTextFire,
+                  streakChip.kind !== 'fire' && s.streakChipTextSoft,
+                ]}>{streakChip.text}</Text>
+                <Text style={[s.streakChipArrow, streakChip.kind === 'fire' ? s.streakChipTextFire : s.streakChipTextSoft]}>→</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Trend sparkline — last 14 overall scores, tap to open full analytics */}
+            {trendScores.length >= 2 && (
+              <TouchableOpacity style={s.trendCard} onPress={() => router.push('/analytics')} activeOpacity={0.8}>
+                <View style={s.trendHeader}>
+                  <Text style={s.trendLabel}>Score trend</Text>
+                  <Text style={s.trendRange}>{trendScores.length} sessions</Text>
+                </View>
+                <Sparkline scores={trendScores} />
+                <View style={s.trendFooter}>
+                  <Text style={s.trendAxis}>Oldest</Text>
+                  <Text style={s.trendAxis}>Latest: <Text style={{ color: getScoreColor(trendScores[trendScores.length - 1]), fontWeight: typography.weight.black }}>{trendScores[trendScores.length - 1].toFixed(1)}</Text></Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             {sessions.length > 3 && (
               <View style={s.filterRow}>
                 {FILTER_OPTIONS.map(f => (
@@ -111,6 +191,22 @@ const s = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: spacing.lg, marginTop: wp(3), marginBottom: spacing.md },
   statText: { fontSize: typography.size.sm, color: colors.text.muted },
   statHighlight: { fontWeight: typography.weight.black },
+
+  streakChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: radius.pill, paddingVertical: wp(10), paddingHorizontal: wp(16), marginBottom: spacing.md, ...shadows.sm },
+  streakChipFire: { backgroundColor: colors.daily.bg, borderWidth: 1.5, borderColor: colors.daily.border },
+  streakChipSoft: { backgroundColor: colors.feedback.positiveBg, borderWidth: 1.5, borderColor: colors.feedback.positiveBorder },
+  streakChipCta: { backgroundColor: colors.bg.secondary, borderWidth: 1.5, borderColor: colors.borderLight },
+  streakChipText: { fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  streakChipTextFire: { color: colors.accent.primary },
+  streakChipTextSoft: { color: colors.text.secondary },
+  streakChipArrow: { fontSize: fp(14), fontWeight: typography.weight.bold },
+
+  trendCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm },
+  trendHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+  trendLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5 },
+  trendRange: { fontSize: fp(10), color: colors.text.muted },
+  trendFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm },
+  trendAxis: { fontSize: fp(10), color: colors.text.muted },
 
   filterRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   filterChip: { paddingHorizontal: wp(14), paddingVertical: wp(7), borderRadius: radius.pill, backgroundColor: colors.bg.tertiary },

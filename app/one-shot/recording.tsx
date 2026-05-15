@@ -233,6 +233,7 @@ export default function RecordingScreen() {
             params: {
               debrief: JSON.stringify(debrief),
               turns: JSON.stringify(thread.turns),
+              ...(thread.characterName ? { characterName: thread.characterName } : {}),
             },
           });
         } else {
