@@ -101,7 +101,23 @@ export default function QuestionScreen() {
     } catch (e: any) {
       if (e?.name === 'AbortError') return;
       __DEV__ && console.error('Question load error:', e);
-      const fallback: GeneratedQuestion = { question: "Tell me about a project you're most proud of and why.", reasoning: '', targets: 'substance', difficulty: 5, contextUsed: [] };
+      // Richer fallback — includes the scene-bible fields so threaded mode
+      // survives a fallback path without showing "Interviewer" everywhere.
+      // The fallback never gets cached for industry (industry should always
+      // hit the news pipeline; force a fresh attempt on retry).
+      const ctx = await getContext().catch(() => null);
+      const fallback: GeneratedQuestion = {
+        question: ctx?.roleText
+          ? `Tell me about a project you've led recently. What's the part you're still thinking about?`
+          : `Tell me about a challenge you handled this year. What's the part you're still thinking about?`,
+        characterBrief: 'Engaged interviewer. Listens for specifics. Probes vague claims. Stays warm but direct. Pushes back gently if the answer drifts to abstractions.',
+        skillsTested: ['storytelling under pressure', 'concrete detail', 'reflective awareness'],
+        characterName: 'Interviewer',
+        reasoning: 'Fallback question (network or generation issue)',
+        targets: 'substance',
+        difficulty: 5,
+        contextUsed: [],
+      };
       if (isIndustry) await cacheIndustryQuestion(fallback);
       else if (isThreaded) await cacheThreadedQuestion(fallback);
       else await cacheOneShotQuestion(fallback);

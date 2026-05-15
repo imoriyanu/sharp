@@ -171,10 +171,14 @@ export default function RecordingScreen() {
           return;
         }
 
-        // Add this turn
+        // Build the NEXT thread state without persisting yet. If the API call
+        // fails, we leave the on-disk thread intact so the user can retry
+        // without seeing a half-saved turn.
         const turnNumber = thread.turns.length + 1;
-        thread.turns.push({ turnNumber, question: params.question || '', transcript });
-        await saveThreadState(thread);
+        const nextThread = {
+          ...thread,
+          turns: [...thread.turns, { turnNumber, question: params.question || '', transcript }],
+        };
 
         const MAX_TURNS = 4;
 
@@ -184,30 +188,42 @@ export default function RecordingScreen() {
           await trackThreadedUsage();
           await clearThreadedQuestionCache();
 
-          const debrief = await generateDebrief({
-            roleText: ctx?.roleText || '',
-            currentCompany: ctx?.currentCompany || '',
-            situationText: ctx?.situationText || '',
-            dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
-            notes: ctx?.notes || '',
-            documentExtractions,
-            scenario: thread.originalQuestion,
-            turns: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
-            // Scene-bible context for the coach: tie feedback back to user
-            // stated goals + explain why the scene unfolded as it did.
-            ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
-            ...(thread.skillsTested ? { skillsTested: thread.skillsTested } : {}),
-            // Reaction trail: the coach reads each move the character made +
-            // the signals it read. Lets debrief quote-back the conversation
-            // rather than producing generic praise.
-            ...(thread.reactionHistory && thread.reactionHistory.length > 0 ? { reactionHistory: thread.reactionHistory } : {}),
-          });
+          let debrief;
+          try {
+            debrief = await generateDebrief({
+              roleText: ctx?.roleText || '',
+              currentCompany: ctx?.currentCompany || '',
+              situationText: ctx?.situationText || '',
+              dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+              notes: ctx?.notes || '',
+              documentExtractions,
+              scenario: thread.originalQuestion,
+              turns: nextThread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
+              // Scene-bible context for the coach: tie feedback back to user
+              // stated goals + explain why the scene unfolded as it did.
+              ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
+              ...(thread.skillsTested ? { skillsTested: thread.skillsTested } : {}),
+              // Reaction trail: the coach reads each move the character made +
+              // the signals it read. Lets debrief quote-back the conversation
+              // rather than producing generic praise.
+              ...(thread.reactionHistory && thread.reactionHistory.length > 0 ? { reactionHistory: thread.reactionHistory } : {}),
+            });
+          } catch (e: any) {
+            captureError(e, { where: 'threaded.debrief.generation' });
+            if (mountedRef.current) {
+              setRetryReason("Couldn't analyse the conversation. Your recording is safe — try again?");
+              setProcessing(false);
+              stoppingRef.current = false;
+            }
+            return;
+          }
 
           // Save + clear in parallel; failures logged but don't gate navigation.
+          // (Debrief succeeded, so we persist the full thread now.)
           const threadSaves = await Promise.allSettled([
             saveSession({
               id: generateId(), type: 'threaded', scenario: thread.originalQuestion.slice(0, 50),
-              turns: thread.turns.map(t => ({
+              turns: nextThread.turns.map(t => ({
                 id: generateId(), turnNumber: t.turnNumber, question: t.question,
                 questionReasoning: '', questionTargets: 'substance' as const, questionDifficulty: 5,
                 transcript: t.transcript, scores: { structure: 0, concision: 0, substance: 0, fillerWords: 0, awareness: 0 },
@@ -232,7 +248,7 @@ export default function RecordingScreen() {
             pathname: '/threaded/debrief',
             params: {
               debrief: JSON.stringify(debrief),
-              turns: JSON.stringify(thread.turns),
+              turns: JSON.stringify(nextThread.turns),
               ...(thread.characterName ? { characterName: thread.characterName } : {}),
             },
           });
@@ -240,25 +256,36 @@ export default function RecordingScreen() {
           // Not final — generate follow-up
           if (mountedRef.current) setProcessingMsg('Sharp is thinking about your response...');
 
-          const followUp = await generateFollowUp({
-            roleText: ctx?.roleText || '',
-            currentCompany: ctx?.currentCompany || '',
-            situationText: ctx?.situationText || '',
-            dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
-            notes: ctx?.notes || '',
-            documentExtractions,
-            originalQuestion: thread.originalQuestion,
-            previousTranscripts: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
-            turnNumber: turnNumber + 1,
-            // Scene-bible direction: passed in from thread state so the
-            // character agent stays consistent across turns. Sandboxed —
-            // the character reads this, not the raw user context.
-            ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
-            // Reaction memory: lets the character escalate (clarification →
-            // probe → silence → surface-acceptance) instead of repeating
-            // the same move when the same weakness recurs.
-            ...(thread.reactionHistory && thread.reactionHistory.length > 0 ? { reactionHistory: thread.reactionHistory } : {}),
-          });
+          let followUp;
+          try {
+            followUp = await generateFollowUp({
+              roleText: ctx?.roleText || '',
+              currentCompany: ctx?.currentCompany || '',
+              situationText: ctx?.situationText || '',
+              dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
+              notes: ctx?.notes || '',
+              documentExtractions,
+              originalQuestion: thread.originalQuestion,
+              previousTranscripts: nextThread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
+              turnNumber: turnNumber + 1,
+              // Scene-bible direction: passed in from thread state so the
+              // character agent stays consistent across turns. Sandboxed —
+              // the character reads this, not the raw user context.
+              ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
+              // Reaction memory: lets the character escalate (clarification →
+              // probe → silence → surface-acceptance) instead of repeating
+              // the same move when the same weakness recurs.
+              ...(thread.reactionHistory && thread.reactionHistory.length > 0 ? { reactionHistory: thread.reactionHistory } : {}),
+            });
+          } catch (e: any) {
+            captureError(e, { where: 'threaded.followUp.generation' });
+            if (mountedRef.current) {
+              setRetryReason("Couldn't generate the next question. Your turn is saved — try again?");
+              setProcessing(false);
+              stoppingRef.current = false;
+            }
+            return;
+          }
 
           // Pre-fetch follow-up audio immediately — kicks off TTS download
           // in parallel with the navigation transition + screen mount so
@@ -279,8 +306,11 @@ export default function RecordingScreen() {
                   pressureLevel: followUp.pressureLevel,
                 }]
               : [];
+            // Persist nextThread (includes the user's just-recorded turn) so the
+            // follow-up screen reads the latest state. Previously persisted the
+            // stale `thread` reference, which silently lost the turn on backgrounding.
             await saveThreadState({
-              ...thread,
+              ...nextThread,
               pendingCharacterTurn: {
                 reaction: followUp.reaction || '',
                 followUp: followUp.followUp || '',
@@ -303,7 +333,7 @@ export default function RecordingScreen() {
               targeting: followUp.targeting,
               pressureLevel: followUp.pressureLevel || 'probing',
               turnNumber: String(turnNumber + 1),
-              turns: JSON.stringify(thread.turns),
+              turns: JSON.stringify(nextThread.turns),
             },
           });
         }

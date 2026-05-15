@@ -160,12 +160,14 @@ const MODELS = {
   HAIKU:  'claude-haiku-4-5-20251001',
 };
 
-async function callClaude(prompt, maxTokens = 1500, { cacheSystem, model = MODELS.SONNET } = {}) {
+// timeoutMs default 30s; callers that need longer (industry research, threaded
+// follow-up with potential regen, debrief on Sonnet) override per call.
+async function callClaude(prompt, maxTokens = 1500, { cacheSystem, model = MODELS.SONNET, timeoutMs = 30000 } = {}) {
   resetUsageIfNewDay();
   apiUsage.anthropic.calls++;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     // If cacheSystem provided, send it as a cached system block (~90% input
     // cost reduction for the static scoring prompt).
@@ -194,23 +196,29 @@ async function callClaude(prompt, maxTokens = 1500, { cacheSystem, model = MODEL
       .map(block => block.text)
       .join('');
 
-    // Parse JSON response — robust extraction
+    // Parse JSON response — robust extraction. Logs which phase failed so we
+    // can debug "Invalid JSON" reports in production. Throws a typed error
+    // (code: CLAUDE_PARSE_FAILURE) so endpoints can decide whether to retry.
     const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     try {
       return JSON.parse(cleaned);
-    } catch {
-      // Try extracting JSON object from the text (Claude sometimes adds text before/after)
+    } catch (e1) {
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch {}
+        try { return JSON.parse(jsonMatch[0]); } catch {}
       }
-      logError('Failed to parse Claude response:', cleaned.slice(0, 500));
-      throw new Error('Invalid JSON response from Claude');
+      logError(`Claude JSON parse failure — model=${model}, length=${cleaned.length}, first500=${cleaned.slice(0, 500)}`);
+      const err = new Error('CLAUDE_PARSE_FAILURE');
+      err.code = 'CLAUDE_PARSE_FAILURE';
+      err.raw = cleaned.slice(0, 1000);
+      throw err;
     }
   } catch (e) {
     apiUsage.anthropic.errors++;
+    // Tag aborts so callers can distinguish timeout from parse failure.
+    if (e?.name === 'AbortError' && !e.code) {
+      e.code = 'CLAUDE_TIMEOUT';
+    }
     throw e;
   }
 }
@@ -477,6 +485,22 @@ app.get('/api/daily-question', async (req, res) => {
 
 // ===== Question Engine =====
 
+// Required output fields for a question. Threaded mode breaks silently if any
+// of these are missing (characterBrief drives the character agent in turns 2-4;
+// characterName is the chat bubble label; skillsTested powers debrief tie-back).
+// Haiku occasionally drops these — validate + retry-with-reinforcement (same
+// pattern as coach-tells regen in /api/threaded/follow-up).
+const REQUIRED_Q_FIELDS = ['question', 'characterBrief', 'skillsTested', 'characterName'];
+
+function questionMissingFields(result) {
+  if (!result || typeof result !== 'object') return REQUIRED_Q_FIELDS.slice();
+  return REQUIRED_Q_FIELDS.filter(f => {
+    const v = result[f];
+    if (f === 'skillsTested') return !Array.isArray(v) || v.length === 0;
+    return !v || (typeof v === 'string' && v.trim().length === 0);
+  });
+}
+
 app.post('/api/question/generate', async (req, res) => {
   try {
     if (!req.body || typeof req.body !== 'object') {
@@ -494,10 +518,24 @@ app.post('/api/question/generate', async (req, res) => {
     }
 
     const prompt = prompts.questionEnginePrompt(req.body);
-    const tokens = req.body.forceFormat === 'industry' ? 1500 : 1200;
+    const isIndustry = req.body.forceFormat === 'industry';
+    const tokens = isIndustry ? 1500 : 1200;
+    // Industry path needs more headroom — news research already ate 5-10s.
+    const timeoutMs = isIndustry ? 45000 : 30000;
     // Haiku: question generation is formulaic and high-volume. Per-call
     // savings ~12×; quality drop negligible per the audit.
-    const result = await callClaude(prompt, tokens, { model: MODELS.HAIKU });
+    let result = await callClaude(prompt, tokens, { model: MODELS.HAIKU, timeoutMs });
+    let missing = questionMissingFields(result);
+    if (missing.length > 0) {
+      logError(`Question response missing fields: ${missing.join(', ')} — retrying with reinforcement`);
+      const retryPrompt = `${prompt}\n\nIMPORTANT: Your previous response was missing required fields: ${missing.join(', ')}. Return ONLY valid JSON with ALL required fields populated. Re-read the ALWAYS INCLUDE section.`;
+      result = await callClaude(retryPrompt, tokens, { model: MODELS.HAIKU, timeoutMs });
+      missing = questionMissingFields(result);
+    }
+    if (missing.length > 0) {
+      logError(`Question still missing fields after retry: ${missing.join(', ')}`);
+      return res.status(502).json({ error: 'Question generation failed validation. Please try again.', missing });
+    }
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Question generation');
@@ -615,13 +653,14 @@ app.post('/api/threaded/follow-up', async (req, res) => {
     const prompt = prompts.followUpPrompt(req.body);
     // Haiku for cost/latency — character agent prompt is structured enough
     // that Haiku stays in voice on the happy path; the regex catches the
-    // rare drift and re-rolls once.
-    let result = await callClaude(prompt, 400, { model: MODELS.HAIKU });
+    // rare drift and re-rolls once. 45s timeout covers the worst case where
+    // both the initial call AND the regen call need to fire.
+    let result = await callClaude(prompt, 400, { model: MODELS.HAIKU, timeoutMs: 45000 });
     let regenFired = false;
     if (looksLikeCoach(result?.followUp) || looksLikeCoach(result?.reaction)) {
       regenFired = true;
       const retryPrompt = prompt + '\n\nIMPORTANT: Your previous response broke character with coach-like or meta language. Try again, speaking ONLY as the person in the scene, never as an AI, coach, or narrator. No "great question", no references to "the exercise" or "the scene", no thanking the user. Stay in voice.';
-      result = await callClaude(retryPrompt, 400, { model: MODELS.HAIKU });
+      result = await callClaude(retryPrompt, 400, { model: MODELS.HAIKU, timeoutMs: 45000 });
     }
     // Phase 6: observability. Fire-and-forget so failures don't gate the response.
     try {
@@ -663,7 +702,7 @@ app.post('/api/v2/threaded/follow-up', async (req, res) => {
     // If userId is unverified, fall through to v1 immediately — no agent retrieval.
     if (!userId) {
       const prompt = prompts.followUpPrompt(req.body);
-      const result = await callClaude(prompt, 400, { model: MODELS.HAIKU });
+      const result = await callClaude(prompt, 400, { model: MODELS.HAIKU, timeoutMs: 45000 });
       return res.json(result);
     }
 
@@ -680,7 +719,7 @@ app.post('/api/v2/threaded/follow-up', async (req, res) => {
       // never sees a broken thread mid-session. Logged for investigation.
       logError('Agentic follow-up failed, falling back to v1:', agentError);
       const prompt = prompts.followUpPrompt(req.body);
-      const result = await callClaude(prompt, 400, { model: MODELS.HAIKU });
+      const result = await callClaude(prompt, 400, { model: MODELS.HAIKU, timeoutMs: 45000 });
       res.json(result);
     }
   } catch (error) {
@@ -692,11 +731,21 @@ app.post('/api/v2/threaded/follow-up', async (req, res) => {
 
 app.post('/api/threaded/debrief', async (req, res) => {
   try {
-    if (!req.body?.turns || !Array.isArray(req.body.turns)) {
-      return res.status(400).json({ error: 'turns array is required' });
+    const turns = req.body?.turns;
+    if (!Array.isArray(turns) || turns.length === 0) {
+      return res.status(400).json({ error: 'turns array is required and non-empty' });
+    }
+    // Structural validation — return a clean 400 with a specific message
+    // rather than crashing inside the prompt builder.
+    for (let i = 0; i < turns.length; i++) {
+      const t = turns[i];
+      if (!t || typeof t !== 'object' || typeof t.question !== 'string' || typeof t.transcript !== 'string' || !t.question.trim() || !t.transcript.trim()) {
+        return res.status(400).json({ error: `Turn ${i + 1} is missing question or transcript` });
+      }
     }
     const prompt = prompts.debriefPrompt(req.body);
-    const result = await callClaude(prompt, 2000);
+    // Sonnet at 2000 tokens — 35s gives a small margin over typical ~20s.
+    const result = await callClaude(prompt, 2000, { timeoutMs: 35000 });
     res.json(result);
   } catch (error) {
     sendError(res, 500, error, 'Debrief');

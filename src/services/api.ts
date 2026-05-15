@@ -8,7 +8,13 @@ const PROD_API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://sharp-produ
 // To use local backend in dev, start it with: cd backend && node server.js
 const API_BASE = PROD_API_URL;
 
-const DEFAULT_TIMEOUT = 45_000; // 45s
+const DEFAULT_TIMEOUT = 50_000; // 50s — covers server-side 45s with 5s buffer
+
+// Status codes worth a retry: transient infrastructure issues (rate limit,
+// gateway, capacity). 4xx other than 429 are deterministic and not retried.
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+const BACKOFF_MS = [500, 1500]; // attempt 1 → 500ms, attempt 2 → 1500ms
 
 function withTimeout(signal?: AbortSignal, ms = DEFAULT_TIMEOUT): { signal: AbortSignal; cleanup: () => void } {
   const controller = new AbortController();
@@ -40,29 +46,54 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
 }
 
 export async function apiPost<T>(endpoint: string, body: any, signal?: AbortSignal): Promise<T> {
-  const { signal: combined, cleanup } = withTimeout(signal);
-  try {
-    const authHeaders = await buildAuthHeaders();
-    const response = await fetch(`${API_BASE}/api${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders },
-      body: JSON.stringify(body),
-      signal: combined,
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(error.error || `API error: ${response.status}`);
+  // Per-attempt timeout (each retry gets its own 50s budget). User abort still
+  // propagates through to all attempts via the shared external signal.
+  const userAborted = () => signal?.aborted ?? false;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (userAborted()) throw new DOMException('Aborted', 'AbortError');
+    const { signal: combined, cleanup } = withTimeout(signal);
+    try {
+      const authHeaders = await buildAuthHeaders();
+      const response = await fetch(`${API_BASE}/api${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify(body),
+        signal: combined,
+      });
+      if (!response.ok) {
+        // Retry on transient infrastructure failures only. Deterministic 4xx
+        // (400/401/403/404) propagate immediately.
+        if (RETRYABLE_STATUS.has(response.status) && attempt < MAX_ATTEMPTS - 1) {
+          lastError = new Error(`API error: ${response.status}`);
+          cleanup();
+          await new Promise(r => setTimeout(r, BACKOFF_MS[attempt]));
+          continue;
+        }
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || `API error: ${response.status}`);
+      }
+      // Some endpoints (e.g. /account/delete) return 204 No Content. Calling
+      // response.json() on an empty body throws "Unexpected end of input",
+      // so read raw text and parse only when there's something there.
+      if (response.status === 204) return {} as T;
+      const text = await response.text();
+      if (!text) return {} as T;
+      try { return JSON.parse(text) as T; } catch { return {} as T; }
+    } catch (e: any) {
+      lastError = e;
+      // Don't retry user-initiated aborts or non-retryable errors
+      const isAbort = e?.name === 'AbortError';
+      if (userAborted()) throw e;
+      // Server-side timeout surfaces as AbortError on the client; treat as retryable
+      const retryable = isAbort || /network|failed to fetch|timeout/i.test(e?.message || '');
+      if (!retryable || attempt === MAX_ATTEMPTS - 1) throw e;
+      await new Promise(r => setTimeout(r, BACKOFF_MS[attempt]));
+    } finally {
+      cleanup();
     }
-    // Some endpoints (e.g. /account/delete) return 204 No Content. Calling
-    // response.json() on an empty body throws "Unexpected end of input",
-    // so read raw text and parse only when there's something there.
-    if (response.status === 204) return {} as T;
-    const text = await response.text();
-    if (!text) return {} as T;
-    try { return JSON.parse(text) as T; } catch { return {} as T; }
-  } finally {
-    cleanup();
   }
+  throw lastError instanceof Error ? lastError : new Error('Unreachable retry exhaustion');
 }
 
 // Fetches { features, version } from /api/config and applies feature flags.
