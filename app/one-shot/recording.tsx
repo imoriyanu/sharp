@@ -197,6 +197,10 @@ export default function RecordingScreen() {
             // stated goals + explain why the scene unfolded as it did.
             ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
             ...(thread.skillsTested ? { skillsTested: thread.skillsTested } : {}),
+            // Reaction trail: the coach reads each move the character made +
+            // the signals it read. Lets debrief quote-back the conversation
+            // rather than producing generic praise.
+            ...(thread.reactionHistory && thread.reactionHistory.length > 0 ? { reactionHistory: thread.reactionHistory } : {}),
           });
 
           // Save + clear in parallel; failures logged but don't gate navigation.
@@ -249,6 +253,10 @@ export default function RecordingScreen() {
             // character agent stays consistent across turns. Sandboxed —
             // the character reads this, not the raw user context.
             ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
+            // Reaction memory: lets the character escalate (clarification →
+            // probe → silence → surface-acceptance) instead of repeating
+            // the same move when the same weakness recurs.
+            ...(thread.reactionHistory && thread.reactionHistory.length > 0 ? { reactionHistory: thread.reactionHistory } : {}),
           });
 
           // Pre-fetch follow-up audio immediately — kicks off TTS download
@@ -260,7 +268,16 @@ export default function RecordingScreen() {
           // Persist the pending character turn in ThreadState so backgrounding
           // the app on the follow-up screen doesn't lose the question. The
           // follow-up screen reads from ThreadState first, nav params as fallback.
+          // Also append to reactionHistory so the next follow-up call can
+          // escalate rather than repeat the same move.
           try {
+            const newTrailEntry = followUp.reactionType && followUp.signalRead
+              ? [{
+                  reactionType: followUp.reactionType,
+                  signalRead: followUp.signalRead,
+                  pressureLevel: followUp.pressureLevel,
+                }]
+              : [];
             await saveThreadState({
               ...thread,
               pendingCharacterTurn: {
@@ -268,7 +285,10 @@ export default function RecordingScreen() {
                 followUp: followUp.followUp || '',
                 pressureLevel: followUp.pressureLevel || 'depth',
                 targeting: followUp.targeting,
+                ...(followUp.signalRead ? { signalRead: followUp.signalRead } : {}),
+                ...(followUp.reactionType ? { reactionType: followUp.reactionType } : {}),
               },
+              reactionHistory: [...(thread.reactionHistory || []), ...newTrailEntry],
             });
           } catch (_) { /* non-fatal — nav params are a fallback */ }
 

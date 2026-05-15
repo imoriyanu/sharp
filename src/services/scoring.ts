@@ -1,6 +1,6 @@
 import { apiPost } from './api';
 import { FEATURES } from '../constants/features';
-import type { ScoringResult, UserContext, GeneratedQuestion, FollowUp, ThreadDebrief } from '../types';
+import type { ScoringResult, UserContext, GeneratedQuestion, FollowUp, ThreadDebrief, ReactionTrailEntry } from '../types';
 
 // Note: userId is no longer passed in request bodies — the backend verifies
 // the user from the Authorization header attached by apiPost in api.ts.
@@ -136,8 +136,12 @@ export async function generateFollowUp(params: {
   // context (which the character must not know about), only the translated
   // behavioural direction from the question engine.
   characterBrief?: string;
+  // Trail of reactions the character has already fired in this scene.
+  // Empty / absent on first follow-up. Lets the character escalate (avoid
+  // repeating the same move when the same weakness recurs).
+  reactionHistory?: ReactionTrailEntry[];
 }): Promise<FollowUp> {
-  const { previousTranscripts, originalQuestion, sessionId, characterBrief, ...rest } = params;
+  const { previousTranscripts, originalQuestion, sessionId, characterBrief, reactionHistory, ...rest } = params;
   const lastTranscript = previousTranscripts[previousTranscripts.length - 1]?.transcript || '';
   const endpoint = FEATURES.agenticThreaded ? '/v2/threaded/follow-up' : '/threaded/follow-up';
   return apiPost(endpoint, {
@@ -149,6 +153,7 @@ export async function generateFollowUp(params: {
     turnNumber: params.turnNumber,
     ...(sessionId ? { sessionId } : {}),
     ...(characterBrief ? { characterBrief } : {}),
+    ...(reactionHistory && reactionHistory.length > 0 ? { reactionHistory } : {}),
   });
 }
 
@@ -174,6 +179,9 @@ export async function generateDebrief(params: {
   // was sandboxed; the coach is not.
   characterBrief?: string;
   skillsTested?: string[];
+  // Reaction trail across the scene. Coach uses this to quote-back the
+  // conversation rather than producing generic praise.
+  reactionHistory?: ReactionTrailEntry[];
 }): Promise<ThreadDebrief> {
   return apiPost('/threaded/debrief', params);
 }

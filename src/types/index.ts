@@ -208,6 +208,46 @@ export interface FollowUp {
   followUp: string;
   targeting: string;
   pressureLevel: 'depth' | 'clarity' | 'challenge' | 'perspective' | 'stakes' | 'accountability';
+  // Scene reaction-system fields (additive; optional for backwards compat with
+  // pre-redesign API responses). The character's read of the user's last turn
+  // on 5 signals + the taxonomy label of the move it just made.
+  signalRead?: ReactionSignalRead;
+  reactionType?: ReactionType;
+}
+
+export interface ReactionSignalRead {
+  presence:    'strong' | 'weak';
+  specificity: 'strong' | 'weak';
+  restraint:   'strong' | 'weak';
+  listening:   'strong' | 'weak';
+  toneFit:     'strong' | 'weak';
+}
+
+export type ReactionType =
+  // Pressure
+  | 'pushback'
+  | 'clarification-request'
+  | 'premise-challenge'
+  | 'probe'
+  | 'silence-as-turn'
+  | 'surface-acceptance'
+  | 'defensiveness'
+  | 'withdrawal'
+  // Affirming
+  | 'visible-relief'
+  | 'voluntary-depth'
+  | 'naming-what-landed'
+  | 'reciprocal-vulnerability'
+  | 'trust-extension'
+  // Combinations (default for realistic conversation)
+  | 'agreement-plus-complication'
+  | 'pushback-as-intimacy'
+  | 'acknowledgment-plus-new-pressure';
+
+export interface ReactionTrailEntry {
+  reactionType: ReactionType;
+  signalRead: ReactionSignalRead;
+  pressureLevel?: string;
 }
 
 export interface ThreadTurn {
@@ -233,7 +273,14 @@ export interface ThreadState {
     followUp: string;
     pressureLevel: string;
     targeting?: string;
+    signalRead?: ReactionSignalRead;
+    reactionType?: ReactionType;
   };
+  // Trail of reactions the character has fired across the thread. Each entry
+  // captures what move was made + the signals the character read. Used so the
+  // next follow-up call can escalate rather than repeat, and so the debrief
+  // coach can quote the trail back to the user.
+  reactionHistory?: ReactionTrailEntry[];
 }
 
 // ===== Daily 30 Types =====
