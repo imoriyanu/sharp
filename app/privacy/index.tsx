@@ -41,7 +41,7 @@ export default function PrivacyPolicyScreen() {
         </Section>
 
         <Section title="AI Processing & Consent">
-          {`Before any of your data is sent to a third-party AI service, Sharp shows you a consent screen describing exactly what is sent, who it is sent to, and why. You must explicitly tap "Continue" before any AI call is made. You can revoke consent at any time by deleting your account in Settings.
+          {`Before any of your data is sent to a third-party AI service, Sharp shows you a consent screen describing exactly what is sent, who it is sent to, and why. You must explicitly tap "Allow" before any AI call is made. If you tap "Don't allow", no data is sent to any AI provider and you cannot use the practice features. You can revoke consent at any time by deleting your account in Settings.
 
 When you consent, the following data is sent to the providers below for processing:
 • Your audio recording → Groq (for transcription, then deleted)
