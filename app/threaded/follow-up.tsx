@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { FadeIn, AudioWaveBars } from '../../src/components/Animations';
 import { stopAudio, playFollowUpAudio } from '../../src/services/tts';
+import { getThreadState } from '../../src/services/storage';
 import type { ThreadTurn } from '../../src/types';
 
 function safeParse<T>(json: string | undefined, fallback: T): T {
@@ -32,26 +33,64 @@ export default function FollowUpScreen() {
   }>();
   const [speaking, setSpeaking] = useState(false);
   const [textOnly, setTextOnly] = useState(false);
+  // ThreadState is the source of truth for the pending character turn —
+  // nav params are a fast-path fallback. If the user backgrounds the app
+  // and returns, nav params may be lost but ThreadState persists.
+  const [resolved, setResolved] = useState<{
+    reaction: string; question: string; pressureLevel: string; turns: ThreadTurn[]; turnNumber: number;
+  } | null>(null);
   const mountedRef = useRef(true);
   const scrollRef = useRef<ScrollView>(null);
 
-  const turnNum = parseInt(p.turnNumber || '2');
-  const turns = safeParse<ThreadTurn[]>(p.turns, []);
-  const pressure = STYLE_LABELS[p.pressureLevel || 'depth'] || STYLE_LABELS.depth;
-
   useEffect(() => {
     mountedRef.current = true;
-    speakReactionAndQuestion();
+    resolveFromStateOrParams();
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
 
-  async function speakReactionAndQuestion() {
-    const spoken = `${p.reaction || ''} ${p.question || ''}`.trim();
+  async function resolveFromStateOrParams() {
+    // Try ThreadState first (background-survival path)
+    try {
+      const state = await getThreadState();
+      if (state?.pendingCharacterTurn) {
+        const turnNumber = (state.turns?.length || 0) + 1;
+        const r = {
+          reaction: state.pendingCharacterTurn.reaction || '',
+          question: state.pendingCharacterTurn.followUp || p.question || '',
+          pressureLevel: state.pendingCharacterTurn.pressureLevel || p.pressureLevel || 'depth',
+          turns: state.turns || [],
+          turnNumber,
+        };
+        if (mountedRef.current) setResolved(r);
+        speakReactionAndQuestion(r.reaction, r.question);
+        return;
+      }
+    } catch (_) { /* fall through to nav params */ }
+
+    // Fallback: nav params (fast path on direct navigation from recording.tsx)
+    const r = {
+      reaction: p.reaction || '',
+      question: p.question || '',
+      pressureLevel: p.pressureLevel || 'depth',
+      turns: safeParse<ThreadTurn[]>(p.turns, []),
+      turnNumber: parseInt(p.turnNumber || '2'),
+    };
+    if (mountedRef.current) setResolved(r);
+    speakReactionAndQuestion(r.reaction, r.question);
+  }
+
+  async function speakReactionAndQuestion(reaction: string, question: string) {
+    const spoken = `${reaction || ''} ${question || ''}`.trim();
     if (!spoken) return;
     setSpeaking(true);
     const played = await playFollowUpAudio(spoken).catch(() => false);
     if (mountedRef.current) { setSpeaking(false); if (!played) setTextOnly(true); }
   }
+
+  // Computed shorthand for render
+  const turnNum = resolved?.turnNumber ?? parseInt(p.turnNumber || '2');
+  const turns = resolved?.turns ?? safeParse<ThreadTurn[]>(p.turns, []);
+  const pressure = STYLE_LABELS[resolved?.pressureLevel || p.pressureLevel || 'depth'] || STYLE_LABELS.depth;
 
   return (
     <SafeAreaView style={s.safe}>
@@ -89,11 +128,11 @@ export default function FollowUpScreen() {
           ))}
 
           {/* Reaction */}
-          {p.reaction ? (
+          {(resolved?.reaction || p.reaction) ? (
             <FadeIn delay={200}>
               <View style={s.reactionBubble}>
                 <Text style={s.bubbleLabel}>Sharp</Text>
-                <Text style={s.reactionText}>{p.reaction}</Text>
+                <Text style={s.reactionText}>{resolved?.reaction || p.reaction}</Text>
               </View>
             </FadeIn>
           ) : null}
@@ -101,7 +140,7 @@ export default function FollowUpScreen() {
           {/* Follow-up question */}
           <FadeIn delay={400}>
             <View style={s.questionBubble}>
-              <Text style={s.questionText}>{p.question}</Text>
+              <Text style={s.questionText}>{resolved?.question || p.question}</Text>
             </View>
           </FadeIn>
 
@@ -127,7 +166,7 @@ export default function FollowUpScreen() {
           ) : (
             <>
               {!textOnly && (
-                <TouchableOpacity style={s.replayBtn} onPress={speakReactionAndQuestion} activeOpacity={0.7}>
+                <TouchableOpacity style={s.replayBtn} onPress={() => speakReactionAndQuestion(resolved?.reaction || p.reaction || '', resolved?.question || p.question || '')} activeOpacity={0.7}>
                   <Text style={s.replayText}>🔊 Replay</Text>
                 </TouchableOpacity>
               )}
@@ -135,7 +174,7 @@ export default function FollowUpScreen() {
                 style={s.recordBtn}
                 onPress={() => router.push({
                   pathname: '/one-shot/recording',
-                  params: { question: p.question || '', mode: 'threaded', timerSeconds: '90' },
+                  params: { question: resolved?.question || p.question || '', mode: 'threaded', timerSeconds: '90' },
                 })}
                 activeOpacity={0.8}
               >

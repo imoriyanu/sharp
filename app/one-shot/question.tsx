@@ -262,7 +262,17 @@ export default function QuestionScreen() {
             onPress={async () => {
               if (isThreaded && question) {
                 await clearThreadState();
-                await saveThreadState({ originalQuestion: question.question, turns: [], startedAt: new Date().toISOString() });
+                await saveThreadState({
+                  originalQuestion: question.question,
+                  turns: [],
+                  startedAt: new Date().toISOString(),
+                  // Scene-bible direction from the question engine. Internal
+                  // direction used by the character agent in turns 2-4; never
+                  // shown to user. Used by debrief coach to tie feedback back
+                  // to stated goals.
+                  ...(question.characterBrief ? { characterBrief: question.characterBrief } : {}),
+                  ...(question.skillsTested ? { skillsTested: question.skillsTested } : {}),
+                });
               }
               router.push({ pathname: '/one-shot/recording', params: { question: question?.question || '', mode: isThreaded ? 'threaded' : 'one_shot', reasoning: question?.reasoning || '', timerSeconds: String(question?.timerSeconds || 90) } });
             }}

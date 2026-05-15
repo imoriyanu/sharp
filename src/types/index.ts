@@ -92,6 +92,12 @@ export interface GeneratedQuestion {
   targets: QuestionTarget;
   difficulty: number;
   contextUsed: string[];
+  // Scene-bible fields produced for every question. Used downstream by the
+  // threaded follow-up character agent (characterBrief) and the debrief
+  // coach (skillsTested). Never quoted by the character; never shown to the
+  // user. Optional for backward-compat with old generations.
+  characterBrief?: string;
+  skillsTested?: string[];
 }
 
 export type QuestionTarget =
@@ -190,6 +196,11 @@ export interface ThreadDebrief {
   strongestMoment: { turn: number; quote: string };
   weakestSnippet: WeakestSnippet & { turn: number };
   turnByTurn: { turn: number; scoreChange: string | null; note: string }[];
+  // Scene-bible coach output. Additive: old saved debriefs render fine
+  // without these (the debrief screen conditionally renders each card).
+  pattern?: string;              // 1-2 sentence behavioural pattern across turns
+  oneThing?: string;             // single actionable takeaway
+  characterArcSummary?: string;  // how the character's state moved across the scene
 }
 
 export interface FollowUp {
@@ -209,6 +220,20 @@ export interface ThreadState {
   originalQuestion: string;
   turns: ThreadTurn[];
   startedAt: string;
+  // Scene-bible direction for the threaded character. Set at thread start
+  // from the question engine output. Passed back to follow-up calls so the
+  // character stays consistent + on the intended escalation arc.
+  characterBrief?: string;
+  skillsTested?: string[];
+  // Most recent character turn from the API. Persisted so backgrounding the
+  // app on the follow-up screen doesn't lose the next question (nav params
+  // are ephemeral; ThreadState is not).
+  pendingCharacterTurn?: {
+    reaction: string;
+    followUp: string;
+    pressureLevel: string;
+    targeting?: string;
+  };
 }
 
 // ===== Daily 30 Types =====

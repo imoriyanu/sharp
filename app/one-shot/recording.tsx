@@ -193,6 +193,10 @@ export default function RecordingScreen() {
             documentExtractions,
             scenario: thread.originalQuestion,
             turns: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
+            // Scene-bible context for the coach: tie feedback back to user
+            // stated goals + explain why the scene unfolded as it did.
+            ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
+            ...(thread.skillsTested ? { skillsTested: thread.skillsTested } : {}),
           });
 
           // Save + clear in parallel; failures logged but don't gate navigation.
@@ -241,6 +245,10 @@ export default function RecordingScreen() {
             originalQuestion: thread.originalQuestion,
             previousTranscripts: thread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
             turnNumber: turnNumber + 1,
+            // Scene-bible direction: passed in from thread state so the
+            // character agent stays consistent across turns. Sandboxed —
+            // the character reads this, not the raw user context.
+            ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
           });
 
           // Pre-fetch follow-up audio immediately — kicks off TTS download
@@ -248,6 +256,21 @@ export default function RecordingScreen() {
           // audio is ready (or streaming) by the time the user lands.
           const followUpSpoken = `${followUp.reaction || ''} ${followUp.followUp || ''}`.trim();
           if (followUpSpoken) prefetchAudio(followUpSpoken, 'followup');
+
+          // Persist the pending character turn in ThreadState so backgrounding
+          // the app on the follow-up screen doesn't lose the question. The
+          // follow-up screen reads from ThreadState first, nav params as fallback.
+          try {
+            await saveThreadState({
+              ...thread,
+              pendingCharacterTurn: {
+                reaction: followUp.reaction || '',
+                followUp: followUp.followUp || '',
+                pressureLevel: followUp.pressureLevel || 'depth',
+                targeting: followUp.targeting,
+              },
+            });
+          } catch (_) { /* non-fatal — nav params are a fallback */ }
 
           if (!mountedRef.current) return;
 

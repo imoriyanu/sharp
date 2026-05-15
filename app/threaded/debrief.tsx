@@ -84,6 +84,16 @@ export default function DebriefScreen() {
           </View>
         </FadeIn>
 
+        {/* Pattern (new — conditional on new debrief field) */}
+        {debrief.pattern && (
+          <FadeIn delay={250}>
+            <Text style={s.section}>The pattern</Text>
+            <View style={s.patternCard}>
+              <Text style={s.patternText}>{debrief.pattern}</Text>
+            </View>
+          </FadeIn>
+        )}
+
         {/* Thread dimensions */}
         <FadeIn delay={300}>
           <Text style={s.section}>Thread Dimensions</Text>
@@ -120,6 +130,16 @@ export default function DebriefScreen() {
           </View>
         </FadeIn>
 
+        {/* Character arc summary (new — how the other person responded across turns) */}
+        {debrief.characterArcSummary && (
+          <FadeIn delay={450}>
+            <Text style={s.section}>How they read you</Text>
+            <View style={s.arcCard}>
+              <Text style={s.arcText}>{debrief.characterArcSummary}</Text>
+            </View>
+          </FadeIn>
+        )}
+
         {/* Strongest moment */}
         {debrief.strongestMoment?.quote && (
           <FadeIn delay={500}>
@@ -141,6 +161,16 @@ export default function DebriefScreen() {
               <Text style={s.weakLabel}>Sharper version</Text>
               <Text style={s.weakRewrite}>"{debrief.weakestSnippet.rewrite}"</Text>
               <Text style={s.weakExplanation}>{debrief.weakestSnippet.explanation}</Text>
+            </View>
+          </FadeIn>
+        )}
+
+        {/* One Thing — the headline takeaway. Single, actionable. */}
+        {debrief.oneThing && (
+          <FadeIn delay={650}>
+            <Text style={s.section}>One thing to carry forward</Text>
+            <View style={s.oneThingCard}>
+              <Text style={s.oneThingText}>{debrief.oneThing}</Text>
             </View>
           </FadeIn>
         )}
@@ -210,6 +240,18 @@ const s = StyleSheet.create({
 
   sumCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, marginBottom: spacing.lg, ...shadows.md },
   sumText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22) },
+
+  // The pattern card — what behaviour repeated across turns. Subtle accent.
+  patternCard: { backgroundColor: colors.accent.light, borderRadius: radius.xl, padding: spacing.lg, borderLeftWidth: 4, borderLeftColor: colors.accent.primary, ...shadows.sm },
+  patternText: { fontSize: typography.size.sm, color: colors.accent.dark, lineHeight: fp(22), fontWeight: typography.weight.semibold },
+
+  // Character arc — how the relationship moved.
+  arcCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, ...shadows.sm },
+  arcText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(22), fontStyle: 'italic' as const },
+
+  // One Thing — the headline takeaway. Highest visual weight after the score.
+  oneThingCard: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.xl, padding: spacing.xl, borderLeftWidth: 4, borderLeftColor: colors.success, ...shadows.sm },
+  oneThingText: { fontSize: typography.size.md, color: colors.text.primary, lineHeight: fp(24), fontWeight: typography.weight.semibold },
 
   section: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginTop: spacing.lg, marginBottom: spacing.md },
 

@@ -131,8 +131,13 @@ export async function generateFollowUp(params: {
   previousTranscripts: { turn: number; question: string; transcript: string; scores: any }[];
   turnNumber: number;
   sessionId?: string;
+  // Scene-bible context — character agent reads this internally to stay in
+  // character on the right escalation arc. Sandboxed: NOT used for raw user
+  // context (which the character must not know about), only the translated
+  // behavioural direction from the question engine.
+  characterBrief?: string;
 }): Promise<FollowUp> {
-  const { previousTranscripts, originalQuestion, sessionId, ...rest } = params;
+  const { previousTranscripts, originalQuestion, sessionId, characterBrief, ...rest } = params;
   const lastTranscript = previousTranscripts[previousTranscripts.length - 1]?.transcript || '';
   const endpoint = FEATURES.agenticThreaded ? '/v2/threaded/follow-up' : '/threaded/follow-up';
   return apiPost(endpoint, {
@@ -143,6 +148,7 @@ export async function generateFollowUp(params: {
     transcript: lastTranscript,
     turnNumber: params.turnNumber,
     ...(sessionId ? { sessionId } : {}),
+    ...(characterBrief ? { characterBrief } : {}),
   });
 }
 
@@ -163,6 +169,11 @@ export async function generateDebrief(params: {
   documentExtractions?: any[];
   scenario?: string;
   turns: { turn: number; question: string; transcript: string; scores: any }[];
+  // Scene-bible context — coach uses these to tie feedback back to user's
+  // stated goals + explain why the scene was the way it was. The character
+  // was sandboxed; the coach is not.
+  characterBrief?: string;
+  skillsTested?: string[];
 }): Promise<ThreadDebrief> {
   return apiPost('/threaded/debrief', params);
 }
