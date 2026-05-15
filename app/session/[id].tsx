@@ -116,11 +116,12 @@ export default function SessionDetailScreen() {
 // scored at the thread level, not per turn). Treat the all-zero sentinel as
 // "unscored" — hide the mini dimension chips and the per-turn coaching
 // insight (the latter is the thread debrief summary, which is the same
-// across every turn — redundant + ugly when shown 4x).
+// across every turn — redundant + ugly when shown 4x). Uses ?? so legacy
+// turns missing the awareness field don't slip through.
 function isTurnUnscored(turn: Turn): boolean {
   const sc = turn.scores;
   if (!sc) return true;
-  return sc.structure === 0 && sc.concision === 0 && sc.substance === 0 && sc.fillerWords === 0 && sc.awareness === 0;
+  return (sc.structure ?? 0) === 0 && (sc.concision ?? 0) === 0 && (sc.substance ?? 0) === 0 && (sc.fillerWords ?? 0) === 0 && (sc.awareness ?? 0) === 0;
 }
 
 function TurnCard({ turn, index, totalTurns, isThreaded, playing, play }: {
@@ -128,7 +129,10 @@ function TurnCard({ turn, index, totalTurns, isThreaded, playing, play }: {
   playing: string | null;
   play: (key: string, text: string) => void;
 }) {
-  const unscored = isTurnUnscored(turn);
+  // Two paths to "hide per-turn dims": explicit unscored sentinel (legacy
+  // data, future modes) OR session.type === 'threaded' (defensive — threaded
+  // never has meaningful per-turn dimensions regardless of what's stored).
+  const unscored = isThreaded || isTurnUnscored(turn);
   // For threaded, the insight on each turn is the thread debrief summary
   // duplicated. Render it ONLY on turn 1 to avoid repetition.
   const showInsight = !!turn.coachingInsight && (!isThreaded || turn.turnNumber === 1);
