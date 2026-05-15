@@ -472,6 +472,22 @@ export async function getRecentInsights(): Promise<string[]> {
   return insights;
 }
 
+// ===== Score sentinel =====
+// A turn with all five dimensions at 0 means scoring was skipped (today: Threaded,
+// partially Duels). A real scoring run can never produce all-five-zero — the prompt
+// enforces min=1. Skip these turns when computing user-level dimension averages so
+// they don't drag dashboards toward zero.
+function isUnscored(scores: { structure?: number; concision?: number; substance?: number; fillerWords?: number; awareness?: number } | null | undefined): boolean {
+  if (!scores) return true;
+  return (
+    (scores.structure ?? 0) === 0 &&
+    (scores.concision ?? 0) === 0 &&
+    (scores.substance ?? 0) === 0 &&
+    (scores.fillerWords ?? 0) === 0 &&
+    (scores.awareness ?? 0) === 0
+  );
+}
+
 // ===== Session History for Question Engine =====
 
 export async function getRecentSessionHistory(): Promise<{
@@ -484,6 +500,7 @@ export async function getRecentSessionHistory(): Promise<{
   for (const s of full) {
     if (!s.turns.length) continue;
     const last = s.turns[s.turns.length - 1];
+    if (isUnscored(last.scores)) continue;
     const dims = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
     const weakest = dims.reduce((a, b) => ((last.scores[a] ?? 0) < (last.scores[b] ?? 0) ? a : b), 'structure' as typeof dims[number]);
     history.push({
@@ -509,6 +526,7 @@ export async function getAverageScores(): Promise<{ overall: number; structure: 
   for (const s of full) {
     if (!s.turns.length) continue;
     const lastTurn = s.turns[s.turns.length - 1];
+    if (isUnscored(lastTurn.scores)) continue;
     totalOverall += lastTurn.overall;
     totalStructure += lastTurn.scores.structure;
     totalConcision += lastTurn.scores.concision;
@@ -557,6 +575,7 @@ export async function getProgressData(): Promise<ProgressData> {
     const full = await getSessionById(s.id);
     if (full && full.turns.length > 0) {
       const lastTurn = full.turns[full.turns.length - 1];
+      if (isUnscored(lastTurn.scores)) continue;
       fullSessions.push({
         scores: lastTurn.scores,
         overall: lastTurn.overall,
