@@ -83,7 +83,7 @@ export default function SessionDetailScreen() {
         </View>
 
         {session.turns.map((turn, i) => (
-          <TurnCard key={turn.id} turn={turn} index={i} totalTurns={session.turns.length} playing={playing} play={play} />
+          <TurnCard key={turn.id} turn={turn} index={i} totalTurns={session.turns.length} isThreaded={session.type === 'threaded'} playing={playing} play={play} />
         ))}
 
         {oneShotStatus?.allowed ? (
@@ -112,11 +112,26 @@ export default function SessionDetailScreen() {
   );
 }
 
-function TurnCard({ turn, index, totalTurns, playing, play }: {
-  turn: Turn; index: number; totalTurns: number;
+// Threaded turns are saved with all-zero per-turn dimensions (Threaded is
+// scored at the thread level, not per turn). Treat the all-zero sentinel as
+// "unscored" — hide the mini dimension chips and the per-turn coaching
+// insight (the latter is the thread debrief summary, which is the same
+// across every turn — redundant + ugly when shown 4x).
+function isTurnUnscored(turn: Turn): boolean {
+  const sc = turn.scores;
+  if (!sc) return true;
+  return sc.structure === 0 && sc.concision === 0 && sc.substance === 0 && sc.fillerWords === 0 && sc.awareness === 0;
+}
+
+function TurnCard({ turn, index, totalTurns, isThreaded, playing, play }: {
+  turn: Turn; index: number; totalTurns: number; isThreaded: boolean;
   playing: string | null;
   play: (key: string, text: string) => void;
 }) {
+  const unscored = isTurnUnscored(turn);
+  // For threaded, the insight on each turn is the thread debrief summary
+  // duplicated. Render it ONLY on turn 1 to avoid repetition.
+  const showInsight = !!turn.coachingInsight && (!isThreaded || turn.turnNumber === 1);
   return (
     <View style={s.turnCard}>
       {totalTurns > 1 && <Text style={s.turnLabel}>Turn {turn.turnNumber}</Text>}
@@ -127,17 +142,23 @@ function TurnCard({ turn, index, totalTurns, playing, play }: {
         <Text style={s.qText}>{turn.question}</Text>
       </View>
 
-      {/* Score */}
+      {/* Score row. Hide per-turn dimension chips when the turn is unscored
+          (threaded). Show only the overall + a small hint so the user knows
+          the dimensions live at the thread level. */}
       <View style={s.scoreRow}>
         <Text style={[s.turnScore, { color: getScoreColor(turn.overall) }]}>{turn.overall.toFixed(1)}</Text>
-        <View style={s.miniDims}>
-          {(['structure', 'concision', 'substance', 'fillerWords'] as const).map(dim => (
-            <View key={dim} style={s.miniDim}>
-              <Text style={s.miniLabel}>{DIM_LABELS[dim].slice(0, 4)}</Text>
-              <Text style={[s.miniVal, { color: getScoreColor(turn.scores[dim]) }]}>{turn.scores[dim]}</Text>
-            </View>
-          ))}
-        </View>
+        {unscored ? (
+          <Text style={s.threadHint}>Thread-level score{'\n'}(per-turn dimensions not measured)</Text>
+        ) : (
+          <View style={s.miniDims}>
+            {(['structure', 'concision', 'substance', 'fillerWords'] as const).map(dim => (
+              <View key={dim} style={s.miniDim}>
+                <Text style={s.miniLabel}>{DIM_LABELS[dim].slice(0, 4)}</Text>
+                <Text style={[s.miniVal, { color: getScoreColor(turn.scores[dim]) }]}>{turn.scores[dim]}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Your response — listenable */}
@@ -160,10 +181,13 @@ function TurnCard({ turn, index, totalTurns, playing, play }: {
         </TouchableOpacity>
       ) : null}
 
-      {/* Coaching insight */}
-      <TouchableOpacity style={s.insightBox} onPress={() => play(`insight-${index}`, turn.coachingInsight)} activeOpacity={0.7}>
-        <Text style={s.insightText}>💡 {turn.coachingInsight}</Text>
-      </TouchableOpacity>
+      {/* Coaching insight — suppressed on threaded turns 2-4 to avoid the
+          thread summary repeating four times. */}
+      {showInsight ? (
+        <TouchableOpacity style={s.insightBox} onPress={() => play(`insight-${index}`, turn.coachingInsight)} activeOpacity={0.7}>
+          <Text style={s.insightText}>💡 {turn.coachingInsight}</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -196,6 +220,7 @@ const s = StyleSheet.create({
   miniDim: { alignItems: 'center' },
   miniLabel: { fontSize: fp(8), color: colors.text.muted, fontWeight: typography.weight.semibold },
   miniVal: { fontSize: fp(12), fontWeight: typography.weight.black },
+  threadHint: { flex: 1, fontSize: fp(10), color: colors.text.muted, fontWeight: typography.weight.semibold, lineHeight: fp(14), textAlign: 'right' },
 
   responseBox: { backgroundColor: colors.bg.tertiary, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.sm },
   responseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: wp(4) },
