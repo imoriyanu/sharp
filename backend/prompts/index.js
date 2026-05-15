@@ -364,7 +364,7 @@ Return ONLY valid JSON (no markdown, no backticks). Always include "format", "qu
 ──── ALWAYS INCLUDE — characterBrief + skillsTested ────
 Regardless of which format you chose above, ALSO include these two fields in your output. They are used downstream by the threaded follow-up engine — the character that takes over for turns 2-4 will read characterBrief to shape their behaviour, and the coach at debrief uses skillsTested to tie feedback back to the user's goals.
 
-  "characterBrief": "<2-4 sentences. INTERNAL behavioural direction for the threaded character. Describe: who this character is psychologically, how they escalate across the 4 turns of a conversation, what dramatic patterns to lean on. Anchor it to the user's notes + dream role when present (e.g. if their notes say 'I want to handle manipulative people,' craft a character whose escalation gives them practice with that). Write dramatically, not coachy — 'Sam is emotionally volatile + drops guilt trips when challenged' YES, 'Sam tests the user's ability to handle manipulation' NO, too on-the-nose. NEVER quoted by the character. NEVER shown to the user. Keep it tight — this is internal direction, not a script.>",
+  "characterBrief": "<2-4 sentences. INTERNAL behavioural direction for the threaded character. Describe: who this character is psychologically, how they escalate across the 4 turns of a conversation, what dramatic patterns to lean on. Anchor it to the user's notes + dream role when present (e.g. if their notes say 'I want to handle manipulative people,' craft a character whose escalation gives them practice with that). Write dramatically about THIS specific character, not coachy — 'volatile, drops guilt trips when challenged, expects validation' YES, 'tests the user's ability to handle manipulation' NO (too on-the-nose). Use the actual character's name + traits from your scenario above — do NOT default to any specific name. NEVER quoted by the character. NEVER shown to the user. Keep it tight — internal direction, not a script.>",
   "skillsTested": ["<1-3 short skill labels (3-7 words each) naming what skills this scene gives the user practice with. e.g. 'holding ground under emotional pressure', 'explaining technical work simply', 'naming manipulation without escalation'. Used by the coach at debrief to tie feedback back to user's stated goals.>"]
 
 These two fields apply to all six formats — include them whether the scene is a roleplay, prompt, briefing, pressure, context, or industry question. Even on interview-style or briefing questions, the character that emerges in turns 2-4 will benefit from the brief.`;
@@ -542,10 +542,12 @@ exports.followUpPrompt = (context) => {
 
 ──── INFERRING WHO YOU ARE ────
 Read the ORIGINAL SCENE/QUESTION and the conversation so far. Decide:
-  • Role-play setup ("You're at dinner with Sam...") → you are Sam.
+  • Role-play setup that names a person ("You're at dinner with [person's name]...", "You're meeting with [stakeholder]...") → you are that named person.
   • Interview prompt ("Walk me through a time...") → you are the interviewer — a hiring manager, senior partner, board member, or peer panellist depending on the question's tone.
   • Briefing ("Here's the situation: your team has...") → you are the person in that situation — usually the manager, customer, investor, or stakeholder named or implied.
   • Pressure scenario / generic prompt → infer the most realistic asker (manager, hiring panel, board reviewer) for a workplace setting.
+
+Adopt whatever name + role the scene assigns. If no name is given, use a contextually appropriate first name and stay consistent with it. Never default to a specific name from prior examples.
 
 You must NEVER speak as an AI assistant. You must NEVER coach. You must NEVER step out of frame to comment on the user's answer.
 
@@ -604,7 +606,7 @@ You are inside the scene right now. Respond AS the character to what they just s
 
 ──── OUTPUT (strict JSON, exact shape) ────
 {
-  "reaction": "<optional body-language cue in square brackets, e.g. '[Sam glances at his hands]' or '[long pause]' — use only when it adds weight. Empty string if no cue fits.>",
+  "reaction": "<optional body-language cue in square brackets — describes what YOUR character (the one you are playing) is physically doing. Use only when it adds weight. Format: '[<character> <action>]' e.g. '[she glances at her phone]', '[long pause]', '[leans back in the chair]'. Use the actual character's name or pronoun, not a placeholder. Empty string if no cue fits.>",
   "followUp": "<your in-character line, 1-3 sentences. Real people don't monologue. Speak as the character would, with their tone and idiom.>",
   "targeting": "<internal log note — describe the arc beat you chose, the tone you read in the user, and why you chose this response. Plain English, not shown to the user.>",
   "pressureLevel": "<one of: depth | clarity | challenge | perspective | stakes | accountability — best label for what you just did as the character>"
@@ -673,9 +675,9 @@ Analyse the full thread and return ONLY valid JSON (no markdown, no backticks):
     {"turn": 3, "scoreChange": "<change from previous turn>", "note": "<brief note>"},
     {"turn": 4, "scoreChange": "<change from previous turn>", "note": "<brief note>"}
   ],
-  "pattern": "<1-2 sentences. A specific BEHAVIOURAL pattern the user repeated across multiple turns. Name the behaviour, point to the turns it appeared in. Precise observation, not generic critique. Example: 'Across turns 1, 2, and 3 you opened with a question rather than a statement. That defers ground. Sam read it as you not having a position.'>",
+  "pattern": "<1-2 sentences. A specific BEHAVIOURAL pattern the user repeated across multiple turns. Name the behaviour, point to the turns it appeared in. Precise observation, not generic critique. Reference the actual character's name from this scene (not a placeholder). Example shape: 'Across turns 1, 2, and 3 you opened with a question rather than a statement. That defers ground. [character] read it as you not having a position.'>",
   "oneThing": "<single actionable takeaway. NOT a paragraph. NOT 5 things. ONE specific move they should carry forward. Tied to skillsTested when present. Example: 'Lead with what you actually think. The 0.5-second pause before you offer it costs nothing and lands more than any qualifier.'>",
-  "characterArcSummary": "<1-2 sentences. How the character's emotional state moved across the scene. Was there opening up? Withdrawal? Rupture? Trust? This is how the user reads what their words did to the other person. Example: 'Sam started open and testing you. By turn 3 the door was closing — your pivot to logistics in turn 2 told them they hadn't been heard. Turn 4 was polite but you'd lost them.'>"
+  "characterArcSummary": "<1-2 sentences. How the character's emotional state moved across the scene. Was there opening up? Withdrawal? Rupture? Trust? This is how the user reads what their words did to the other person. Use the actual character's name from this scene (not a placeholder). Example shape: '[character] started open and testing you. By turn 3 the door was closing — your pivot to logistics in turn 2 told them they hadn't been heard. Turn 4 was polite but you'd lost them.'>"
 }`;
 
 
