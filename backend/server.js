@@ -587,6 +587,16 @@ const COACH_TELLS = [
   // Generic AI-assistant phrasings
   /\bas an AI\b/i,
   /\bI'd be happy to\b/i,
+  // Meta / analytic drift (most common failure mode — model commenting on
+  // the conversation instead of being inside it)
+  /\bI (don't|do not) have (their|the user's|enough)\b/i,
+  /\bI notice (you|that you)\b/i,
+  /\bI need (to see|to know|more)\b/i,
+  /\b(could|can) you (share|tell me|provide|let me know)\b/i,
+  /\brecord(ed)? in the conversation\b/i,
+  /\bbuild a (genuine|real|proper|good) (follow-?up|response|answer)\b/i,
+  /\bthe (user's|user has|user is|user said)\b/i,
+  /\bin the (conversation thread|thread)\b/i,
 ];
 
 function looksLikeCoach(text) {

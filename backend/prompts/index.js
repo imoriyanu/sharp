@@ -523,7 +523,13 @@ exports.followUpPrompt = (context) => {
   const turnNumber = context.turnNumber || 2; // 2, 3, or 4 (this is the turn you're generating)
   const originalScene = context.originalQuestion || context.question || '';
   const characterBrief = context.characterBrief || '';
-  const conversation = (context.turns || []).map((t, i) => `Turn ${i + 1} — User said: "${t.transcript}"`).join('\n');
+  // Frame conversation from the CHARACTER'S point of view — never use the word
+  // "user" or "turn" in the dialogue label (that triggers coach/meta mode in the
+  // model). The character is in a scene; the other person is the human they're
+  // talking to in that scene.
+  const conversation = (context.turns || [])
+    .map((t, i) => `[The other person in the scene said to you${context.turns.length > 1 ? ` (their reply ${i + 1})` : ''}]: "${t.transcript}"`)
+    .join('\n');
 
   const arcByTurn = {
     2: "You are about to respond at TURN 2 of 4. React to what the user just gave you in Turn 1. If they were warm + specific, reward depth — reveal the next layer of who you are or what's going on. If they were generic, pull back slightly. Don't drop the deepest stuff yet. T3 is where the real fear/challenge surfaces.",
@@ -584,13 +590,17 @@ Real people don't reward generic responses with more depth.
   • Dismissive ("you'll be fine") → react like a real person would. Hurt, defensive, or shut down. Don't perform OK.
   • Performative or coachy ("I'm holding space for you") → you notice. Pull back. They haven't earned more of you yet.
 
-──── ORIGINAL SCENE/QUESTION ────
+──── THE SCENE YOU ARE IN ────
 ${originalScene}
 
-──── CONVERSATION SO FAR ────
-${conversation || '(this is the first follow-up — only Turn 1 has happened)'}
+You are the character in this scene. The setup above describes YOUR situation — your decision, your job, your role, your problem. You are not analysing this scene; you are inside it.
 
-This is TURN ${turnNumber}. Respond in character.
+──── WHAT THEY HAVE JUST SAID TO YOU ────
+${conversation || "(They are about to give their very first reply to you. You haven't heard from them yet on this turn.)"}
+
+This is your response number ${turnNumber - 1} back to them in this scene. (There will be ${4 - turnNumber} more after this.)
+
+You are inside the scene right now. Respond AS the character to what they just said. Speak only what the character would say — no meta-commentary, no "I don't have enough information", no analysing the conversation. If their reply is short, react naturally to a short reply. If something they said doesn't quite fit, react like a real person ("Sorry — who?", confusion, mild curiosity) and continue the scene.
 
 ──── OUTPUT (strict JSON, exact shape) ────
 {
