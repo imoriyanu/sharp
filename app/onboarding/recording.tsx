@@ -128,6 +128,12 @@ export default function OnboardingRecording() {
           keySkills: JSON.stringify((result as any).keySkills || []),
           journeyFraming: (result as any).journeyFraming || '',
           journeyDays: (result as any).journeyDays != null ? String((result as any).journeyDays) : '',
+          // Spoken-aloud scripts for auto-play sequence on result screen.
+          // critiqueAudio + journeyAudio are added between welcomeNote and
+          // modelAnswer so Sharp narrates the diagnosis + the 60-day plan,
+          // not just the greeting + model answer. UI unchanged.
+          critiqueAudio: (result as any).critiqueAudio || '',
+          journeyAudio: (result as any).journeyAudio || '',
           // Existing coaching layer (KEPT, real refined coaching, still shown).
           positives: result.positives || '',
           improvements: result.improvements || '',

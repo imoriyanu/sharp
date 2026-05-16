@@ -41,6 +41,12 @@ export default function OnboardingResult() {
   const coachingInsight = (p.coachingInsight as string) || '';
   const modelAnswer = (p.modelAnswer as string) || '';
 
+  // Spoken-aloud scripts. Tied to whatIHeard + journeyFraming on screen,
+  // but written specifically for TTS (no list syntax, natural breaks).
+  // Played in sequence between welcomeNote and modelAnswer. UI unchanged.
+  const critiqueAudio = ((p.critiqueAudio as string) || '').trim();
+  const journeyAudio = ((p.journeyAudio as string) || '').trim();
+
   // weakestSnippet pieces — rendered inline as the verbatim quote + sharper
   // rewrite block. This is THE conversion moment: the user hears their own
   // words quoted and offered a sharper version.
@@ -51,36 +57,33 @@ export default function OnboardingResult() {
 
   const mountedRef = useRef(true);
   // Tracks whichever audio source is currently playing. Drives play/pause UI.
-  const [playingKey, setPlayingKey] = useState<'welcome' | 'model' | null>(null);
+  // 'critique' and 'journey' are auto-play-only — no chips wired (per "no UX
+  // changes" directive). Adding them to the union keeps types honest.
+  const [playingKey, setPlayingKey] = useState<'welcome' | 'critique' | 'journey' | 'model' | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
-    // Auto-play sequence: Sharp greets with welcomeNote, then chains to the
-    // model answer (the conversion lever). If welcomeNote is missing (cached
-    // old API response), fall back to coachingInsight.
+    // Auto-play queue: greet, diagnose, plan, demonstrate. Each segment is
+    // optional — if the field is empty (cached old API response, generation
+    // miss), we skip it and continue. modelAnswer plays via playModelAudio;
+    // everything else uses playCoachingAudio (same TTS voice / coaching tone).
     const greet = welcomeNote || (coachingInsight ? `Here's your first coaching insight. ${coachingInsight}` : '');
-    if (greet) {
-      setPlayingKey('welcome');
-      playCoachingAudio(greet)
-        .then(() => {
-          if (!mountedRef.current) return;
-          setPlayingKey(null);
-          if (modelAnswer) {
-            setPlayingKey('model');
-            const spokenModel = `Here's what a nine point oh sounds like on this question. ${modelAnswer}`;
-            playModelAudio(spokenModel)
-              .catch(() => {})
-              .finally(() => { if (mountedRef.current) setPlayingKey(null); });
-          }
-        })
-        .catch(() => { if (mountedRef.current) setPlayingKey(null); });
-    } else if (modelAnswer) {
-      setPlayingKey('model');
-      const spokenModel = `Here's what a nine point oh sounds like on this question. ${modelAnswer}`;
-      playModelAudio(spokenModel)
-        .catch(() => {})
-        .finally(() => { if (mountedRef.current) setPlayingKey(null); });
-    }
+    const segments: { key: 'welcome' | 'critique' | 'journey' | 'model'; text: string; play: (t: string) => Promise<boolean> }[] = [];
+    if (greet) segments.push({ key: 'welcome', text: greet, play: playCoachingAudio });
+    if (critiqueAudio) segments.push({ key: 'critique', text: critiqueAudio, play: playCoachingAudio });
+    if (journeyAudio) segments.push({ key: 'journey', text: journeyAudio, play: playCoachingAudio });
+    if (modelAnswer) segments.push({ key: 'model', text: `Here's what a nine point oh sounds like on this question. ${modelAnswer}`, play: playModelAudio });
+
+    (async () => {
+      for (const seg of segments) {
+        if (!mountedRef.current) return;
+        setPlayingKey(seg.key);
+        try { await seg.play(seg.text); } catch {}
+        if (!mountedRef.current) return;
+        setPlayingKey(null);
+      }
+    })();
+
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
 

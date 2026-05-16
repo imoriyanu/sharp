@@ -1184,6 +1184,10 @@ OUTPUT, strict JSON, no markdown. EVERY field is required. The result screen and
 
   "journeyDays": ${evDays !== null && evDays > 0 ? evDays : 'null'},
 
+  "critiqueAudio": "<25-40 words. SPOKEN-ALOUD version of whatIHeard, written for TTS playback. Must include the same verbatim phrase from their answer AND the same sharper rewrite, but rendered as natural conversation, not as written prose. NO list syntax. NO numbered items. NO markdown. NO literal quotation-mark characters around the quote (the TTS engine speaks them awkwardly). Use a tiny verbal cue like 'You opened with,' or 'You said,' to introduce the quote. Example: 'Here's what I caught. You opened with, I really need this raise. A sharper version: based on the merchant onboarding ship, I want to discuss leveling up. That reframes need as value.' Match the analytical voice Sharp uses on the screen.>",
+
+  "journeyAudio": "<30-45 words. SPOKEN-ALOUD version of the journey, written for TTS playback. Must weave the three keySkill titles into a flowing narrative arc tied to their event. NO numbered list, NO 'first, second, third' (sounds robotic), NO markdown. Use natural sentence breaks. Example: 'Over the next ${journeyWindow}, we will drill three things together for your ${evType && evType !== 'other' ? evTitle || evType : 'next conversation'}. Leading with professional value. Building the evidence stack. Controlling your tone under pressure. By then, you will feel the difference.' Sharp's voice, motivating but not salesy.>",
+
   "coachingInsight": "<ONE memorable insight, surfaced on the result screen as 'ONE THING TO FOCUS ON FIRST'. The single most actionable thing they should drill before anything else. Specific to what THEY said, not generic. Should make them think 'I need to try that'. Pick the ONE muscle from keySkills they should hit first.>",
 
   "weakestSnippet": {
@@ -1217,6 +1221,8 @@ CRITICAL FINAL CHECK: before you submit, verify:
 5. weakestSnippet.original is a VERBATIM phrase from the user's transcript, not a paraphrase.
 6. positives is real coaching content, not a restatement of welcomeNote.
 7. No em dashes anywhere.
+8. critiqueAudio is 25-40 words, contains both the verbatim phrase and the sharper version, and sounds natural when read aloud (no list syntax, no literal quotation-mark characters around the quote).
+9. journeyAudio is 30-45 words, names all three keySkill titles woven into narrative form (no numbered list, no "first second third"), and sounds natural when read aloud.
 
 If any of the seven checks fails, REGENERATE that field. The user is judging the entire product on this one screen.`;
 };
