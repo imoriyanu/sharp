@@ -10,7 +10,7 @@ import { SharpFox, ProgressDots } from '../../src/components/Illustrations';
 import { stopAudio, prefetchAudio, resetAudioModeFlag } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
-import { saveSession, generateId, setOnboardingStep } from '../../src/services/storage';
+import { saveSession, generateId, setOnboardingStep, getActiveUpcomingEvents, daysUntilEvent } from '../../src/services/storage';
 import { ONBOARDING_QUESTION_FALLBACK } from '../../src/constants/onboarding-questions';
 
 const TIMER = 30;
@@ -88,15 +88,63 @@ export default function OnboardingRecording() {
         setRetryMsg("That was a bit quick! Give yourself the full 30 seconds, there's no pressure.");
         setState('ready'); setTimeLeft(TIMER); return;
       }
-      const result = await scoreAnswer({ roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '', question: QUESTION, transcript, isOnboarding: true } as any);
+      // Load the user's upcoming event (if any) so we can pass it to the
+      // onboarding scoring prompt. The prompt uses it to tie observations
+      // and the "what we'll work on" muscles to the user's actual stakes,
+      // not generic self-introduction critique.
+      const events = await getActiveUpcomingEvents().catch(() => []);
+      const ev = events[0];
+      const eventType = ev?.type || 'other';
+      const eventTitle = ev?.title || '';
+      const eventDays = ev ? daysUntilEvent(ev.eventDate) : null;
+
+      const result = await scoreAnswer({
+        roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '',
+        question: QUESTION, transcript, isOnboarding: true,
+        eventType, eventTitle, eventDays,
+      } as any);
       if (!mountedRef.current) return;
       await saveSession({ id: generateId(), type: 'one_shot', scenario: 'First impression', turns: [{ id: generateId(), turnNumber: 1, question: QUESTION, questionReasoning: '', questionTargets: 'substance', questionDifficulty: 3, transcript, recordingUri: uri, modelAnswer: result.modelAnswer || '', scores: result.scores, overall: result.overall, summary: result.summary, coachingInsight: result.coachingInsight, awarenessNote: result.awarenessNote, snippet: result.weakestSnippet }], createdAt: new Date().toISOString() });
       await setOnboardingStep(3);
-      // Pre-fetch results audio so it plays instantly on the result screen
-      if (result.coachingInsight) {
-        prefetchAudio(`Nice work on your first try! Here's your coaching insight: ${result.coachingInsight}`, 'coaching');
-      }
-      router.replace({ pathname: '/onboarding/result', params: { scores: JSON.stringify(result.scores), overall: String(result.overall), positives: result.positives || '', improvements: result.improvements || '', coachingInsight: result.coachingInsight, communicationTip: result.communicationTip || '', modelAnswer: result.modelAnswer || '' } });
+      // Pre-fetch the welcomeNote audio so Sharp's voice greets the user
+      // instantly on the result screen. Falls back to the legacy coaching
+      // insight string if welcomeNote is missing (older API responses).
+      const greet = (result as any).welcomeNote || result.coachingInsight;
+      if (greet) prefetchAudio(greet, 'coaching');
+
+      router.replace({
+        pathname: '/onboarding/result',
+        params: {
+          // Score (kept in storage, NOT surfaced as a number on the result
+          // screen. startingPoint below is the narrative anchor users see.)
+          scores: JSON.stringify(result.scores),
+          overall: String(result.overall),
+          // Event-aware layer (NEW). welcomeNote auto-plays as Sharp's voice;
+          // keySkills + journeyFraming drive the "your path to your [event]"
+          // card; startingPoint replaces the visible score as a narrative.
+          welcomeNote: (result as any).welcomeNote || '',
+          startingPoint: (result as any).startingPoint || '',
+          whatIHeard: (result as any).whatIHeard || '',
+          keySkills: JSON.stringify((result as any).keySkills || []),
+          journeyFraming: (result as any).journeyFraming || '',
+          journeyDays: (result as any).journeyDays != null ? String((result as any).journeyDays) : '',
+          // Existing coaching layer (KEPT, real refined coaching, still shown).
+          positives: result.positives || '',
+          improvements: result.improvements || '',
+          coachingInsight: result.coachingInsight,
+          modelAnswer: result.modelAnswer || '',
+          // weakestSnippet — the verbatim quote + sharper rewrite. THIS IS
+          // THE CONVERSION MOMENT. Rendered inline under whatIHeard.
+          snippetOriginal: result.weakestSnippet?.original || '',
+          snippetRewrite: result.weakestSnippet?.rewrite || '',
+          snippetExplanation: result.weakestSnippet?.explanation || '',
+          // Stored but not rendered.
+          communicationTip: result.communicationTip || '',
+          // Event context so the result screen can frame card headings.
+          eventType, eventTitle,
+          eventDays: eventDays !== null ? String(eventDays) : '',
+        },
+      });
     } catch (e) {
       __DEV__ && console.error('Processing error:', e);
       if (mountedRef.current) { setState('ready'); setRetryMsg('Something went wrong. Please try again.'); }

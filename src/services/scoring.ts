@@ -167,6 +167,9 @@ export async function generateProgressSummary(params: {
   progressData: any;
   roleText: string;
   currentCompany: string;
+  // Active upcoming events. Lets the summary tie progress narratives to what
+  // the user is preparing for ("...and you're 14 days from your pitch").
+  upcomingEvents?: import('../types').UpcomingEvent[];
 }, signal?: AbortSignal): Promise<{ spokenSummary: string; highlights: string[]; focusArea: string; encouragement: string }> {
   return apiPost('/progress/summary', params, signal);
 }
@@ -182,6 +185,10 @@ export async function extractPatterns(params: {
   situationText: string;
   dreamRoleAndCompany: string;
   notes?: string;
+  // Active upcoming events. Lets pattern extraction frame patterns in terms
+  // of the user's preparation arc (e.g. "this pattern shows up in 7 of
+  // your last 10 sessions and will hurt you in your interview next week").
+  upcomingEvents?: import('../types').UpcomingEvent[];
 }, signal?: AbortSignal): Promise<CrossSessionPatternReport> {
   return apiPost('/analytics/patterns', params, signal);
 }

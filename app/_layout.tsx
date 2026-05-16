@@ -115,7 +115,7 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding/result" options={{ animation: 'fade' }} />
           <Stack.Screen name="onboarding/value" />
           <Stack.Screen name="onboarding/upcoming" />
-          <Stack.Screen name="onboarding/paywall" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="onboarding/paywall" options={{ presentation: 'modal', gestureEnabled: false }} />
           <Stack.Screen name="onboarding/welcome" options={{ animation: 'fade' }} />
           <Stack.Screen name="daily/challenge" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="daily/result" />

@@ -5,15 +5,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
 import { PLANS, setPremiumStatus } from '../../src/services/premium';
+import { setOnboarded } from '../../src/services/storage';
 import { getOfferings, purchasePackage, restorePurchases, isRevenueCatConfigured } from '../../src/services/revenuecat';
 
 const COMPARE = [
   { feature: 'Daily Challenge', free: 'No scoring', pro: 'Full coaching' },
   { feature: 'One Shot sessions', free: '3/week', pro: '3/day' },
-  { feature: 'Threaded practice', free: ', ', pro: '2/day' },
-  { feature: 'Industry questions', free: ', ', pro: '2/day' },
-  { feature: 'Context & documents', free: ', ', pro: '✓' },
-  { feature: 'Model answers', free: ', ', pro: '✓' },
+  { feature: 'Threaded practice', free: 'Pro only', pro: '2/day' },
+  { feature: 'Industry questions', free: 'Pro only', pro: '2/day' },
+  { feature: 'Context & documents', free: 'Pro only', pro: '✓' },
+  { feature: 'Model answers', free: 'Pro only', pro: '✓' },
 ];
 
 export default function OnboardingPaywall() {
@@ -24,6 +25,12 @@ export default function OnboardingPaywall() {
   const rcEnabled = isRevenueCatConfigured();
 
   useEffect(() => {
+    // Mark onboarding complete the moment the user reaches the paywall.
+    // Anything after this (purchase, skip, swipe, app kill, distraction)
+    // routes to /(tabs) next launch instead of re-running the AI-priced
+    // onboarding recording.
+    setOnboarded().catch(() => {});
+
     if (rcEnabled) {
       getOfferings().then(offering => {
         if (!offering) return;
@@ -44,6 +51,27 @@ export default function OnboardingPaywall() {
   const annualPrice = packages.annual ? packages.annual.product.priceString : annualPlan.price;
   const annualPerMonth = packages.annual ? `${packages.annual.product.currencyCode} ${(packages.annual.product.price / 12).toFixed(2)}/mo` : annualPlan.perMonth;
   const monthlyPrice = packages.monthly ? `${packages.monthly.product.priceString}/mo` : monthlyPlan.perMonth;
+
+  // Live annual savings, derived from the user's actual RC-localized prices
+  // so the chip currency matches the price currency (avoids "Save £90" next
+  // to "$119.99/yr" Apple 3.1.2(c) risk). Hidden until RC has loaded both
+  // packages; the static fallback in PLANS is intentionally not used here.
+  let annualSavings: string | null = null;
+  if (packages.annual && packages.monthly) {
+    const saved = (packages.monthly.product.price * 12) - packages.annual.product.price;
+    if (saved > 0) {
+      try {
+        const formatted = new Intl.NumberFormat('en', {
+          style: 'currency',
+          currency: packages.annual.product.currencyCode,
+          maximumFractionDigits: 0,
+        }).format(saved);
+        annualSavings = `Save ${formatted}`;
+      } catch {
+        annualSavings = null;
+      }
+    }
+  }
 
   async function handlePurchase() {
     const planId = selected;
@@ -129,7 +157,7 @@ export default function OnboardingPaywall() {
             {!!annualPlan.badge && <View style={s.recBadge}><Text style={s.recBadgeText}>{annualPlan.badge}</Text></View>}
             <View style={s.planTop}>
               <Text style={s.planName}>{annualPlan.name}</Text>
-              {!!annualPlan.savings && <Text style={s.planSavings}>{annualPlan.savings}</Text>}
+              {!!annualSavings && <Text style={s.planSavings}>{annualSavings}</Text>}
             </View>
             <Text style={s.planPrice}>{annualPrice}/yr</Text>
             <Text style={s.planPerMonth}>{annualPerMonth} equivalent · billed yearly after trial</Text>

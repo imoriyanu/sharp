@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { FadeIn, ScoreReveal, LoadingScreen } from '../../src/components/Animations';
-import { getConversationState, clearConversationState, getContext, saveSession, updateSessionScore, generateId } from '../../src/services/storage';
+import { getConversationState, clearConversationState, getContext, saveSession, updateSessionScore, generateId, getActiveUpcomingEvents } from '../../src/services/storage';
 import { apiPost } from '../../src/services/api';
 import type { ConversationState, ConversationDebrief } from '../../src/types';
 
@@ -47,6 +47,9 @@ export default function ConversationDebriefScreen() {
 
       setLoadingMsg('Generating coaching analysis...');
 
+      // Pass active upcoming events so the conversation debrief coach can
+      // tie the feedback back to what the user is preparing for.
+      const upcomingEvents = await getActiveUpcomingEvents().catch(() => []);
       const result = await apiPost<ConversationDebrief>('/conversation/debrief', {
         agentPersona: loaded.agentPersona,
         scenarioDescription: loaded.scenarioDescription,
@@ -58,6 +61,7 @@ export default function ConversationDebriefScreen() {
         situationText: ctx?.situationText || '',
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
         documentExtractions: ctx?.documents?.map(d => d.structuredExtraction) || [],
+        upcomingEvents,
       });
 
       if (mountedRef.current) {

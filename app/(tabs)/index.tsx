@@ -257,7 +257,7 @@ export default function HomeScreen() {
                       <View style={st.upcomingReadinessTopRow}>
                         <Text style={st.upcomingReadinessLabel}>Readiness</Text>
                         <Text style={[st.upcomingReadinessVal, { color: fillColor }]}>
-                          {readiness ? `${readiness.score.toFixed(1)} / 10` : ', '}
+                          {readiness ? `${readiness.score.toFixed(1)} / 10` : 'Not rated'}
                         </Text>
                       </View>
                       <View style={st.upcomingBarTrack}>
@@ -348,7 +348,7 @@ export default function HomeScreen() {
                 <Text style={st.modeTitle}>One Shot</Text>
                 <Text style={st.modeDesc}>Full scored session</Text>
                 <View style={st.modeDurBadge}>
-                  <Text style={st.modeDur}>{oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left today` : oneShotLeft === 0 ? (isPremium() ? 'Limit reached' : 'Upgrade for more') : '2-3 min'}</Text>
+                  <Text style={st.modeDur}>{oneShotLeft !== null && oneShotLeft > 0 ? `${oneShotLeft} left ${isPremium() ? 'today' : 'this week'}` : oneShotLeft === 0 ? (isPremium() ? 'Limit reached' : 'Upgrade for more') : '2-3 min'}</Text>
                 </View>
               </TouchableOpacity>
               <TouchableOpacity style={[st.modeCard, !isPremium() ? st.modeCardLocked : threadedLeft === 0 && st.modeCardDimmed]} onPress={async () => {

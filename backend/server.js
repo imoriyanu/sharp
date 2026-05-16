@@ -756,9 +756,36 @@ app.post('/api/threaded/debrief', async (req, res) => {
 
 app.post('/api/progress/summary', async (req, res) => {
   try {
-    const { progressData, roleText, currentCompany } = req.body;
+    const { progressData, roleText, currentCompany, upcomingEvents } = req.body;
     const safeRole = sanitizeString(roleText, 200);
     const safeCompany = sanitizeString(currentCompany, 200);
+
+    // Format the soonest upcoming event so the summary can tie progress to
+    // what the user is preparing for ("...and you're 14 days from your pitch").
+    let eventLine = '';
+    if (Array.isArray(upcomingEvents) && upcomingEvents.length > 0) {
+      const ev = upcomingEvents[0];
+      const title = sanitizeString(ev?.title, 120);
+      const type = sanitizeString(ev?.type, 40);
+      let when = '';
+      if (typeof ev?.eventDate === 'string') {
+        const m = ev.eventDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) {
+          const target = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const days = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          if (days === 0) when = ' (today)';
+          else if (days === 1) when = ' (tomorrow)';
+          else if (days > 1) when = ` (${days} days away)`;
+          else if (days < 0) when = ` (${Math.abs(days)} days ago)`;
+        }
+      }
+      if (title || type) {
+        eventLine = `\n- Preparing for: ${title || type}${type && title ? ` (${type})` : ''}${when}`;
+      }
+    }
+
     const prompt = `You are Sharp, a communication coach. Generate a 30-second spoken progress summary for your student.
 
 THEIR DATA:
@@ -766,7 +793,7 @@ THEIR DATA:
 - Sessions this week: ${Number(progressData?.sessionsThisWeek) || 0} (last week: ${Number(progressData?.sessionsLastWeek) || 0})
 - Current streak: ${Number(progressData?.currentStreak) || 0} days (best ever: ${Number(progressData?.longestStreak) || 0})
 - Role: ${safeRole || 'Not set'}
-- Company: ${safeCompany || 'Not set'}
+- Company: ${safeCompany || 'Not set'}${eventLine}
 
 SCORE TRENDS (recent sessions):
 ${JSON.stringify(progressData.overallTrend?.slice(-10) || [])}
@@ -794,8 +821,10 @@ GENERATE A NATURAL, SPOKEN 30-SECOND SUMMARY. Rules:
 - If they're plateauing, reframe it constructively ("you've built a solid base, now let's push for the next level")
 - If they're new (< 3 sessions), welcome them and set expectations
 - End with ONE specific thing to focus on next
+- If they have an upcoming event, tie the focus to it ("...and you're 14 days from your pitch, so let's tighten openings this week")
 - Keep it under 100 words. It needs to be speakable in 30 seconds
 - DO NOT use bullet points or formatting. This is pure spoken text
+- Never use em dashes
 
 Return ONLY valid JSON (no markdown):
 {
@@ -838,7 +867,7 @@ function looksLikeGenericCoachOutput(text) {
 
 app.post('/api/analytics/patterns', async (req, res) => {
   try {
-    const { sessions, roleText, currentCompany, situationText, dreamRoleAndCompany, notes } = req.body || {};
+    const { sessions, roleText, currentCompany, situationText, dreamRoleAndCompany, notes, upcomingEvents } = req.body || {};
     const safeSessions = Array.isArray(sessions) ? sessions.slice(0, 20) : [];
     // Lowered from 5 → 3 so trial users see pattern insights inside the
     // 7-day window. The prompt hedges confidence wording based on
@@ -856,6 +885,7 @@ app.post('/api/analytics/patterns', async (req, res) => {
       situationText: sanitizeString(situationText, 2000),
       dreamRoleAndCompany: sanitizeString(dreamRoleAndCompany, 200),
       notes: sanitizeString(notes, 3000),
+      upcomingEvents: Array.isArray(upcomingEvents) ? upcomingEvents : [],
     });
 
     const result = await callClaude(prompt, 1200, { model: MODELS.SONNET });

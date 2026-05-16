@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { LoadingScreen, FadeIn, AudioWaveBars } from '../../src/components/Animations';
 import { playCoachingAudio, stopAudio } from '../../src/services/tts';
-import { getProgressData, getContext, getSessions, getRecentSessionSummariesForAnalysis, type ProgressData } from '../../src/services/storage';
+import { getProgressData, getContext, getSessions, getRecentSessionSummariesForAnalysis, getActiveUpcomingEvents, type ProgressData } from '../../src/services/storage';
 import { generateProgressSummary, extractPatterns } from '../../src/services/scoring';
 import { isPremium } from '../../src/services/premium';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -143,9 +143,10 @@ export default function AnalyticsScreen() {
 
     if (mountedRef.current) setPatternsLoading(true);
     try {
-      const [sessions, ctx] = await Promise.all([
+      const [sessions, ctx, upcomingEvents] = await Promise.all([
         getRecentSessionSummariesForAnalysis(15),
         getContext(),
+        getActiveUpcomingEvents(),
       ]);
       const report = await extractPatterns({
         sessions,
@@ -154,6 +155,7 @@ export default function AnalyticsScreen() {
         situationText: ctx?.situationText || '',
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
         notes: ctx?.notes || '',
+        upcomingEvents,
       }, abortRef.current?.signal);
       if (!mountedRef.current) return;
       const got = report.patterns || [];
@@ -172,12 +174,16 @@ export default function AnalyticsScreen() {
   }
 
   async function fetchAndCacheSummary(progress: ProgressData) {
-    const ctx = await getContext();
+    const [ctx, upcomingEvents] = await Promise.all([
+      getContext(),
+      getActiveUpcomingEvents(),
+    ]);
     if (!mountedRef.current) throw new DOMException('Unmounted', 'AbortError');
     const result = await generateProgressSummary({
       progressData: progress,
       roleText: ctx?.roleText || '',
       currentCompany: ctx?.currentCompany || '',
+      upcomingEvents,
     }, abortRef.current?.signal);
     // Cache with session count so it invalidates on next session
     await AsyncStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify({ sessionCount: progress.totalSessions, summary: result }));

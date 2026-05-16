@@ -55,7 +55,7 @@ export default function StreakScreen() {
               <View style={s.statDivider} />
               <View style={s.statBox}>
                 <Text style={[s.statVal, streak.freezesAvailable > 0 ? s.freezeActive : s.freezeUsed]}>
-                  {streak.freezesAvailable > 0 ? '❄️' : ', '}
+                  {streak.freezesAvailable > 0 ? '❄️' : '0'}
                 </Text>
                 <Text style={s.statLabel}>Freeze</Text>
               </View>

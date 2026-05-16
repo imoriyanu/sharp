@@ -11,7 +11,7 @@ import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
 import { apiGet } from '../../src/services/api';
 import { isPremium } from '../../src/services/premium';
-import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, addRecentQuestion, getAverageScores, getRecentInsights } from '../../src/services/storage';
+import { getContext, saveDailyResult, updateStreak, saveSession, generateId, getCachedDailyQuestion, cacheDailyQuestion, clearDailyQuestionCache, addRecentQuestion, getAverageScores, getRecentInsights, getActiveUpcomingEvents } from '../../src/services/storage';
 import { trackEvent, Events } from '../../src/services/analytics';
 import { captureError } from '../../src/services/errorTracking';
 import type { RecordingState, GeneratedQuestion } from '../../src/types';
@@ -170,7 +170,10 @@ export default function DailyChallengeScreen() {
           stoppingRef.current = false;
           return;
         }
-        const freeResult = await scoreAnswer({ roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '', question: q?.question || '', transcript: freeText } as any);
+        // Pass active upcoming events so the coaching ties to what the user
+        // is preparing for, even on the free Daily Challenge path.
+        const freeEvents = await getActiveUpcomingEvents().catch(() => []);
+        const freeResult = await scoreAnswer({ roleText: '', currentCompany: '', situationText: '', dreamRoleAndCompany: '', question: q?.question || '', transcript: freeText, upcomingEvents: freeEvents } as any);
         trackEvent(Events.DAILY_CHALLENGE_COMPLETED, { score: freeResult.overall, free: true });
         await clearDailyQuestionCache();
         const streakResult = await updateStreak();
@@ -208,7 +211,9 @@ export default function DailyChallengeScreen() {
         return;
       }
 
-      const [ctx, prevScores, insights] = await Promise.all([getContext(), getAverageScores(), getRecentInsights()]);
+      const [ctx, prevScores, insights, upcomingEvents] = await Promise.all([
+        getContext(), getAverageScores(), getRecentInsights(), getActiveUpcomingEvents(),
+      ]);
       const docExtractions = (ctx?.documents || []).map(d => d.structuredExtraction).filter(Boolean);
       const result = await scoreAnswer({
         roleText: ctx?.roleText || '',
@@ -217,6 +222,7 @@ export default function DailyChallengeScreen() {
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
         notes: ctx?.notes || '',
         documentExtractions: docExtractions,
+        upcomingEvents,
         question: q?.question || '',
         transcript: text,
         previousScores: prevScores || undefined,

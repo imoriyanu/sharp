@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
-import { getContext, generateId, saveConversationState } from '../../src/services/storage';
+import { getContext, generateId, saveConversationState, getActiveUpcomingEvents } from '../../src/services/storage';
 import { apiPost } from '../../src/services/api';
 import { isPremium, canDoConversation, trackConversationUsage } from '../../src/services/premium';
 import type { ConversationScenario, ConversationState, UserContext } from '../../src/types';
@@ -101,6 +101,9 @@ export default function ConversationSetup() {
     setError('');
 
     try {
+      // Load the user's active upcoming events so the conversation agent
+      // can frame the scenario around what they're actually preparing for.
+      const upcomingEvents = await getActiveUpcomingEvents().catch(() => []);
       const setup = await apiPost<{
         agentPersona: string;
         scenarioDescription: string;
@@ -114,6 +117,7 @@ export default function ConversationSetup() {
         dreamRoleAndCompany: context?.dreamRoleAndCompany || '',
         notes: context?.notes || '',
         documentExtractions: context?.documents?.map(d => d.structuredExtraction) || [],
+        upcomingEvents,
       });
 
       const systemPrompt = buildSystemPrompt(selected, setup.agentPersona, setup.scenarioDescription, context);

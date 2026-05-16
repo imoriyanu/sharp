@@ -268,7 +268,7 @@ export default function UpcomingEventDetail() {
               </View>
               <View style={s.readinessScoreWrap}>
                 <Text style={[s.readinessScore, { color: fillColor }]}>
-                  {readiness ? readiness.score.toFixed(1) : ', '}
+                  {readiness ? readiness.score.toFixed(1) : '-'}
                 </Text>
                 <Text style={s.readinessOutOf}>/ 10</Text>
               </View>

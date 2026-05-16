@@ -18,7 +18,6 @@ export default function OnboardingWelcome() {
   const [eventDays, setEventDays] = useState<number | null>(null);
 
   useEffect(() => {
-    trackEvent(Events.ONBOARDING_COMPLETED);
     getUserProfile().then(p => { if (p) setName(p.displayName); });
     getActiveUpcomingEvents().then(events => {
       const first = events[0];
@@ -32,6 +31,7 @@ export default function OnboardingWelcome() {
   }, []);
 
   async function finish() {
+    trackEvent(Events.ONBOARDING_COMPLETED);
     await setOnboarded();
     router.replace('/(tabs)');
   }
