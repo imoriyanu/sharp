@@ -207,7 +207,7 @@ export async function migrateLocalToCloud(data: {
 
   __DEV__ && console.log('Starting cloud migration...');
 
-  // Run independent writes in parallel — they don't depend on each other.
+  // Run independent writes in parallel. They don't depend on each other.
   // All upserts are idempotent on primary key so retrying after a crash
   // creates no duplicates.
   const tasks: Promise<unknown>[] = [];
@@ -284,7 +284,7 @@ export async function migrateLocalToCloud(data: {
     })());
   }
 
-  // Promise.allSettled — one failure doesn't tank the rest.
+  // Promise.allSettled. One failure doesn't tank the rest.
   const results = await Promise.allSettled(tasks);
   const failed = results.filter(r => r.status === 'rejected').length;
   if (failed > 0) {

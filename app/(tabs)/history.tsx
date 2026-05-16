@@ -7,13 +7,20 @@ import Svg, { Polyline, Circle, Line } from 'react-native-svg';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
 import { getSessions, getStreak } from '../../src/services/storage';
+import { FEATURES } from '../../src/constants/features';
 import type { SessionSummary, Streak } from '../../src/types';
 
+// Labels/emoji/bg keep entries for `conversation`. Historical sessions from
+// when the feature was tested in dev still need to render correctly. The
+// filter chip itself is gated on FEATURES.conversation below.
 const TYPE_LABELS: Record<string, string> = { daily_30: 'Daily', one_shot: 'One Shot', threaded: 'Threaded', duel: 'Duel', conversation: 'Conversation' };
 const TYPE_EMOJI: Record<string, string> = { daily_30: '☀️', one_shot: '⚡', threaded: '⚓', duel: '⚔️', conversation: '💬' };
 const TYPE_BG: Record<string, string> = { daily_30: colors.daily.bg, threaded: colors.feedback.positiveBg, duel: colors.duel.bg, conversation: colors.duel.bg };
-const FILTER_OPTIONS = ['All', 'Daily', 'One Shot', 'Threaded'] as const;
-const FILTER_MAP: Record<string, string | null> = { All: null, Daily: 'daily_30', 'One Shot': 'one_shot', Threaded: 'threaded' };
+const FILTER_OPTIONS = (FEATURES.conversation
+  ? ['All', 'Daily', 'One Shot', 'Threaded', 'Voice']
+  : ['All', 'Daily', 'One Shot', 'Threaded']
+) as readonly string[];
+const FILTER_MAP: Record<string, string | null> = { All: null, Daily: 'daily_30', 'One Shot': 'one_shot', Threaded: 'threaded', Voice: 'conversation' };
 
 // Sparkline of overall scores. Renders a smooth-ish line + dot on the latest
 // point. Older points fade so the eye lands on momentum, not noise.
@@ -69,8 +76,8 @@ export default function HistoryScreen() {
   const currentStreak = streak?.currentStreak || 0;
   let streakChip: { kind: 'fire' | 'soft' | 'cta'; text: string } | null = null;
   if (currentStreak >= 2) streakChip = { kind: 'fire', text: `🔥 ${currentStreak}-day streak` };
-  else if (currentStreak === 1) streakChip = { kind: 'soft', text: 'Day 1 — keep it going' };
-  else if (sessions.length > 0) streakChip = { kind: 'cta', text: 'Start a streak — do the Daily' };
+  else if (currentStreak === 1) streakChip = { kind: 'soft', text: 'Day 1. Keep it going' };
+  else if (sessions.length > 0) streakChip = { kind: 'cta', text: 'Start a streak. Do the Daily' };
 
   const renderItem = useCallback(({ item: sess }: { item: SessionSummary }) => {
     const date = new Date(sess.createdAt);
@@ -122,7 +129,7 @@ export default function HistoryScreen() {
               </View>
             )}
 
-            {/* Streak chip — celebrates momentum or nudges back into the daily habit */}
+            {/* Streak chip. Celebrates momentum or nudges back into the daily habit */}
             {streakChip && (
               <TouchableOpacity
                 style={[
@@ -143,7 +150,7 @@ export default function HistoryScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Trend sparkline — last 14 overall scores, tap to open full analytics */}
+            {/* Trend sparkline. Last 14 overall scores, tap to open full analytics */}
             {trendScores.length >= 2 && (
               <TouchableOpacity style={s.trendCard} onPress={() => router.push('/analytics')} activeOpacity={0.8}>
                 <View style={s.trendHeader}>

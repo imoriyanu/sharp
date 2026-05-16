@@ -19,7 +19,7 @@ let _planIdCached: PlanId | null = null;
 
 export const PLANS: PremiumPlan[] = [
   // Absolute-£ savings framing beats "Save 38%" above the £50 threshold per
-  // 2026 pricing-psychology data. "Most Popular" badge over "Best value" —
+  // 2026 pricing-psychology data. "Most Popular" badge over "Best value" , 
   // social-proof effect adds 5-15% to badged-tier selection rate.
   { id: 'annual', name: 'Annual', price: '£149.99', period: '/year', perMonth: '£12.50/mo', savings: 'Save £90', recommended: true, badge: 'Most Popular' },
   { id: 'monthly', name: 'Monthly', price: '£19.99', period: '/month', perMonth: '£19.99/mo' },
@@ -27,10 +27,11 @@ export const PLANS: PremiumPlan[] = [
 
 export const FREE_LIMITS: UsageLimits = {
   oneShotsPerDay: 1,
-  oneShotsPerWeek: 3,           // 3/week is the BITING cap — daily is just a safety
+  oneShotsPerWeek: 3,           // 3/week is the BITING cap. Daily is just a safety
   threadedPerDay: 0,
   threadedPerWeek: 0,
   industryPerDay: 0,
+  conversationsPerDay: 0,       // live voice is Pro-only
   regeneratesPerDay: 0,
   canAddContext: false,
   canViewSummary: false,
@@ -43,6 +44,7 @@ export const PREMIUM_LIMITS: UsageLimits = {
   threadedPerDay: 2,
   threadedPerWeek: 999,
   industryPerDay: 2,
+  conversationsPerDay: 1,       // 1/day. ElevenLabs duplex is expensive per minute
   regeneratesPerDay: 1,
   canAddContext: true,
   canViewSummary: true,
@@ -50,7 +52,7 @@ export const PREMIUM_LIMITS: UsageLimits = {
 };
 
 
-// Synchronous checks — use cached values (loaded at app start)
+// Synchronous checks. Use cached values (loaded at app start)
 export function isPremium(): boolean {
   return _premiumCached ?? false;
 }
@@ -63,7 +65,7 @@ export function getCurrentPlanId(): PlanId {
   return _planIdCached || 'free';
 }
 
-// Async check — reads from storage, updates cache
+// Async check. Reads from storage, updates cache
 export async function checkPremiumStatus(): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(PREMIUM_KEY);
@@ -88,7 +90,7 @@ export async function checkPremiumStatus(): Promise<boolean> {
 }
 
 // Call this on app start to hydrate the synchronous cache.
-// Note: syncFromRevenueCat is intentionally NOT awaited here — the RC SDK
+// Note: syncFromRevenueCat is intentionally NOT awaited here. The RC SDK
 // can be slow on cold network, and we don't want it to delay first paint.
 // Instead we register the entitlement listener so any actual subscription
 // change refreshes the cache immediately, and PremiumSync handles foreground
@@ -115,23 +117,23 @@ export async function initPremium(): Promise<void> {
   });
 }
 
-// Sync premium status from RevenueCat — call on init and app foreground
+// Sync premium status from RevenueCat. Call on init and app foreground
 export async function syncFromRevenueCat(): Promise<void> {
   if (!isRevenueCatConfigured()) return;
   try {
     const hasPro = await checkEntitlement();
     if (hasPro && !_premiumCached) {
-      // RevenueCat says premium but local cache doesn't — activate
+      // RevenueCat says premium but local cache doesn't. Activate
       // Detect plan from entitlement product ID
       const { getDetectedPlanId } = await import('./revenuecat');
       const planId = await getDetectedPlanId();
       await setPremiumStatus(planId);
     } else if (!hasPro && _premiumCached) {
-      // Subscription expired/cancelled — revoke locally
+      // Subscription expired/cancelled. Revoke locally
       await clearPremiumStatus();
     }
   } catch (e) {
-    // Network error — trust the local cache, don't revoke
+    // Network error. Trust the local cache, don't revoke
     __DEV__ && console.warn('RevenueCat sync failed, trusting local cache:', e);
   }
 }
@@ -182,9 +184,10 @@ function withUsageLock<T>(fn: () => Promise<T>): Promise<T> {
 interface DailyUsage {
   date: string;
   oneShots: number;
-  oneShotsThisWeek: number;    // free tier weekly cap — bites at 3/week
+  oneShotsThisWeek: number;    // free tier weekly cap. Bites at 3/week
   threaded: number;
   industry: number;
+  conversations: number;       // live voice. Pro-only, 1/day
   regenerates: number;
   threadedThisWeek: number;
   weekStart: string;
@@ -198,8 +201,9 @@ async function getUsage(): Promise<DailyUsage> {
 
     if (raw) {
       const usage: DailyUsage = JSON.parse(raw);
-      // Backward-compat: older records may lack oneShotsThisWeek.
+      // Backward-compat: older records may lack new counters.
       if (usage.oneShotsThisWeek == null) usage.oneShotsThisWeek = 0;
+      if (usage.conversations == null) usage.conversations = 0;
       if (usage.date === today) {
         // Reset weekly counters if new week
         if (usage.weekStart !== weekStart) {
@@ -211,14 +215,14 @@ async function getUsage(): Promise<DailyUsage> {
       }
       // New day but same week: keep weekly counters, reset daily.
       if (usage.weekStart === weekStart) {
-        return { ...usage, date: today, oneShots: 0, threaded: 0, industry: 0, regenerates: 0 };
+        return { ...usage, date: today, oneShots: 0, threaded: 0, industry: 0, conversations: 0, regenerates: 0 };
       }
     }
 
-    return { date: today, oneShots: 0, oneShotsThisWeek: 0, threaded: 0, industry: 0, regenerates: 0, threadedThisWeek: 0, weekStart };
+    return { date: today, oneShots: 0, oneShotsThisWeek: 0, threaded: 0, industry: 0, conversations: 0, regenerates: 0, threadedThisWeek: 0, weekStart };
   } catch {
     const today = localDateStr();
-    return { date: today, oneShots: 0, oneShotsThisWeek: 0, threaded: 0, industry: 0, regenerates: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
+    return { date: today, oneShots: 0, oneShotsThisWeek: 0, threaded: 0, industry: 0, conversations: 0, regenerates: 0, threadedThisWeek: 0, weekStart: getWeekStart() };
   }
 }
 
@@ -243,15 +247,35 @@ async function saveUsage(usage: DailyUsage): Promise<void> {
 async function syncUsageToCloud(usage: DailyUsage): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
+  // NOTE: `conversations` column requires a Supabase migration before it
+  // syncs to cloud. Local tracking still works without it. Quota enforces
+  // client-side. See README for the migration SQL.
   const { error } = await supabase.from('usage').upsert({
     user_id: user.id,
     usage_date: usage.date,
     one_shots: usage.oneShots,
     threaded: usage.threaded,
     threaded_this_week: usage.threadedThisWeek,
+    conversations: usage.conversations,
     week_start: usage.weekStart,
   });
-  if (error) throw error;
+  if (error) {
+    // If the conversations column doesn't exist yet, retry without it so
+    // the rest of the sync still works. Avoids hard-blocking on migration.
+    if (/conversations/i.test(error.message || '')) {
+      const { error: retryErr } = await supabase.from('usage').upsert({
+        user_id: user.id,
+        usage_date: usage.date,
+        one_shots: usage.oneShots,
+        threaded: usage.threaded,
+        threaded_this_week: usage.threadedThisWeek,
+        week_start: usage.weekStart,
+      });
+      if (retryErr) throw retryErr;
+      return;
+    }
+    throw error;
+  }
 }
 
 // ===== Usage sync retry queue =====
@@ -266,7 +290,7 @@ async function enqueueUsageSync(usage: DailyUsage): Promise<void> {
   try {
     const raw = await AsyncStorage.getItem(PENDING_USAGE_KEY);
     let queue: DailyUsage[] = raw ? JSON.parse(raw) : [];
-    // Dedupe by usage_date — only the most recent state per day matters.
+    // Dedupe by usage_date. Only the most recent state per day matters.
     queue = queue.filter(u => u.date !== usage.date);
     queue.push(usage);
     if (queue.length > PENDING_USAGE_MAX) queue = queue.slice(queue.length - PENDING_USAGE_MAX);
@@ -344,16 +368,26 @@ export function trackIndustryUsage(): Promise<void> {
   return withUsageLock(async () => { const u = await getUsage(); u.industry = (u.industry || 0) + 1; await saveUsage(u); });
 }
 
-// Conversation feature is currently hidden behind FEATURES.conversation.
-// These helpers stay as no-op shims so conversation/setup.tsx still compiles —
-// when the feature is re-enabled (post-MVP), wire to a credits or subscription
-// limit here.
+// Live voice Conversation mode (ElevenLabs duplex). Pro-only because every
+// minute is metered. 1 session per day for Pro. Capped to keep margin sane
+// at £19.99/mo. Free tier always returns allowed: false (paywall triggers).
 export async function canDoConversation(): Promise<{ allowed: boolean; used: number; limit: number }> {
-  return { allowed: false, used: 0, limit: 0 };
+  const limits = getLimits();
+  if (limits.conversationsPerDay === 0) return { allowed: false, used: 0, limit: 0 };
+  const usage = await getUsage();
+  return {
+    allowed: (usage.conversations || 0) < limits.conversationsPerDay,
+    used: usage.conversations || 0,
+    limit: limits.conversationsPerDay,
+  };
 }
 
 export function trackConversationUsage(): Promise<void> {
-  return Promise.resolve();
+  return withUsageLock(async () => {
+    const u = await getUsage();
+    u.conversations = (u.conversations || 0) + 1;
+    await saveUsage(u);
+  });
 }
 
 // Public usage snapshot for Settings / dashboard chips. Returns the today's
@@ -366,6 +400,7 @@ export interface UsageDisplay {
   oneShots: { used: number; cap: number };
   threaded: { used: number; cap: number };
   industry: { used: number; cap: number };
+  conversations: { used: number; cap: number };
 }
 
 export async function getUsageDisplay(): Promise<UsageDisplay> {
@@ -381,10 +416,11 @@ export async function getUsageDisplay(): Promise<UsageDisplay> {
       ? { used: usage.threaded, cap: limits.threadedPerDay }
       : { used: usage.threadedThisWeek, cap: limits.threadedPerWeek },
     industry: { used: usage.industry || 0, cap: limits.industryPerDay },
+    conversations: { used: usage.conversations || 0, cap: limits.conversationsPerDay },
   };
 }
 
-// Regenerate is PER QUESTION — tracked in-memory, resets on new question load
+// Regenerate is PER QUESTION. Tracked in-memory, resets on new question load
 let _regenCount = 0;
 
 export function resetRegenCount(): void {

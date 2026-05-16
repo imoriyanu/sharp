@@ -1,4 +1,4 @@
-// Sharp AI — Agent tool layer.
+// Sharp AI. Agent tool layer.
 // Tools are the moat: agents reason over typed objects (sessions, turns, scores, docs)
 // not raw text. Each tool is a thin Supabase query returning a small JSON-serialisable
 // structure. Every agent gets the same tool box; agents differ only in system prompts.
@@ -8,7 +8,7 @@ const MAX_TRANSCRIPT_LEN = 600; // truncate when returning many rows
 const DEFAULT_RECENT_LIMIT = 10;
 
 // Guards every retrieval tool. Service role + null userId would scan the whole
-// table — short-circuit instead. Missing supabase client (env vars unset)
+// table. Short-circuit instead. Missing supabase client (env vars unset)
 // returns empty so the agent reasons over inline context only.
 function needsDb(ctx) {
   return !!(ctx && ctx.supabase && ctx.userId);
@@ -97,7 +97,7 @@ async function search_user_history(ctx, args) {
   if (!term) return { matches: [] };
   const { supabase, userId } = ctx;
 
-  // Postgres ILIKE — fast enough for MVP volumes (< 1000 turns/user)
+  // Postgres ILIKE. Fast enough for MVP volumes (< 1000 turns/user)
   // Search both transcripts and coaching insights.
   const pattern = `%${term.replace(/[%_]/g, '\\$&')}%`;
   const { data, error } = await supabase
@@ -222,7 +222,7 @@ async function get_user_context(ctx, _args) {
   };
 }
 
-// In-memory tool — does not need supabase. Useful inside the same session.
+// In-memory tool. Does not need supabase. Useful inside the same session.
 async function find_contradiction(_ctx, args) {
   const turns = Array.isArray(args?.turns) ? args.turns : [];
   if (turns.length < 2) return { contradictions: [] };
@@ -296,7 +296,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'find_recurring_pattern',
-    description: 'Surfaces words that recur across the user\'s recent coaching insights — useful to detect "third time this week you\'ve buried the lead" patterns before issuing the same advice again.',
+    description: 'Surfaces words that recur across the user\'s recent coaching insights. Useful to detect "third time this week you\'ve buried the lead" patterns before issuing the same advice again.',
     input_schema: {
       type: 'object',
       properties: { lookback: { type: 'integer', description: 'How many recent insights to scan (default 10, max 30)', minimum: 1, maximum: 30 } },

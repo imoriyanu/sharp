@@ -1,4 +1,4 @@
-// Sharp Design System — Soft Dawn
+// Sharp Design System. Soft Dawn
 // Light mode: warm cream canvas, terracotta accent, sage success, rounded organic shapes
 // Font: System default (SF Pro on iOS, Roboto on Android)
 

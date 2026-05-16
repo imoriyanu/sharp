@@ -21,7 +21,7 @@ const THREAD_DIM_LABELS: Record<string, string> = {
 };
 
 // Tap a thread dimension to see what it measures + how to read it. Thread
-// dimensions differ from One Shot — they're about behaviour ACROSS turns, not
+// dimensions differ from One Shot. They're about behaviour ACROSS turns, not
 // a single answer.
 const THREAD_DIM_INFO: Record<string, { what: string; scale: string }> = {
   communicationClarity: {
@@ -37,7 +37,7 @@ const THREAD_DIM_INFO: Record<string, { what: string; scale: string }> = {
     scale: '5 = rambled when challenged. 7 = mostly tight. 9 = sharp, every word earning its place.',
   },
   substance: {
-    what: 'Whether your answers carried real specifics — names, numbers, concrete moves — instead of abstractions.',
+    what: 'Whether your answers carried real specifics. Names, numbers, concrete moves. Instead of abstractions.',
     scale: '5 = generalities. 7 = some specifics. 9 = consistently grounded in real detail.',
   },
   consistency: {
@@ -114,7 +114,7 @@ export default function DebriefScreen() {
           </View>
         </FadeIn>
 
-        {/* Pattern (new — conditional on new debrief field) */}
+        {/* Pattern (new. Conditional on new debrief field) */}
         {debrief.pattern && (
           <FadeIn delay={250}>
             <Text style={s.section}>The pattern</Text>
@@ -124,7 +124,7 @@ export default function DebriefScreen() {
           </FadeIn>
         )}
 
-        {/* Thread dimensions — tap a row to see what it measures + how to read */}
+        {/* Thread dimensions. Tap a row to see what it measures + how to read */}
         <FadeIn delay={300}>
           <Text style={s.section}>Thread Dimensions</Text>
           <View style={s.dimCard}>
@@ -182,7 +182,7 @@ export default function DebriefScreen() {
           </View>
         </FadeIn>
 
-        {/* Character arc summary (new — how the other person responded across turns) */}
+        {/* Character arc summary (new. How the other person responded across turns) */}
         {debrief.characterArcSummary && (
           <FadeIn delay={450}>
             <Text style={s.section}>How they read you</Text>
@@ -217,7 +217,7 @@ export default function DebriefScreen() {
           </FadeIn>
         )}
 
-        {/* One Thing — the headline takeaway. Single, actionable. */}
+        {/* One Thing. The headline takeaway. Single, actionable. */}
         {debrief.oneThing && (
           <FadeIn delay={650}>
             <Text style={s.section}>One thing to carry forward</Text>
@@ -293,15 +293,15 @@ const s = StyleSheet.create({
   sumCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, marginBottom: spacing.lg, ...shadows.md },
   sumText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22) },
 
-  // The pattern card — what behaviour repeated across turns. Subtle accent.
+  // The pattern card. What behaviour repeated across turns. Subtle accent.
   patternCard: { backgroundColor: colors.accent.light, borderRadius: radius.xl, padding: spacing.lg, borderLeftWidth: 4, borderLeftColor: colors.accent.primary, ...shadows.sm },
   patternText: { fontSize: typography.size.sm, color: colors.accent.dark, lineHeight: fp(22), fontWeight: typography.weight.semibold },
 
-  // Character arc — how the relationship moved.
+  // Character arc. How the relationship moved.
   arcCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, ...shadows.sm },
   arcText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(22), fontStyle: 'italic' as const },
 
-  // One Thing — the headline takeaway. Highest visual weight after the score.
+  // One Thing. The headline takeaway. Highest visual weight after the score.
   oneThingCard: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.xl, padding: spacing.xl, borderLeftWidth: 4, borderLeftColor: colors.success, ...shadows.sm },
   oneThingText: { fontSize: typography.size.md, color: colors.text.primary, lineHeight: fp(24), fontWeight: typography.weight.semibold },
 

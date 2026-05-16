@@ -52,7 +52,7 @@ export default function OnboardingValue() {
             <Text style={s.ctaText}>Start 7-Day Free Trial</Text>
             <Text style={s.ctaSub}>Full scoring, coaching, and pressure training</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.replace('/onboarding/welcome')} activeOpacity={0.7} style={s.skipRow}>
+          <TouchableOpacity onPress={() => router.replace('/onboarding/paywall')} activeOpacity={0.7} style={s.skipRow}>
             <Text style={s.skipText}>Continue with free plan</Text>
           </TouchableOpacity>
         </FadeIn>

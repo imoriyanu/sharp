@@ -1,6 +1,6 @@
-// Sharp AI — Agent traces.
+// Sharp AI. Agent traces.
 // Two sinks: PostHog (server-side, for funnels + dashboards) and Supabase
-// agent_traces table (for offline drill-down). Both are best-effort —
+// agent_traces table (for offline drill-down). Both are best-effort , 
 // trace failures must never block an agent run.
 
 let _posthog = null;
@@ -37,7 +37,7 @@ async function writeTraceRow(supabase, row) {
   } catch {}
 }
 
-// ===== Trace recorder — one per agent run =====
+// ===== Trace recorder. One per agent run =====
 
 function createTrace({ supabase, userId, agentName, sessionId }) {
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

@@ -1,4 +1,5 @@
-// @ts-nocheck — feature disabled for MVP; references symbols not yet wired in. See src/constants/features.ts.
+// @ts-nocheck
+// Feature disabled for MVP; references symbols not yet wired in. See src/constants/features.ts.
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -107,7 +108,7 @@ export default function RealtimeCoachingResults() {
             <View style={s.noInterventionCard}>
               <Text style={s.noInterventionEmoji}>✅</Text>
               <Text style={s.noInterventionTitle}>Clean delivery</Text>
-              <Text style={s.noInterventionText}>No coaching nudges needed — you stayed structured, specific, and on point.</Text>
+              <Text style={s.noInterventionText}>No coaching nudges needed. You stayed structured, specific, and on point.</Text>
             </View>
           ) : (
             <View style={s.timelineCard}>

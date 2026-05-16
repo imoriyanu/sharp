@@ -1,4 +1,5 @@
-// @ts-nocheck — feature disabled for MVP; references symbols not yet wired in. See src/constants/features.ts.
+// @ts-nocheck
+// Feature disabled for MVP; references symbols not yet wired in. See src/constants/features.ts.
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -277,7 +278,7 @@ export default function RealtimeCoachingLive() {
         triggerIntervention(intervention);
       }
     } catch {
-      // Fail safe — don't intervene on error
+      // Fail safe. Don't intervene on error
     } finally {
       evaluatingRef.current = false;
     }
@@ -379,7 +380,7 @@ export default function RealtimeCoachingLive() {
                 <Text style={s.readyEmoji}>🎓</Text>
                 <Text style={s.readyTitle}>Real-Time Coaching</Text>
                 <Text style={s.readyDesc}>
-                  I'll listen while you answer and nudge you if I notice something — like burying your point, hedging, or going off track.
+                  I'll listen while you answer and nudge you if I notice something. Like burying your point, hedging, or going off track.
                 </Text>
                 <Text style={s.readyHint}>Maximum 2 nudges per session. Your recording continues uninterrupted.</Text>
               </View>
@@ -412,7 +413,7 @@ export default function RealtimeCoachingLive() {
           ) : mode === 'recording' ? (
             <TouchableOpacity style={s.doneBtn} onPress={stopRecording} activeOpacity={0.8}>
               <View style={s.stopSq} />
-              <Text style={s.doneBtnText}>Done — score my answer</Text>
+              <Text style={s.doneBtnText}>Done. Score my answer</Text>
             </TouchableOpacity>
           ) : null}
         </View>

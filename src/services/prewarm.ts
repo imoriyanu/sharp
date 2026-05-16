@@ -1,20 +1,20 @@
-// Sharp AI — App-boot prewarm orchestrator.
+// Sharp AI. App-boot prewarm orchestrator.
 //
 // Fire-and-forget tasks that make the first user action feel snappier.
 // Each task MUST:
 //   - return quickly even on cold storage / no network
-//   - never throw (swallow errors silently — failure must not block boot)
+//   - never throw (swallow errors silently. Failure must not block boot)
 //   - do nothing wasteful when the warmup isn't useful right now
 //     (e.g. user already completed today's Daily Challenge → skip)
 //
 // Add a task here ONLY if it pays for itself in perceived latency.
-// Keep this file lean — it runs every cold start.
+// Keep this file lean. It runs every cold start.
 
 import { getCachedDailyQuestion, hasCompletedDailyToday } from './storage';
 import { prefetchAudio, buildNaturalScript, getQuestionVoiceMode } from './tts';
 
 export async function prewarmAtBoot(): Promise<void> {
-  // Run warmups in parallel — each is independently silent on failure.
+  // Run warmups in parallel. Each is independently silent on failure.
   await Promise.all([
     warmTodayDailyAudio(),
   ]);
@@ -32,6 +32,6 @@ async function warmTodayDailyAudio(): Promise<void> {
     if (!cached?.question) return;
     prefetchAudio(buildNaturalScript(cached.question), getQuestionVoiceMode(cached.question));
   } catch {
-    // Silent — warmup is best-effort
+    // Silent. Warmup is best-effort
   }
 }

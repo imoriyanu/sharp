@@ -10,10 +10,10 @@ import { getOfferings, purchasePackage, restorePurchases, isRevenueCatConfigured
 const COMPARE = [
   { feature: 'Daily Challenge', free: 'No scoring', pro: 'Full coaching' },
   { feature: 'One Shot sessions', free: '3/week', pro: '3/day' },
-  { feature: 'Threaded practice', free: '—', pro: '2/day' },
-  { feature: 'Industry questions', free: '—', pro: '2/day' },
-  { feature: 'Context & documents', free: '—', pro: '✓' },
-  { feature: 'Model answers', free: '—', pro: '✓' },
+  { feature: 'Threaded practice', free: ', ', pro: '2/day' },
+  { feature: 'Industry questions', free: ', ', pro: '2/day' },
+  { feature: 'Context & documents', free: ', ', pro: '✓' },
+  { feature: 'Model answers', free: ', ', pro: '✓' },
 ];
 
 export default function OnboardingPaywall() {
@@ -145,7 +145,7 @@ export default function OnboardingPaywall() {
           </TouchableOpacity>
         </FadeIn>
 
-        {/* CTA — trial-first */}
+        {/* CTA. Trial-first */}
         <FadeIn delay={600}>
           <TouchableOpacity style={[s.trialBtn, purchasing && { opacity: 0.6 }]} onPress={handlePurchase} activeOpacity={0.8} disabled={purchasing}>
             {purchasing

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, Animated, Easing, StyleSheet } from 'react-native';
 import { colors, wp, fp } from '../constants/theme';
 
-// ===== Pulse Dot — breathing dot for recording =====
+// ===== Pulse Dot. Breathing dot for recording =====
 
 export function PulseDot({ color = colors.recording, size = wp(10) }: { color?: string; size?: number }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -30,7 +30,7 @@ export function PulseDot({ color = colors.recording, size = wp(10) }: { color?: 
   );
 }
 
-// ===== Audio Wave Bars — animated bars for recording/playback =====
+// ===== Audio Wave Bars. Animated bars for recording/playback =====
 
 export function AudioWaveBars({ active = true, barCount = 24, color = colors.accent.primary, height = wp(48) }: {
   active?: boolean; barCount?: number; color?: string; height?: number;
@@ -74,7 +74,7 @@ const waveStyles = StyleSheet.create({
   bar: { width: wp(3), borderRadius: wp(2) },
 });
 
-// ===== Skeleton Loader — shimmer effect for loading states =====
+// ===== Skeleton Loader. Shimmer effect for loading states =====
 
 export function SkeletonLoader({ width = '100%', height = wp(16), radius: r = wp(8), style }: {
   width?: number | string; height?: number; radius?: number; style?: any;
@@ -96,7 +96,7 @@ export function SkeletonLoader({ width = '100%', height = wp(16), radius: r = wp
   );
 }
 
-// ===== Loading Fox — lazy import to avoid circular dep =====
+// ===== Loading Fox. Lazy import to avoid circular dep =====
 function LoadingFox({ bounce }: { bounce: Animated.Value }) {
   // Use lazy require inside render to avoid circular import with Illustrations
   const [Fox, setFox] = useState<any>(null);
@@ -108,7 +108,7 @@ function LoadingFox({ bounce }: { bounce: Animated.Value }) {
   return <Fox size={wp(110)} expression="thinking" />;
 }
 
-// ===== Loading Screen — Fox with notepad =====
+// ===== Loading Screen. Fox with notepad =====
 
 export function LoadingScreen({ message = 'Loading...', submessage }: { message?: string; submessage?: string }) {
   const dot1 = useRef(new Animated.Value(0)).current;
@@ -148,7 +148,7 @@ export function LoadingScreen({ message = 'Loading...', submessage }: { message?
   return (
     <View style={loadStyles.container}>
       <Animated.View style={[loadStyles.foxSection, { opacity: fadeIn }]}>
-        {/* Render the actual SharpFox from Illustrations — passed as children to avoid circular import */}
+        {/* Render the actual SharpFox from Illustrations. Passed as children to avoid circular import */}
         <LoadingFox bounce={foxBounce} />
 
         {/* Notepad */}
@@ -190,7 +190,7 @@ const loadStyles = StyleSheet.create({
   sub: { fontSize: fp(11), color: colors.text.tertiary, marginTop: wp(6), textAlign: 'center' },
 });
 
-// ===== Fade In View — generic fade-in wrapper =====
+// ===== Fade In View. Generic fade-in wrapper =====
 
 export function FadeIn({ delay = 0, duration = 400, children, style }: {
   delay?: number; duration?: number; children: React.ReactNode; style?: any;
@@ -212,7 +212,7 @@ export function FadeIn({ delay = 0, duration = 400, children, style }: {
   );
 }
 
-// ===== Pulsing Rings — expanding rings for speaking/listening indicators =====
+// ===== Pulsing Rings. Expanding rings for speaking/listening indicators =====
 
 export function PulsingRings({ active, color = colors.accent.primary, size = wp(150) }: {
   active: boolean; color?: string; size?: number;
@@ -258,7 +258,7 @@ const ringStyles = StyleSheet.create({
   ring: { position: 'absolute' },
 });
 
-// ===== Breathing Orb — gentle scale pulse for idle states =====
+// ===== Breathing Orb. Gentle scale pulse for idle states =====
 
 export function BreathingOrb({ children }: { children: React.ReactNode }) {
   const sc = useRef(new Animated.Value(1)).current;
@@ -273,7 +273,7 @@ export function BreathingOrb({ children }: { children: React.ReactNode }) {
   return <Animated.View style={{ transform: [{ scale: sc }] }}>{children}</Animated.View>;
 }
 
-// ===== Score Reveal — animated score counter =====
+// ===== Score Reveal. Animated score counter =====
 
 export function ScoreReveal({ score, color, size = fp(36) }: { score: number; color: string; size?: number }) {
   const animVal = useRef(new Animated.Value(0)).current;

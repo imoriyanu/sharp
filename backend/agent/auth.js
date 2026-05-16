@@ -1,7 +1,7 @@
-// Sharp AI — Auth middleware for /api/v2 endpoints.
+// Sharp AI. Auth middleware for /api/v2 endpoints.
 // Verifies the Supabase access token from `Authorization: Bearer <jwt>` and
 // attaches a trusted `req.userId`. The agent's retrieval tools use the service
-// role key (which bypasses RLS), so this header is the security boundary —
+// role key (which bypasses RLS), so this header is the security boundary , 
 // never trust req.body.userId for queries.
 //
 // Failure modes are intentionally soft: a missing / invalid JWT sets

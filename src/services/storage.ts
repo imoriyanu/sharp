@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature, UploadedDocument, ConversationState, SessionForAnalysis } from '../types';
+import type { UserContext, UserProfile, Session, SessionSummary, Streak, StreakData, StreakUpdateResult, Duel, DailyResult, ComingSoonFeature, UploadedDocument, ConversationState, SessionForAnalysis, UpcomingEvent } from '../types';
 import { STREAK_BADGES } from '../constants/badges';
 import { syncProfileToCloud, syncContextToCloud, syncSessionToCloud, syncStreakToCloud, syncBadgeToCloud, syncDailyResultToCloud, migrateLocalToCloud, uploadDocumentToStorage, syncDocumentToCloud, deleteDocumentFromCloud } from './sync';
 
@@ -30,11 +30,12 @@ const KEYS = {
   DUELS: 'sharp:duels',
   FEATURE_INTEREST: 'sharp:feature_interest',
   USER_PROFILE: 'sharp:user_profile',
+  UPCOMING_EVENTS: 'sharp:upcoming_events',
 };
 
 // ===== Cloud Migration =====
 // One-time migration from local AsyncStorage to Supabase. Safe to call on
-// every app launch — early-returns if already done.
+// every app launch. Early-returns if already done.
 //
 // Hardening (vs the original):
 // - "in-progress" guard: a parallel call (e.g. from two boot paths) bails
@@ -82,7 +83,7 @@ export async function runMigrationIfNeeded(): Promise<void> {
       getSessions(),
     ]);
 
-    // Load up to 50 full sessions via multiGet — single AsyncStorage round-
+    // Load up to 50 full sessions via multiGet. Single AsyncStorage round-
     // trip instead of N sequential reads.
     const top = summaries.slice(0, 50);
     const detailKeys = top.map(s => `${KEYS.SESSION_DETAIL}${s.id}`);
@@ -164,6 +165,7 @@ export async function clearAllUserData(): Promise<void> {
     KEYS.DUELS,
     KEYS.FEATURE_INTEREST,
     KEYS.USER_PROFILE,
+    KEYS.UPCOMING_EVENTS,
     MIGRATION_DONE_KEY,
     MIGRATION_IN_PROGRESS_KEY,
     MIGRATION_ATTEMPTS_KEY,
@@ -190,7 +192,7 @@ export async function clearAllUserData(): Promise<void> {
     const all = await AsyncStorage.getAllKeys();
     dynamicKeys = all.filter(k => k.startsWith(KEYS.SESSION_DETAIL));
   } catch {
-    // If getAllKeys fails we still wipe the fixed list — partial is better than none.
+    // If getAllKeys fails we still wipe the fixed list. Partial is better than none.
   }
 
   await AsyncStorage.multiRemove([...fixedKeys, ...dynamicKeys]);
@@ -328,15 +330,15 @@ export async function updateStreak(): Promise<StreakUpdateResult> {
   const twoDaysAgo = localDateStr(new Date(Date.now() - 2 * 86400000));
 
   if (streak.lastSessionDate === yesterday) {
-    // Consecutive day — extend streak
+    // Consecutive day. Extend streak
     streak.currentStreak += 1;
   } else if (streak.lastSessionDate === twoDaysAgo && streak.freezesAvailable > 0 && streak.currentStreak > 0) {
-    // Missed yesterday but have a freeze — auto-use it to save the streak
+    // Missed yesterday but have a freeze. Auto-use it to save the streak
     streak.freezesUsed.push(yesterday);
     streak.freezesAvailable = Math.max(0, streak.freezesAvailable - 1);
     streak.currentStreak += 1; // Continue streak (freeze covered yesterday)
   } else {
-    // Streak broken — reset
+    // Streak broken. Reset
     streak.currentStreak = 1;
   }
 
@@ -475,7 +477,7 @@ export async function getRecentInsights(): Promise<string[]> {
 
 // ===== Score sentinel =====
 // A turn with all five dimensions at 0 means scoring was skipped (today: Threaded,
-// partially Duels). A real scoring run can never produce all-five-zero — the prompt
+// partially Duels). A real scoring run can never produce all-five-zero. The prompt
 // enforces min=1. Skip these turns when computing user-level dimension averages so
 // they don't drag dashboards toward zero.
 function isUnscored(scores: { structure?: number; concision?: number; substance?: number; fillerWords?: number; awareness?: number } | null | undefined): boolean {
@@ -819,6 +821,210 @@ export async function cleanOrphanedSessions(): Promise<void> {
       await AsyncStorage.multiRemove(orphanKeys);
     }
   } catch {}
+}
+
+// ===== Upcoming Events ("Coming Up") =====
+// User's real-life high-stakes conversations they're preparing for. AsyncStorage
+// is the source of truth for v1 (no cloud sync yet. Supabase migration
+// pending). All operations are array-based: read full list, mutate, write back.
+// Cap 3 active per user enforced at the UI layer but defensively guarded here.
+//
+// Concurrency: a simple in-process mutex serialises writes so two near-
+// simultaneous saves (rapid double-tap) don't clobber each other. Reads
+// don't lock. They're idempotent under the auto-mark-passed mutation.
+
+const MAX_ACTIVE_EVENTS = 3;
+
+let _upcomingEventsLock: Promise<void> = Promise.resolve();
+function withUpcomingLock<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = _upcomingEventsLock;
+  let release: () => void;
+  _upcomingEventsLock = new Promise(r => { release = r; });
+  return prev.then(fn).finally(() => release!());
+}
+
+// Defensive: validates the event has the minimum required shape. Used to
+// filter out corrupted entries on read so they can't crash downstream code.
+function isValidStoredEvent(e: any): e is UpcomingEvent {
+  return !!e
+    && typeof e === 'object'
+    && typeof e.id === 'string'
+    && typeof e.type === 'string'
+    && typeof e.title === 'string'
+    && typeof e.eventDate === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(e.eventDate)
+    && (e.status === 'active' || e.status === 'passed' || e.status === 'cancelled');
+}
+
+export async function getUpcomingEvents(): Promise<UpcomingEvent[]> {
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(KEYS.UPCOMING_EVENTS);
+  } catch (e) {
+    __DEV__ && console.warn('getUpcomingEvents: read failed', e);
+    return [];
+  }
+  const parsed = safeParse<unknown[]>(raw, []);
+  if (!Array.isArray(parsed)) return [];
+  // Filter out anything that doesn't look like a valid event. Corrupted
+  // entries from a botched write or old schema migration shouldn't leak.
+  const list: UpcomingEvent[] = parsed.filter(isValidStoredEvent);
+
+  // Auto-mark expired events as 'passed' so they don't keep counting toward
+  // the active cap and the UI shows them in history instead of the hero.
+  // Uses ISO date string comparison. Safe because both sides are zero-padded
+  // YYYY-MM-DD format (enforced by isValidStoredEvent regex).
+  const today = localDateStr();
+  let mutated = false;
+  for (const e of list) {
+    if (e.status === 'active' && e.eventDate < today) {
+      e.status = 'passed';
+      mutated = true;
+    }
+  }
+  if (mutated) {
+    try { await AsyncStorage.setItem(KEYS.UPCOMING_EVENTS, JSON.stringify(list)); }
+    catch (e) { __DEV__ && console.warn('getUpcomingEvents: passed-write failed', e); }
+  }
+  return list;
+}
+
+// Returns active events sorted by date ascending (soonest first). The first
+// entry is the "primary" event used for the Home hero + scenario context
+// injection. Cap-respecting on read so a corrupted cap is self-healing.
+export async function getActiveUpcomingEvents(): Promise<UpcomingEvent[]> {
+  const all = await getUpcomingEvents();
+  return all
+    .filter(e => e.status === 'active')
+    .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
+    .slice(0, MAX_ACTIVE_EVENTS);
+}
+
+export async function getUpcomingEventById(id: string): Promise<UpcomingEvent | null> {
+  const all = await getUpcomingEvents();
+  return all.find(e => e.id === id) || null;
+}
+
+// Create or update. On create, refuses if active cap is already hit. Returns
+// the saved event (with id assigned) or null on cap-hit. Throws on storage
+// failure so callers can show a retry UI rather than silently dropping data.
+export async function saveUpcomingEvent(event: Partial<UpcomingEvent> & { type: UpcomingEvent['type']; title: string; eventDate: string }): Promise<UpcomingEvent | null> {
+  return withUpcomingLock(async () => {
+    const all = await getUpcomingEvents();
+
+    // Update path: id already exists
+    if (event.id) {
+      const idx = all.findIndex(e => e.id === event.id);
+      if (idx >= 0) {
+        const merged: UpcomingEvent = { ...all[idx], ...event } as UpcomingEvent;
+        all[idx] = merged;
+        await AsyncStorage.setItem(KEYS.UPCOMING_EVENTS, JSON.stringify(all));
+        return merged;
+      }
+    }
+
+    // Create path
+    const activeCount = all.filter(e => e.status === 'active').length;
+    if (activeCount >= MAX_ACTIVE_EVENTS) return null;
+
+    const newEvent: UpcomingEvent = {
+      id: generateId(),
+      type: event.type,
+      title: event.title,
+      eventDate: event.eventDate,
+      description: event.description,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    };
+    all.push(newEvent);
+    await AsyncStorage.setItem(KEYS.UPCOMING_EVENTS, JSON.stringify(all));
+    return newEvent;
+  });
+}
+
+export async function deleteUpcomingEvent(id: string): Promise<void> {
+  return withUpcomingLock(async () => {
+    const all = await getUpcomingEvents();
+    const next = all.filter(e => e.id !== id);
+    try { await AsyncStorage.setItem(KEYS.UPCOMING_EVENTS, JSON.stringify(next)); }
+    catch (e) { __DEV__ && console.warn('deleteUpcomingEvent: write failed', e); }
+  });
+}
+
+export async function markEventPassed(id: string, outcome?: UpcomingEvent['outcome'], outcomeNotes?: string): Promise<void> {
+  return withUpcomingLock(async () => {
+    const all = await getUpcomingEvents();
+    const idx = all.findIndex(e => e.id === id);
+    if (idx < 0) return;
+    all[idx].status = 'passed';
+    if (outcome) all[idx].outcome = outcome;
+    if (outcomeNotes) all[idx].outcomeNotes = outcomeNotes;
+    try { await AsyncStorage.setItem(KEYS.UPCOMING_EVENTS, JSON.stringify(all)); }
+    catch (e) { __DEV__ && console.warn('markEventPassed: write failed', e); }
+  });
+}
+
+// Days from today until the event date. Negative = past, 0 = today, positive
+// = future. Used for countdown rendering on Home + detail screens. Returns 0
+// for malformed dates so callers can't crash on a corrupted event.
+export function daysUntilEvent(eventDate: string): number {
+  if (!eventDate || typeof eventDate !== 'string') return 0;
+  // Parse as local-midnight to avoid timezone drift (event 2026-06-01 should
+  // always be 2026-06-01 in the user's local time, never shifted by UTC).
+  const m = eventDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return 0;
+  const target = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  const todayStr = localDateStr();
+  const tm = todayStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!tm) return 0;
+  const today = new Date(parseInt(tm[1], 10), parseInt(tm[2], 10) - 1, parseInt(tm[3], 10));
+  const ms = target.getTime() - today.getTime();
+  if (!isFinite(ms)) return 0;
+  return Math.round(ms / 86400000);
+}
+
+// Composite readiness score for an event: weighted blend of practice volume
+// for this event type + recent session avg + recency. Returns 0-10 + a band
+// for color coding. Kept client-side for v1. Heuristic, not LLM-generated.
+//
+// readiness = 0.45 * volumeScore + 0.45 * recentAvg + 0.10 * recencyScore
+//   volumeScore = min(sessionsForType / targetVolume, 1) * 10
+//   recentAvg   = average overall of last 5 sessions matching the event type
+//   recencyScore = 10 if practiced in last 3 days, 5 if 7 days, 0 if >14
+export async function getEventReadiness(event: UpcomingEvent): Promise<{ score: number; band: 'red' | 'amber' | 'green'; sessionsForEvent: number }> {
+  // For v1, "sessions matching the event type" = all recent sessions (we
+  // haven't built session-to-event tagging yet). Once we add that, this
+  // function gets a real filter. For now it's a useful proxy.
+  const sessions = await getSessions();
+  const recent = sessions.slice(0, 30);
+
+  // Volume: practice count over a target appropriate to the event type. We
+  // bias the target by urgency. If the event is in 5 days, you want ~5
+  // sessions to feel ready. If it's in 30, you can pace yourself.
+  const days = Math.max(daysUntilEvent(event.eventDate), 1);
+  const targetVolume = Math.min(Math.max(Math.floor(days / 3), 3), 10);
+  const volumeScore = Math.min(recent.length / targetVolume, 1) * 10;
+
+  // Recent avg: average of last 5 sessions' overall scores. Excludes
+  // unscored sessions (shouldn't be any but defensive).
+  const scored = recent.filter(s => s.overall > 0).slice(0, 5);
+  const recentAvg = scored.length > 0
+    ? scored.reduce((sum, s) => sum + s.overall, 0) / scored.length
+    : 0;
+
+  // Recency: when was the last session?
+  const lastSession = recent[0];
+  let recencyScore = 0;
+  if (lastSession) {
+    const daysSince = (Date.now() - new Date(lastSession.createdAt).getTime()) / 86400000;
+    if (daysSince < 3) recencyScore = 10;
+    else if (daysSince < 7) recencyScore = 5;
+    else if (daysSince < 14) recencyScore = 2;
+  }
+
+  const score = Math.round((0.45 * volumeScore + 0.45 * recentAvg + 0.10 * recencyScore) * 10) / 10;
+  const band: 'red' | 'amber' | 'green' = score < 5 ? 'red' : score < 7 ? 'amber' : 'green';
+  return { score, band, sessionsForEvent: recent.length };
 }
 
 // ===== Utility =====

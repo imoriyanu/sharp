@@ -55,7 +55,7 @@ export default function StreakScreen() {
               <View style={s.statDivider} />
               <View style={s.statBox}>
                 <Text style={[s.statVal, streak.freezesAvailable > 0 ? s.freezeActive : s.freezeUsed]}>
-                  {streak.freezesAvailable > 0 ? '❄️' : '—'}
+                  {streak.freezesAvailable > 0 ? '❄️' : ', '}
                 </Text>
                 <Text style={s.statLabel}>Freeze</Text>
               </View>
@@ -96,7 +96,7 @@ export default function StreakScreen() {
           </FadeIn>
         )}
 
-        {/* Journey grid — show up to max unlocked + next badge range */}
+        {/* Journey grid. Show up to max unlocked + next badge range */}
         <Text style={s.section}>Journey</Text>
         <FadeIn delay={300}>
           <View style={s.gridCard}>

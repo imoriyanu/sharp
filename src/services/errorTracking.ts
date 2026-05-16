@@ -1,4 +1,4 @@
-// Error tracking — wraps Sentry (or noop if not configured)
+// Error tracking. Wraps Sentry (or noop if not configured)
 // Set EXPO_PUBLIC_SENTRY_DSN in your environment to enable
 
 let _initialized = false;
@@ -6,7 +6,7 @@ let _initialized = false;
 export async function initErrorTracking(): Promise<void> {
   if (_initialized) return;
   const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
-  if (!dsn) return; // No DSN — silently skip
+  if (!dsn) return; // No DSN. Silently skip
 
   try {
     const Sentry = require('@sentry/react-native');
@@ -18,7 +18,7 @@ export async function initErrorTracking(): Promise<void> {
     });
     _initialized = true;
   } catch {
-    // Sentry not installed — skip silently
+    // Sentry not installed. Skip silently
   }
 }
 

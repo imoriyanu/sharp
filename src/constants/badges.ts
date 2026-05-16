@@ -11,10 +11,10 @@ export const STREAK_BADGES: StreakBadge[] = [
   { day: 21, name: 'Habit Formed', emoji: '🧠', description: 'They say it takes 21 days' },
   { day: 30, name: 'Sharp Speaker', emoji: '👑', description: '30 days. You earned this.' },
   // Long game (days 45-365)
-  { day: 45, name: 'Committed', emoji: '💎', description: '45 days — this is who you are now' },
+  { day: 45, name: 'Committed', emoji: '💎', description: '45 days. This is who you are now' },
   { day: 60, name: 'Two Months Sharp', emoji: '🔱', description: '60 days of consistent practice' },
   { day: 90, name: 'Quarter Master', emoji: '🏆', description: 'A full quarter. Respect.' },
-  { day: 120, name: 'Unstoppable', emoji: '⭐', description: '120 days — most people never get here' },
+  { day: 120, name: 'Unstoppable', emoji: '⭐', description: '120 days. Most people never get here' },
   { day: 180, name: 'Half Year Hero', emoji: '🌟', description: '6 months. Communication is your superpower.' },
   { day: 270, name: 'Nine Month Wonder', emoji: '🎖️', description: '270 days. You outwork everyone.' },
   { day: 365, name: 'Year of Sharp', emoji: '🏅', description: '365 days. Legendary.' },

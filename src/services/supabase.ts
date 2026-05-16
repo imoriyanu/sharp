@@ -29,7 +29,7 @@ const NOOP_DATA = {
 function createNoopProxy(): any {
   const handler: ProxyHandler<any> = {
     get(_target, prop) {
-      // Make the proxy thenable so `await` works — resolve with noop result once (no recursion)
+      // Make the proxy thenable so `await` works. Resolve with noop result once (no recursion)
       if (prop === 'then') {
         return (resolve: any) => resolve ? resolve({ data: NOOP_DATA, error: null }) : undefined;
       }

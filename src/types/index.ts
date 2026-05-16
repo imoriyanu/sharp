@@ -15,10 +15,11 @@ export interface PremiumPlan {
 
 export interface UsageLimits {
   oneShotsPerDay: number;
-  oneShotsPerWeek: number;      // free only — caps generosity so the wall bites
+  oneShotsPerWeek: number;      // free only. Caps generosity so the wall bites
   threadedPerDay: number;       // free: 0 (1 per week tracked separately)
   threadedPerWeek: number;      // free only
   industryPerDay: number;
+  conversationsPerDay: number;  // Pro-only live voice mode (ElevenLabs duplex)
   regeneratesPerDay: number;
   canAddContext: boolean;
   canViewSummary: boolean;
@@ -43,6 +44,35 @@ export interface UserContext {
   dreamRoleAndCompany: string;
   notes: string;
   documents: UploadedDocument[];
+}
+
+// ===== Upcoming Events ("Coming Up") =====
+// Real-life high-stakes conversations the user is preparing for. Captured in
+// onboarding + editable later. Used to (a) render countdown cards on Home,
+// (b) bias every scenario prompt toward the upcoming event, (c) fire
+// timed push notifications. Cap 3 active per user.
+
+export type UpcomingEventType =
+  | 'interview'         // job interview
+  | 'pitch'             // investor/sales/internal pitch
+  | 'raise'             // asking for a raise or promotion
+  | 'feedback'          // delivering or receiving tough feedback
+  | 'review'            // performance review
+  | 'sales'             // important client meeting
+  | 'presentation'      // public speaking, talk, demo
+  | 'difficult_convo'   // hard conversation with a person who matters
+  | 'other';
+
+export interface UpcomingEvent {
+  id: string;
+  type: UpcomingEventType;
+  title: string;                  // user-typed or auto from type+date
+  eventDate: string;              // ISO date (yyyy-mm-dd)
+  description?: string;           // optional 1-sentence specificity, e.g. "Series A pitch to a16z, B2B SaaS"
+  status: 'active' | 'passed' | 'cancelled';
+  outcome?: 'aced' | 'okay' | 'bombed';
+  outcomeNotes?: string;          // freeform reflection after the event
+  createdAt: string;              // ISO timestamp
 }
 
 export interface UploadedDocument {
@@ -101,7 +131,7 @@ export interface GeneratedQuestion {
   // Display name for the character in threaded mode (e.g. "Maya", "Sam",
   // "Interviewer", "Manager"). Shown in chat bubbles + debrief turn-by-turn
   // labels. Replaces hardcoded "Sharp" so the conversation reads like a real
-  // person, not the app. Optional — old generations + non-threaded modes ignore.
+  // person, not the app. Optional. Old generations + non-threaded modes ignore.
   characterName?: string;
 }
 
@@ -158,6 +188,10 @@ export interface Session {
   scenario: string;
   turns: Turn[];
   createdAt: string;
+  // Character display name for threaded sessions. Used in session detail UI
+  // to label character turns instead of generic "Question". Falls back to
+  // "Interviewer" on legacy threaded sessions where this wasn't captured.
+  characterName?: string;
 }
 
 export interface Turn {
@@ -259,6 +293,7 @@ export interface ThreadTurn {
   turnNumber: number;
   question: string;
   transcript: string;
+  recordingUri?: string;
 }
 
 export interface ThreadState {
@@ -419,7 +454,7 @@ export interface ConversationDebrief {
 
 // ===== Cross-Session Patterns =====
 // Surfaced on the analytics screen. Behavioural patterns that repeat across
-// the user's recent sessions — the meta-insights no single session can give.
+// the user's recent sessions. The meta-insights no single session can give.
 
 export interface CrossSessionPattern {
   pattern: string;        // "You hedge 60% of your openings"
@@ -434,7 +469,7 @@ export interface CrossSessionPatternReport {
   reason?: string;        // 'not_enough_data' when patterns is empty by design
 }
 
-// Shape the backend prompt consumes — produced by getRecentSessionSummariesForAnalysis
+// Shape the backend prompt consumes. Produced by getRecentSessionSummariesForAnalysis
 export interface SessionForAnalysis {
   type: string;
   question: string;

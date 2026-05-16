@@ -5,7 +5,7 @@ export async function transcribeAudio(uri: string): Promise<{ transcript: string
   const info = await FileSystem.getInfoAsync(uri);
   if (!info.exists) throw new Error('Recording file not found');
 
-  // Read as base64 — avoids FormData issues on physical devices
+  // Read as base64. Avoids FormData issues on physical devices
   const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
   __DEV__ && console.log('Transcription: sending', Math.round(base64.length / 1024), 'KB base64');
 

@@ -1,4 +1,4 @@
-// Analytics — wraps PostHog (or noop if not configured)
+// Analytics. Wraps PostHog (or noop if not configured)
 // Set EXPO_PUBLIC_POSTHOG_KEY in your environment or app.config.ts extra to enable
 
 import Constants from 'expo-constants';
@@ -16,7 +16,7 @@ export async function initAnalytics(): Promise<void> {
       enableSessionReplay: false,
     });
   } catch {
-    // PostHog init failed — skip silently
+    // PostHog init failed. Skip silently
   }
 }
 

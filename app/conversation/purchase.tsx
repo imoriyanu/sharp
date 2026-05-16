@@ -1,4 +1,5 @@
-// @ts-nocheck — feature disabled for MVP; references symbols not yet wired in. See src/constants/features.ts.
+// @ts-nocheck
+// Feature disabled for MVP; references symbols not yet wired in. See src/constants/features.ts.
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -93,11 +94,11 @@ export default function ConversationPurchaseScreen() {
         <FadeIn delay={400}>
           <View style={s.scenariosCard}>
             <Text style={s.scenariosTitle}>5 scenarios included</Text>
-            <Text style={s.scenarioItem}>💼 Job Interview — nail the tough questions</Text>
-            <Text style={s.scenarioItem}>💰 Salary Negotiation — know what to say</Text>
-            <Text style={s.scenarioItem}>🎯 Difficult Feedback — direct without destructive</Text>
-            <Text style={s.scenarioItem}>🛡 Stakeholder Pushback — hold your ground</Text>
-            <Text style={s.scenarioItem}>🚀 Elevator Pitch — hook them in 60 seconds</Text>
+            <Text style={s.scenarioItem}>💼 Job Interview. Nail the tough questions</Text>
+            <Text style={s.scenarioItem}>💰 Salary Negotiation. Know what to say</Text>
+            <Text style={s.scenarioItem}>🎯 Difficult Feedback. Direct without destructive</Text>
+            <Text style={s.scenarioItem}>🛡 Stakeholder Pushback. Hold your ground</Text>
+            <Text style={s.scenarioItem}>🚀 Elevator Pitch. Hook them in 60 seconds</Text>
           </View>
         </FadeIn>
 

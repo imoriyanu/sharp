@@ -2,8 +2,8 @@ import Constants from 'expo-constants';
 
 // ===== RevenueCat Service =====
 // All RevenueCat SDK calls are isolated here.
-// This module does NOT manage premium state — it feeds into premium.ts.
-// Native module is NOT available in Expo Go — all calls are guarded.
+// This module does NOT manage premium state. It feeds into premium.ts.
+// Native module is NOT available in Expo Go. All calls are guarded.
 
 const API_KEY = Constants.expoConfig?.extra?.revenuecatApiKey || process.env.EXPO_PUBLIC_REVENUECAT_API_KEY || '';
 
@@ -18,7 +18,7 @@ let LOG_LEVEL: any = null;
 type EntitlementListener = (hasPro: boolean) => void;
 const _entitlementListeners = new Set<EntitlementListener>();
 
-// Safely import the native module — returns null in Expo Go
+// Safely import the native module. Returns null in Expo Go
 function loadPurchasesModule(): boolean {
   if (Purchases) return true;
   try {
@@ -31,15 +31,15 @@ function loadPurchasesModule(): boolean {
   }
 }
 
-// ===== Init — call once at app startup =====
+// ===== Init. Call once at app startup =====
 
 export async function initRevenueCat(): Promise<void> {
   if (_configured || !API_KEY) {
-    if (__DEV__ && !API_KEY) console.warn('RevenueCat: No API key configured — purchases disabled');
+    if (__DEV__ && !API_KEY) console.warn('RevenueCat: No API key configured. Purchases disabled');
     return;
   }
   if (!loadPurchasesModule()) {
-    __DEV__ && console.warn('RevenueCat: Native module not available (Expo Go?) — purchases disabled');
+    __DEV__ && console.warn('RevenueCat: Native module not available (Expo Go?). Purchases disabled');
     return;
   }
   try {
@@ -49,7 +49,7 @@ export async function initRevenueCat(): Promise<void> {
 
     // Listen for entitlement changes (purchase, renewal, cancellation,
     // restore on another device). Notifying registered listeners lets the
-    // app react immediately — no need to wait for the next app foreground.
+    // app react immediately. No need to wait for the next app foreground.
     try {
       Purchases.addCustomerInfoUpdateListener((info: any) => {
         const hasPro = !!info?.entitlements?.active?.['Sharp Pro'];
@@ -66,7 +66,7 @@ export async function initRevenueCat(): Promise<void> {
 }
 
 // Register a callback that fires whenever the active entitlement changes.
-// Returns an unsubscribe function. Safe to call before RC is configured —
+// Returns an unsubscribe function. Safe to call before RC is configured , 
 // the listener will still fire once RC initializes.
 export function addEntitlementListener(listener: EntitlementListener): () => void {
   _entitlementListeners.add(listener);
@@ -77,7 +77,7 @@ export function isRevenueCatConfigured(): boolean {
   return _configured;
 }
 
-// ===== User identity — link to Supabase user ID =====
+// ===== User identity. Link to Supabase user ID =====
 
 export async function identifyUser(userId: string): Promise<void> {
   if (!_configured) return;
@@ -97,7 +97,7 @@ export async function logoutUser(): Promise<void> {
   }
 }
 
-// ===== Entitlement check — is the user premium? =====
+// ===== Entitlement check. Is the user premium? =====
 
 export async function checkEntitlement(): Promise<boolean> {
   if (!_configured) return false;
@@ -110,7 +110,7 @@ export async function checkEntitlement(): Promise<boolean> {
   }
 }
 
-// ===== Offerings — fetch real prices from the store =====
+// ===== Offerings. Fetch real prices from the store =====
 
 export async function getOfferings(): Promise<any | null> {
   if (!_configured) return null;
@@ -123,7 +123,7 @@ export async function getOfferings(): Promise<any | null> {
   }
 }
 
-// ===== Purchase — returns true on success, false on cancellation =====
+// ===== Purchase. Returns true on success, false on cancellation =====
 
 export async function purchasePackage(pkg: any): Promise<{ success: boolean; info: any }> {
   if (!_configured) return { success: false, info: null };
@@ -132,13 +132,13 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; inf
     const hasPro = customerInfo.entitlements.active['Sharp Pro'] !== undefined;
     return { success: hasPro, info: customerInfo };
   } catch (e: any) {
-    // User cancelled — not an error
+    // User cancelled. Not an error
     if (e.userCancelled) return { success: false, info: null };
     throw e;
   }
 }
 
-// ===== Restore — returns detected plan ID or null =====
+// ===== Restore. Returns detected plan ID or null =====
 
 export async function restorePurchases(): Promise<'monthly' | 'annual' | null> {
   if (!_configured) return null;
@@ -170,7 +170,7 @@ export async function getDetectedPlanId(): Promise<'monthly' | 'annual'> {
   }
 }
 
-// ===== Management URL — for "Manage Subscription" button =====
+// ===== Management URL. For "Manage Subscription" button =====
 
 export async function getManagementUrl(): Promise<string | null> {
   if (!_configured) return null;

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
 import { ScoreReveal, FadeIn } from '../../src/components/Animations';
-import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio, prefetchAudio } from '../../src/services/tts';
+import { playQuestionAudio, playCoachingAudio, playModelAudio, playRecording, stopAudio, prefetchAudio } from '../../src/services/tts';
 import * as Haptics from 'expo-haptics';
 import { isPremium } from '../../src/services/premium';
 
@@ -21,19 +21,19 @@ const DIM_INFO: Record<string, { what: string; scale: string }> = {
     scale: '5 = jumbled or buried lead. 7 = clear shape, can be tighter. 9 = hook first, signposted, lands hard.',
   },
   concision: {
-    what: 'Whether you said it in the right number of words. Tight beats long — every line should carry weight.',
+    what: 'Whether you said it in the right number of words. Tight beats long. Every line should carry weight.',
     scale: '5 = padded or hedged. 7 = mostly tight, a few extra phrases. 9 = nothing wasted.',
   },
   substance: {
-    what: 'How real and specific you were. Numbers, named projects, concrete moves — not abstractions or platitudes.',
+    what: 'How real and specific you were. Numbers, named projects, concrete moves. Not abstractions or platitudes.',
     scale: '5 = generalities. 7 = some specifics, some vagueness. 9 = specific enough to verify.',
   },
   fillerWords: {
-    what: 'How clean your speech was. "Um", "like", "you know", "kind of" — higher score = fewer fillers.',
+    what: 'How clean your speech was. "Um", "like", "you know", "kind of". Higher score = fewer fillers.',
     scale: '5 = noticeable fillers throughout. 7 = a handful. 10 = zero fillers detected.',
   },
   awareness: {
-    what: 'How well you read the room — industry, company, role context. Did your answer feel situationally sharp?',
+    what: 'How well you read the room. Industry, company, role context. Did your answer feel situationally sharp?',
     scale: '5 = generic answer that could fit anywhere. 7 = appropriate fit. 9 = sharp references that show insight.',
   },
 };
@@ -87,7 +87,7 @@ export default function ResultsScreen() {
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
 
-  // Session is already saved in recording.tsx — no duplicate save needed
+  // Session is already saved in recording.tsx. No duplicate save needed
 
   async function speakFullFeedback() {
     const scoreWord = overall >= 7.5 ? 'Really solid work.' : overall >= 5.5 ? 'OK, not bad.' : 'Alright, let\'s break this down.';
@@ -112,6 +112,19 @@ export default function ResultsScreen() {
       ? await playModelAudio(`Here's how I'd say it. ${text}`).catch(() => false)
       : await playCoachingAudio(text).catch(() => false);
     if (mountedRef.current) { setPlaying(null); if (!played) setTextOnly(true); }
+  }
+
+  // Play the user's own recording. Self-contained. Doesn't trigger textOnly
+  // mode on failure (the recording can be missing/corrupt while TTS still
+  // works for everything else on the screen).
+  async function playOwnRecording() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (playing === 'own-recording') { stopAudio(); setPlaying(null); return; }
+    if (!mountedRef.current || !recordingUri) return;
+    setPlaying('own-recording');
+    await stopAudio();
+    await playRecording(recordingUri).catch(() => false);
+    if (mountedRef.current) setPlaying(null);
   }
 
   return (
@@ -153,7 +166,7 @@ export default function ResultsScreen() {
           </View>
         </FadeIn>
 
-        {/* Dimensions — tap a row to see what it measures + how to read the score */}
+        {/* Dimensions. Tap a row to see what it measures + how to read the score */}
         <FadeIn delay={200}>
           <View style={s.card}>
             {DIMS.map((dim) => {
@@ -232,18 +245,51 @@ export default function ResultsScreen() {
           </FadeIn>
         ) : null}
 
-        {/* Model answer — the star feature */}
-        {modelAnswer ? (
+        {/* Your answer ↔ Model answer. Paired side-by-side. Tap your own
+            recording to hear yourself, tap the model to hear the sharper take.
+            Hearing both back-to-back is where the coaching lands. */}
+        {(recordingUri || transcript) || modelAnswer ? (
           <FadeIn delay={600}>
-            <Text style={s.section}>Model Answer</Text>
-            <TouchableOpacity style={s.modelCard} onPress={() => !textOnly && play('model', modelAnswer)} activeOpacity={textOnly ? 1 : 0.7}>
-              <View style={s.feedbackHeader}>
-                <Text style={s.feedbackEmoji}>✨</Text>
-                {!textOnly && <Text style={s.modelListenBtn}>{playing === 'model' ? '⏸ Pause' : '🔊 Listen to model'}</Text>}
-              </View>
-              <Text style={s.modelText}>"{modelAnswer}"</Text>
-              <Text style={s.modelHint}>Built from your response — this is what a 9/10 sounds like</Text>
-            </TouchableOpacity>
+            <Text style={s.section}>{modelAnswer ? 'Your answer vs the model' : 'Your answer'}</Text>
+
+            {/* Your own recording. Only shown when we have the actual file.
+                Falls back gracefully if missing (legacy sessions, etc.) */}
+            {recordingUri ? (
+              <TouchableOpacity style={s.ownCard} onPress={playOwnRecording} activeOpacity={0.7}>
+                <View style={s.feedbackHeader}>
+                  <Text style={s.feedbackEmoji}>🎙️</Text>
+                  <Text style={s.ownListenBtn}>{playing === 'own-recording' ? '⏸ Pause' : '🔊 Hear yourself'}</Text>
+                </View>
+                <Text style={s.ownText} numberOfLines={4}>"{transcript}"</Text>
+                <Text style={s.ownHint}>This is what you said</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {/* Model answer. Pro-only post-onboarding. Free users see a
+                locked variant with the conversion CTA. Onboarding result
+                screen shows this free as the "one taste"; everywhere else
+                it's gated to drive trial conversion. */}
+            {modelAnswer ? (
+              isPremium() ? (
+                <TouchableOpacity style={s.modelCard} onPress={() => !textOnly && play('model', modelAnswer)} activeOpacity={textOnly ? 1 : 0.7}>
+                  <View style={s.feedbackHeader}>
+                    <Text style={s.feedbackEmoji}>✨</Text>
+                    {!textOnly && <Text style={s.modelListenBtn}>{playing === 'model' ? '⏸ Pause' : '🔊 Listen to sharper version'}</Text>}
+                  </View>
+                  <Text style={s.modelText}>"{modelAnswer}"</Text>
+                  <Text style={s.modelHint}>Built from your response. This is what a 9/10 sounds like</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={s.modelLockedCard} onPress={() => router.push('/premium')} activeOpacity={0.85}>
+                  <View style={s.feedbackHeader}>
+                    <Text style={s.feedbackEmoji}>🔒</Text>
+                    <Text style={s.modelLockedCta}>Unlock with Pro →</Text>
+                  </View>
+                  <Text style={s.modelLockedTitle}>Hear what a 9/10 sounds like</Text>
+                  <Text style={s.modelLockedDesc}>Sharp Pro builds a model answer from your response and reads it back in the coach voice. Closes the gap faster than any framework can.</Text>
+                </TouchableOpacity>
+              )
+            ) : null}
           </FadeIn>
         ) : null}
 
@@ -426,6 +472,21 @@ const s = StyleSheet.create({
   modelListenBtn: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.success },
   modelText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22), fontStyle: 'italic' },
   modelHint: { fontSize: fp(10), color: colors.text.muted, marginTop: spacing.sm },
+
+  // Your own recording. Sits next to the model answer. Tertiary bg so it
+  // visually anchors "this is mine" before the green model "this is sharper".
+  ownCard: { backgroundColor: colors.bg.tertiary, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm },
+  ownListenBtn: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.accent.primary },
+  ownText: { fontSize: typography.size.base, color: colors.text.secondary, lineHeight: fp(22), fontStyle: 'italic' },
+  ownHint: { fontSize: fp(10), color: colors.text.muted, marginTop: spacing.sm },
+
+  // Model answer (LOCKED for free users). Same visual weight as the unlocked
+  // card but cream bg + terracotta accent CTA instead of green. Reads as a
+  // "this could be yours" upsell, not a flat paywall block.
+  modelLockedCard: { backgroundColor: colors.bg.tertiary, borderWidth: 1.5, borderColor: colors.accent.border, borderRadius: radius.xl, padding: spacing.lg, marginBottom: spacing.lg, ...shadows.sm },
+  modelLockedCta: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.accent.primary },
+  modelLockedTitle: { fontSize: typography.size.md, fontWeight: typography.weight.black, color: colors.text.primary, marginBottom: spacing.xs, letterSpacing: -0.2 },
+  modelLockedDesc: { fontSize: typography.size.xs, color: colors.text.tertiary, lineHeight: fp(18) },
 
   tipCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.md, ...shadows.sm },
   tipLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.sm },

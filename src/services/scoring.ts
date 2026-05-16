@@ -2,15 +2,15 @@ import { apiPost } from './api';
 import { FEATURES } from '../constants/features';
 import type { ScoringResult, UserContext, GeneratedQuestion, FollowUp, ThreadDebrief, ReactionTrailEntry, CrossSessionPatternReport, SessionForAnalysis } from '../types';
 
-// Note: userId is no longer passed in request bodies — the backend verifies
+// Note: userId is no longer passed in request bodies. The backend verifies
 // the user from the Authorization header attached by apiPost in api.ts.
 
 // ===== Progress Score =====
 // Contextualises the raw score against the user's own history.
 // Rules:
-// - Raw score is NEVER changed — it stays honest
+// - Raw score is NEVER changed. It stays honest
 // - Progress score reflects trajectory: are you getting better, worse, or stuck?
-// - If you're clearly bad, progress score stays bad — no charity
+// - If you're clearly bad, progress score stays bad. No charity
 // - If you're improving from your own baseline, that's acknowledged
 // - First 3 sessions: no progress score (not enough data)
 
@@ -32,14 +32,14 @@ export interface ProgressScore {
 export function computeProgressScore(ctx: ProgressContext): ProgressScore {
   const { rawOverall, historicalAverage, sessionCount, recentScores } = ctx;
 
-  // Not enough data — just return raw
+  // Not enough data. Just return raw
   if (sessionCount < 3 || historicalAverage == null || recentScores.length < 2) {
     return {
       raw: rawOverall,
       progress: rawOverall,
       delta: 0,
       trend: 'new',
-      message: sessionCount === 0 ? 'First session — welcome' : `Session ${sessionCount + 1} — building your baseline`,
+      message: sessionCount === 0 ? 'First session. Welcome' : `Session ${sessionCount + 1}. Building your baseline`,
     };
   }
 
@@ -61,14 +61,14 @@ export function computeProgressScore(ctx: ProgressContext): ProgressScore {
   // - If improving: small boost (max +0.5) to acknowledge momentum
   // - If declining: no penalty beyond the raw score (it's already lower)
   // - If steady: progress = raw
-  // - NEVER inflate a bad score to look good — cap the boost
+  // - NEVER inflate a bad score to look good. Cap the boost
   let progress = rawOverall;
   if (trend === 'improving' && delta >= -1) {
-    // They're getting better — acknowledge it, but don't inflate garbage
+    // They're getting better. Acknowledge it, but don't inflate garbage
     const boost = Math.min(0.5, trendDelta * 0.3);
     progress = Math.min(10, Math.round((rawOverall + boost) * 10) / 10);
   }
-  // If raw is genuinely poor (< 4), never boost — keep it real
+  // If raw is genuinely poor (< 4), never boost. Keep it real
   if (rawOverall < 4) progress = rawOverall;
 
   // Generate contextual message
@@ -84,7 +84,7 @@ export function computeProgressScore(ctx: ProgressContext): ProgressScore {
   } else if (rawOverall >= historicalAverage - 1.5) {
     message = 'Below your usual';
   } else {
-    message = 'Tough one — review the coaching';
+    message = 'Tough one. Review the coaching';
   }
 
   return {
@@ -101,6 +101,10 @@ export async function generateQuestion(context: UserContext & {
   averageScores?: any;
   recentQuestions?: string[];
   documentExtractions?: any[];
+  // Upcoming high-stakes conversations the user is preparing for. Backend
+  // injects them into buildUserContextBlock so scenario prompts bias toward
+  // the soonest event when relevant.
+  upcomingEvents?: import('../types').UpcomingEvent[];
 }, signal?: AbortSignal): Promise<GeneratedQuestion> {
   return apiPost('/question/generate', context, signal);
 }
@@ -112,6 +116,7 @@ export async function scoreAnswer(params: {
   dreamRoleAndCompany: string;
   notes?: string;
   documentExtractions?: any[];
+  upcomingEvents?: import('../types').UpcomingEvent[];
   question: string;
   transcript: string;
   previousScores?: { overall: number; structure: number; concision: number; substance: number; fillerWords: number; sessionCount: number };
@@ -127,11 +132,12 @@ export async function generateFollowUp(params: {
   dreamRoleAndCompany: string;
   notes?: string;
   documentExtractions?: any[];
+  upcomingEvents?: import('../types').UpcomingEvent[];
   originalQuestion: string;
   previousTranscripts: { turn: number; question: string; transcript: string; scores: any }[];
   turnNumber: number;
   sessionId?: string;
-  // Scene-bible context — character agent reads this internally to stay in
+  // Scene-bible context. Character agent reads this internally to stay in
   // character on the right escalation arc. Sandboxed: NOT used for raw user
   // context (which the character must not know about), only the translated
   // behavioural direction from the question engine.
@@ -166,7 +172,7 @@ export async function generateProgressSummary(params: {
 }
 
 // Cross-session pattern extraction. Run on-demand from the analytics screen
-// (the screen handles caching via AsyncStorage — see analytics/index.tsx).
+// (the screen handles caching via AsyncStorage. See analytics/index.tsx).
 // Returns 2-3 evidence-backed behavioural patterns from the user's recent
 // sessions, or an empty array if there isn't enough data (<5 sessions).
 export async function extractPatterns(params: {
@@ -187,9 +193,10 @@ export async function generateDebrief(params: {
   dreamRoleAndCompany: string;
   notes?: string;
   documentExtractions?: any[];
+  upcomingEvents?: import('../types').UpcomingEvent[];
   scenario?: string;
   turns: { turn: number; question: string; transcript: string; scores: any }[];
-  // Scene-bible context — coach uses these to tie feedback back to user's
+  // Scene-bible context. Coach uses these to tie feedback back to user's
   // stated goals + explain why the scene was the way it was. The character
   // was sandboxed; the coach is not.
   characterBrief?: string;

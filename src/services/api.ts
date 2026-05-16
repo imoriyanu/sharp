@@ -4,11 +4,11 @@ import { supabase } from './supabase';
 
 const PROD_API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://sharp-production-2d7c.up.railway.app';
 
-// In dev, use local backend if EXPO_PUBLIC_API_URL is not set — fall back to production
+// In dev, use local backend if EXPO_PUBLIC_API_URL is not set. Fall back to production
 // To use local backend in dev, start it with: cd backend && node server.js
 const API_BASE = PROD_API_URL;
 
-const DEFAULT_TIMEOUT = 50_000; // 50s — covers server-side 45s with 5s buffer
+const DEFAULT_TIMEOUT = 50_000; // 50s. Covers server-side 45s with 5s buffer
 
 // Status codes worth a retry: transient infrastructure issues (rate limit,
 // gateway, capacity). 4xx other than 429 are deterministic and not retried.
@@ -111,7 +111,7 @@ export async function fetchRemoteConfig(): Promise<void> {
       cleanup();
     }
   } catch {
-    // ignore — defaults from src/constants/features.ts apply
+    // ignore. Defaults from src/constants/features.ts apply
   }
 }
 
@@ -156,7 +156,7 @@ export function getTtsUrl(text: string, mode: VoiceMode = 'question'): string {
   return `${API_BASE}/api/tts?text=${encodeURIComponent(text)}&mode=${mode}`;
 }
 
-// POST-based TTS download — handles long text that won't fit in a URL
+// POST-based TTS download. Handles long text that won't fit in a URL
 export async function fetchTtsAudio(text: string, mode: VoiceMode = 'question'): Promise<ArrayBuffer | null> {
   try {
     const response = await fetch(`${API_BASE}/api/tts`, {

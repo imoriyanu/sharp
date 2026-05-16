@@ -4,7 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, getScoreColor, wp, fp, shadows, layout } from '../../src/constants/theme';
-import { playQuestionAudio, playCoachingAudio, playModelAudio, stopAudio } from '../../src/services/tts';
+import { playQuestionAudio, playCoachingAudio, playModelAudio, playRecording, stopAudio } from '../../src/services/tts';
 import { getSessionById } from '../../src/services/storage';
 import { isPremium, canDoOneShot, trackOneShotUsage } from '../../src/services/premium';
 import type { Session, Turn } from '../../src/types';
@@ -36,15 +36,27 @@ export default function SessionDetailScreen() {
     return () => { mountedRef.current = false; stopAudio(); };
   }, [id]);
 
-  async function play(key: string, text: string) {
+  async function play(key: string, text: string, recordingUri?: string) {
     if (playing === key) { stopAudio(); setPlaying(null); return; }
     await stopAudio();
     if (!mountedRef.current) return;
     setPlaying(key);
-    const playFn = key.includes('model') ? playModelAudio
-      : key.includes('coaching') || key.includes('insight') ? playCoachingAudio
-      : playQuestionAudio;
-    await playFn(text);
+    // If this is the user's own response AND we have the actual recording on
+    // disk, play the file directly. Falls back to TTS of the transcript for
+    // legacy sessions saved before recordingUri persistence.
+    if (key.startsWith('resp-') && recordingUri) {
+      const ok = await playRecording(recordingUri);
+      if (!ok && mountedRef.current) {
+        // Recording file missing/corrupt. Fall back to TTS so the user
+        // still hears something rather than tap-and-nothing-happens.
+        await playQuestionAudio(text);
+      }
+    } else {
+      const playFn = key.includes('model') ? playModelAudio
+        : key.includes('coaching') || key.includes('insight') ? playCoachingAudio
+        : playQuestionAudio;
+      await playFn(text);
+    }
     if (mountedRef.current) setPlaying(null);
   }
 
@@ -83,7 +95,16 @@ export default function SessionDetailScreen() {
         </View>
 
         {session.turns.map((turn, i) => (
-          <TurnCard key={turn.id} turn={turn} index={i} totalTurns={session.turns.length} isThreaded={session.type === 'threaded'} playing={playing} play={play} />
+          <TurnCard
+            key={turn.id}
+            turn={turn}
+            index={i}
+            totalTurns={session.turns.length}
+            isThreaded={session.type === 'threaded'}
+            characterName={session.characterName || 'Interviewer'}
+            playing={playing}
+            play={play}
+          />
         ))}
 
         {oneShotStatus?.allowed ? (
@@ -114,9 +135,9 @@ export default function SessionDetailScreen() {
 
 // Threaded turns are saved with all-zero per-turn dimensions (Threaded is
 // scored at the thread level, not per turn). Treat the all-zero sentinel as
-// "unscored" — hide the mini dimension chips and the per-turn coaching
+// "unscored". Hide the mini dimension chips and the per-turn coaching
 // insight (the latter is the thread debrief summary, which is the same
-// across every turn — redundant + ugly when shown 4x). Uses ?? so legacy
+// across every turn. Redundant + ugly when shown 4x). Uses ?? so legacy
 // turns missing the awareness field don't slip through.
 function isTurnUnscored(turn: Turn): boolean {
   const sc = turn.scores;
@@ -124,25 +145,30 @@ function isTurnUnscored(turn: Turn): boolean {
   return (sc.structure ?? 0) === 0 && (sc.concision ?? 0) === 0 && (sc.substance ?? 0) === 0 && (sc.fillerWords ?? 0) === 0 && (sc.awareness ?? 0) === 0;
 }
 
-function TurnCard({ turn, index, totalTurns, isThreaded, playing, play }: {
+function TurnCard({ turn, index, totalTurns, isThreaded, characterName, playing, play }: {
   turn: Turn; index: number; totalTurns: number; isThreaded: boolean;
+  characterName: string;
   playing: string | null;
-  play: (key: string, text: string) => void;
+  play: (key: string, text: string, recordingUri?: string) => void;
 }) {
   // Two paths to "hide per-turn dims": explicit unscored sentinel (legacy
-  // data, future modes) OR session.type === 'threaded' (defensive — threaded
+  // data, future modes) OR session.type === 'threaded' (defensive. Threaded
   // never has meaningful per-turn dimensions regardless of what's stored).
   const unscored = isThreaded || isTurnUnscored(turn);
   // For threaded, the insight on each turn is the thread debrief summary
   // duplicated. Render it ONLY on turn 1 to avoid repetition.
   const showInsight = !!turn.coachingInsight && (!isThreaded || turn.turnNumber === 1);
+  // Threaded turns 2+ are character REACTIONS, not questions. Label them with
+  // the character name so the user reads the conversation as a scene, not a
+  // form. Turn 1 keeps "Question". That's the original scenario prompt.
+  const questionLabel = isThreaded && turn.turnNumber > 1 ? characterName.toUpperCase() : 'Question';
   return (
     <View style={s.turnCard}>
       {totalTurns > 1 && <Text style={s.turnLabel}>Turn {turn.turnNumber}</Text>}
 
-      {/* Question */}
+      {/* Question (or character reaction for threaded turns 2+) */}
       <View style={s.qBox}>
-        <Text style={s.qLabel}>Question</Text>
+        <Text style={s.qLabel}>{questionLabel}</Text>
         <Text style={s.qText}>{turn.question}</Text>
       </View>
 
@@ -165,16 +191,17 @@ function TurnCard({ turn, index, totalTurns, isThreaded, playing, play }: {
         )}
       </View>
 
-      {/* Your response — listenable */}
-      <TouchableOpacity style={s.responseBox} onPress={() => play(`resp-${index}`, turn.transcript)} activeOpacity={0.7}>
+      {/* Your response. Plays the actual recording if available, falls back
+          to TTS of transcript for legacy sessions. */}
+      <TouchableOpacity style={s.responseBox} onPress={() => play(`resp-${index}`, turn.transcript, turn.recordingUri)} activeOpacity={0.7}>
         <View style={s.responseHeader}>
-          <Text style={s.responseLabel}>Your response</Text>
+          <Text style={s.responseLabel}>{turn.recordingUri ? 'Your answer (recording)' : 'Your response'}</Text>
           <Text style={s.playBtn}>{playing === `resp-${index}` ? '⏸' : '🔊'}</Text>
         </View>
         <Text style={s.responseText} numberOfLines={4}>"{turn.transcript}"</Text>
       </TouchableOpacity>
 
-      {/* Model answer — listenable */}
+      {/* Model answer. Listenable */}
       {turn.modelAnswer ? (
         <TouchableOpacity style={s.modelBox} onPress={() => play(`model-${index}`, turn.modelAnswer!)} activeOpacity={0.7}>
           <View style={s.responseHeader}>
@@ -185,7 +212,7 @@ function TurnCard({ turn, index, totalTurns, isThreaded, playing, play }: {
         </TouchableOpacity>
       ) : null}
 
-      {/* Coaching insight — suppressed on threaded turns 2-4 to avoid the
+      {/* Coaching insight. Suppressed on threaded turns 2-4 to avoid the
           thread summary repeating four times. */}
       {showInsight ? (
         <TouchableOpacity style={s.insightBox} onPress={() => play(`insight-${index}`, turn.coachingInsight)} activeOpacity={0.7}>

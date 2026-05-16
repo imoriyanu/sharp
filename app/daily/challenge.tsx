@@ -53,7 +53,7 @@ export default function DailyChallengeScreen() {
   async function loadQuestion() {
     const signal = abortRef.current?.signal;
     try {
-      // Check cache first — don't burn API credits
+      // Check cache first. Don't burn API credits
       const cached = await getCachedDailyQuestion();
       if (cached) {
         const t = cached.question.timerSeconds || DEFAULT_TIMER;
@@ -196,13 +196,13 @@ export default function DailyChallengeScreen() {
       if (!mountedRef.current) return;
       setTranscript(text);
 
-      // Validate — catch empty or too-short responses
+      // Validate. Catch empty or too-short responses
       const trimmed = text.trim();
       const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
       if (!trimmed || wordCount < 5) {
         setRetryReason(wordCount === 0
           ? "I didn't catch anything. Check your microphone and try again."
-          : "That was too short to score. Try giving a fuller answer — a few sentences at least.");
+          : "That was too short to score. Try giving a fuller answer. A few sentences at least.");
         setState('ready');
         stoppingRef.current = false;
         return;
@@ -223,7 +223,7 @@ export default function DailyChallengeScreen() {
         recentInsights: insights,
       });
 
-      // Save everything in parallel — a failure in any one of these
+      // Save everything in parallel. A failure in any one of these
       // shouldn't gate the others (e.g. AsyncStorage write fails → user
       // should still see their score). updateStreak's result feeds the
       // navigation params, so we resolve it specifically and let the

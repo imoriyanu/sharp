@@ -38,7 +38,7 @@ export default function ConversationComingSoon() {
         </TouchableOpacity>
 
         <View style={s.divider} />
-        <Text style={s.altText}>Try a Threaded Challenge — it trains the same follow-up skills.</Text>
+        <Text style={s.altText}>Try a Threaded Challenge. It trains the same follow-up skills.</Text>
         <TouchableOpacity
           style={s.ghostBtn}
           onPress={() => { router.dismiss(); router.push('/one-shot/question?mode=threaded'); }}

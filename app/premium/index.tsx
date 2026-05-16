@@ -12,7 +12,7 @@ import type { PlanId } from '../../src/types';
 
 const FEATURES = [
   { icon: '⚡', title: 'Nail your next interview', desc: 'Unlimited practice with AI scoring on every answer' },
-  { icon: '⚓', title: 'Stay sharp under pressure', desc: '4-round follow-ups that get harder — just like real life' },
+  { icon: '⚓', title: 'Stay sharp under pressure', desc: '4-round follow-ups that get harder. Just like real life' },
   { icon: '🎧', title: 'Hear the perfect answer', desc: 'Model answers show exactly how a 9/10 response sounds' },
   { icon: '📰', title: 'Sound informed at work', desc: 'Practise speaking about real news in your industry' },
   { icon: '📄', title: 'Coaching that knows you', desc: 'Upload your CV and get questions tailored to your goals' },
@@ -54,7 +54,7 @@ export default function PremiumScreen() {
     }
   }
 
-  // Build display plans — use real prices from RevenueCat when available, fall back to hardcoded
+  // Build display plans. Use real prices from RevenueCat when available, fall back to hardcoded
   const displayPlans = PLANS.map(plan => {
     const pkg = plan.id === 'monthly' ? packages.monthly : packages.annual;
     if (pkg) {
@@ -95,7 +95,7 @@ export default function PremiumScreen() {
         trackEvent(Events.PURCHASE_COMPLETED || Events.PAYWALL_VIEWED, { plan: selected, price: pkg.product?.priceString });
         navigateAfterPurchase();
       } else {
-        // User cancelled — not an error
+        // User cancelled. Not an error
         setPurchasing(false);
       }
     } catch (e: any) {
@@ -162,15 +162,15 @@ export default function PremiumScreen() {
         <FadeIn delay={100}>
           <View style={s.anchorCard}>
             <Text style={s.anchorIcon}>💡</Text>
-            <Text style={s.anchorText}>A communication coach charges £150–500 per session. Sharp Pro gives you unlimited AI coaching that quotes your exact words, shows you the fix, and tracks your progress — for less than a coffee a day.</Text>
+            <Text style={s.anchorText}>A communication coach charges £150–500 per session. Sharp Pro gives you unlimited AI coaching that quotes your exact words, shows you the fix, and tracks your progress. For less than a coffee a day.</Text>
           </View>
         </FadeIn>
 
         {/* Social proof */}
         <FadeIn delay={120}>
           <View style={s.proofCard}>
-            <Text style={s.proofQuote}>"Sharp told me to cut my intro from 45 words to 12. I used that in my interview the next day — and got the offer."</Text>
-            <Text style={s.proofAuthor}>— Early access user</Text>
+            <Text style={s.proofQuote}>"Sharp told me to cut my intro from 45 words to 12. I used that in my interview the next day. And got the offer."</Text>
+            <Text style={s.proofAuthor}>,  Early access user</Text>
           </View>
         </FadeIn>
 
@@ -222,7 +222,7 @@ export default function PremiumScreen() {
           </View>
         </FadeIn>
 
-        {/* CTA — trial-first */}
+        {/* CTA. Trial-first */}
         <FadeIn delay={300}>
           <TouchableOpacity style={[s.ctaBtn, purchasing && s.ctaBtnDisabled]} onPress={handlePurchase} activeOpacity={0.8} disabled={purchasing}>
             <Text style={s.ctaText}>{purchasing ? 'Processing...' : 'Start 7-Day Free Trial'}</Text>

@@ -158,7 +158,7 @@
 <body>
     <div class="container">
         <h1>Privacy Policy</h1>
-        <p class="effective-date">Effective Date: April 5, 2026</p>
+        <p class="effective-date">Effective Date: May 16, 2026</p>
 
         <p>Sharp AI ("Sharp," "we," "our," or "us") provides a communication training application (the "App") designed to help professionals improve how they speak under pressure. This Privacy Policy explains how we collect, use, store, and protect your information when you use the App.</p>
 
@@ -255,8 +255,13 @@
                 </tr>
                 <tr>
                     <td><strong>ElevenLabs</strong></td>
-                    <td>Text-to-speech and conversational AI</td>
+                    <td>Text-to-speech (fallback) and conversational AI</td>
                     <td>Text prompts; live audio in conversation mode</td>
+                </tr>
+                <tr>
+                    <td><strong>Together AI (Kokoro)</strong></td>
+                    <td>Text-to-speech (primary, for question playback)</td>
+                    <td>Text prompts only (no audio sent)</td>
                 </tr>
                 <tr>
                     <td><strong>RevenueCat</strong></td>
@@ -278,13 +283,18 @@
 
         <p>We do not sell, rent, or share your personal information with any third party for marketing or advertising purposes.</p>
 
+        <div class="highlight">
+            <strong>Equivalent protection (third-party AI providers).</strong> Anthropic, Groq, ElevenLabs, and Together AI each operate under zero-retention API terms: the data Sharp sends them is processed in real time, is not stored on their servers after processing, and is not used to train their AI models. We have verified that each of these providers offers privacy protections equivalent to those described in this policy. Links to each provider's privacy commitments are listed below.
+        </div>
+
         <p>Links to third-party privacy policies:</p>
         <ul>
             <li><a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">Apple Privacy Policy</a></li>
             <li><a href="https://supabase.com/privacy" target="_blank" rel="noopener">Supabase Privacy Policy</a></li>
-            <li><a href="https://www.anthropic.com/privacy" target="_blank" rel="noopener">Anthropic Privacy Policy</a></li>
+            <li><a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">Anthropic Privacy Policy</a> &middot; <a href="https://www.anthropic.com/legal/commercial-terms" target="_blank" rel="noopener">Anthropic Commercial Terms (zero-retention)</a></li>
             <li><a href="https://groq.com/privacy-policy/" target="_blank" rel="noopener">Groq Privacy Policy</a></li>
             <li><a href="https://elevenlabs.io/privacy-policy" target="_blank" rel="noopener">ElevenLabs Privacy Policy</a></li>
+            <li><a href="https://www.together.ai/privacy" target="_blank" rel="noopener">Together AI Privacy Policy</a></li>
             <li><a href="https://www.revenuecat.com/privacy/" target="_blank" rel="noopener">RevenueCat Privacy Policy</a></li>
             <li><a href="https://posthog.com/privacy" target="_blank" rel="noopener">PostHog Privacy Policy</a></li>
             <li><a href="https://expo.dev/privacy" target="_blank" rel="noopener">Expo Privacy Policy</a></li>

@@ -89,7 +89,7 @@ export default function CoachingScreen() {
       if (similarity > 0.8) {
         fb = "Nailed it. That's sharp, clear, and confident. You're ready to deliver this in the room.";
       } else if (similarity > 0.5) {
-        fb = "Good attempt — you captured the core message. Try tightening the phrasing to match the model more closely. The specific numbers and structure matter.";
+        fb = "Good attempt. You captured the core message. Try tightening the phrasing to match the model more closely. The specific numbers and structure matter.";
       } else {
         fb = "You drifted from the sharper version. Listen to the model again, focus on the structure: lead with the metric, then the impact. Try once more.";
       }

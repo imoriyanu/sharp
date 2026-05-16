@@ -127,7 +127,7 @@ export default function ContextSetupScreen() {
       if (!mountedRef.current) return;
       const trimmed = transcript.trim();
       if (!trimmed) {
-        // Empty transcript — don't overwrite
+        // Empty transcript. Don't overwrite
         setRecState('ready');
         return;
       }
@@ -161,7 +161,7 @@ export default function ContextSetupScreen() {
       setVoiceStep(voiceStep + 1);
       setRecState('idle');
     } else {
-      // Done with voice setup — save and go to overview
+      // Done with voice setup. Save and go to overview
       saveContext(ctx);
       setMode('overview');
       setHasChanges(false);
@@ -353,7 +353,7 @@ export default function ContextSetupScreen() {
           {/* Extra Notes */}
           <View style={s.notesSection}>
             <Text style={s.docsTitle}>Extra Notes</Text>
-            <Text style={s.notesHint}>Anything else Sharp should know — specific requests, things to focus on, topics to avoid, context that doesn't fit above.</Text>
+            <Text style={s.notesHint}>Anything else Sharp should know. Specific requests, things to focus on, topics to avoid, context that doesn't fit above.</Text>
             {editingNotes ? (
               <View style={s.notesEditArea}>
                 <TextInput

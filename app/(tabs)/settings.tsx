@@ -8,6 +8,7 @@ import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '..
 import { getUserProfile, saveUserProfile, trackFeatureInterest } from '../../src/services/storage';
 import { isPremium, getPlanName, syncFromRevenueCat, getUsageDisplay, type UsageDisplay } from '../../src/services/premium';
 import { restorePurchases, isRevenueCatConfigured, getManagementUrl } from '../../src/services/revenuecat';
+import { FEATURES } from '../../src/constants/features';
 import { useAuth } from '../../src/context/AuthContext';
 import { signOut, deleteAccount } from '../../src/services/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -283,7 +284,17 @@ export default function SettingsScreen() {
 function formatUsageSub(u: UsageDisplay | null): string {
   if (!u) return isPremium() ? '3 One Shots · 2 Threaded · 2 Industry /day' : 'Unlock full coaching and unlimited practice';
   if (u.isPremium) {
-    return `${u.oneShots.used}/${u.oneShots.cap} One Shots · ${u.threaded.used}/${u.threaded.cap} Threaded · ${u.industry.used}/${u.industry.cap} Industry · today`;
+    // Voice quota is naturally hidden when conversations.cap === 0, which it
+    // is whenever FEATURES.conversation is off (PREMIUM_LIMITS.conversationsPerDay
+    // stays 1 but the Home tile / setup screen are unreachable). For an extra
+    // belt-and-braces hide, we could check FEATURES.conversation here too.
+    const parts = [
+      `${u.oneShots.used}/${u.oneShots.cap} One Shots`,
+      `${u.threaded.used}/${u.threaded.cap} Threaded`,
+      `${u.industry.used}/${u.industry.cap} Industry`,
+    ];
+    if (u.conversations.cap > 0 && FEATURES.conversation) parts.push(`${u.conversations.used}/${u.conversations.cap} Voice`);
+    return `${parts.join(' · ')} · today`;
   }
   // Free tier: cap > 0 means usable; cap = 0 means locked behind paywall.
   const parts: string[] = [];

@@ -6,7 +6,7 @@ import { colors, typography, spacing, radius, wp, fp, shadows, layout } from '..
 import { LoadingScreen, AudioWaveBars, FadeIn } from '../../src/components/Animations';
 import { generateQuestion } from '../../src/services/scoring';
 import { playQuestionAudio, stopAudio, buildNaturalScript, getQuestionVoiceMode, prefetchAudio } from '../../src/services/tts';
-import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion, getCachedIndustryQuestion, cacheIndustryQuestion, clearIndustryQuestionCache, saveThreadState, clearThreadState, getRecentSessionHistory, getAverageScores } from '../../src/services/storage';
+import { getContext, getRecentQuestions, addRecentQuestion, getCachedOneShotQuestion, cacheOneShotQuestion, getCachedThreadedQuestion, cacheThreadedQuestion, getCachedIndustryQuestion, cacheIndustryQuestion, clearIndustryQuestionCache, saveThreadState, clearThreadState, getRecentSessionHistory, getAverageScores, getActiveUpcomingEvents } from '../../src/services/storage';
 import { isPremium, canRegenerate, trackRegenerateUsage, trackIndustryUsage, resetRegenCount } from '../../src/services/premium';
 import type { GeneratedQuestion } from '../../src/types';
 
@@ -52,7 +52,7 @@ export default function QuestionScreen() {
           : await getCachedOneShotQuestion();
         if (cached) {
           if (!mountedRef.current) return;
-          // Start TTS download immediately — runs in parallel with UI render
+          // Start TTS download immediately. Runs in parallel with UI render
           prefetchAudio(buildNaturalScript(cached), getQuestionVoiceMode(cached));
           setQuestion(cached);
           setLoading(false);
@@ -64,8 +64,8 @@ export default function QuestionScreen() {
         }
       }
 
-      const [ctx, recentQuestions, sessionHistory, averageScores] = await Promise.all([
-        getContext(), getRecentQuestions(), getRecentSessionHistory(), getAverageScores(),
+      const [ctx, recentQuestions, sessionHistory, averageScores, upcomingEvents] = await Promise.all([
+        getContext(), getRecentQuestions(), getRecentSessionHistory(), getAverageScores(), getActiveUpcomingEvents(),
       ]);
       const documentExtractions = (ctx?.documents || []).map(d => d.structuredExtraction).filter(Boolean);
       const q = await generateQuestion({
@@ -79,14 +79,15 @@ export default function QuestionScreen() {
         recentQuestions,
         sessionHistory,
         averageScores: averageScores || undefined,
+        upcomingEvents,
         ...(isIndustry ? { forceFormat: 'industry' } : {}),
       }, signal);
-      // Start TTS download NOW — runs while we cache the question and render UI
+      // Start TTS download NOW. Runs while we cache the question and render UI
       prefetchAudio(buildNaturalScript(q), getQuestionVoiceMode(q));
 
       await addRecentQuestion(q.question);
 
-      // Cache it — each mode has its own cache
+      // Cache it. Each mode has its own cache
       if (isIndustry) await cacheIndustryQuestion(q);
       else if (isThreaded) await cacheThreadedQuestion(q);
       else await cacheOneShotQuestion(q);
@@ -101,7 +102,7 @@ export default function QuestionScreen() {
     } catch (e: any) {
       if (e?.name === 'AbortError') return;
       __DEV__ && console.error('Question load error:', e);
-      // Richer fallback — includes the scene-bible fields so threaded mode
+      // Richer fallback. Includes the scene-bible fields so threaded mode
       // survives a fallback path without showing "Interviewer" everywhere.
       // The fallback never gets cached for industry (industry should always
       // hit the news pipeline; force a fresh attempt on retry).
@@ -243,7 +244,7 @@ export default function QuestionScreen() {
             </TouchableOpacity>
           </Modal>
 
-          {/* Learn more — real articles + search */}
+          {/* Learn more. Real articles + search */}
           {question?.format === 'industry' && question.learnMore && (
             <FadeIn delay={400}>
               <View style={s.learnCard}>

@@ -33,13 +33,13 @@ export default function FollowUpScreen() {
   }>();
   const [speaking, setSpeaking] = useState(false);
   const [textOnly, setTextOnly] = useState(false);
-  // ThreadState is the source of truth for the pending character turn —
+  // ThreadState is the source of truth for the pending character turn , 
   // nav params are a fast-path fallback. If the user backgrounds the app
   // and returns, nav params may be lost but ThreadState persists.
   const [resolved, setResolved] = useState<{
     reaction: string; question: string; pressureLevel: string; turns: ThreadTurn[]; turnNumber: number;
   } | null>(null);
-  // Character name from ThreadState — used in bubble labels. Falls back to
+  // Character name from ThreadState. Used in bubble labels. Falls back to
   // "Interviewer" for old threads started before the engine emitted this field.
   const [characterName, setCharacterName] = useState<string>('Interviewer');
   const mountedRef = useRef(true);

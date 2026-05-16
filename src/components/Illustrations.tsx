@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, Animated, Easing, StyleSheet } from 'react-native';
 import { colors, wp, fp } from '../constants/theme';
 
-// ===== Sharp Fox Mascot — Full body with glasses =====
+// ===== Sharp Fox Mascot. Full body with glasses =====
 export function SharpFox({ size = wp(120), expression = 'happy' }: { size?: number; expression?: 'happy' | 'thinking' | 'celebrating' | 'listening' }) {
   const bounce = useRef(new Animated.Value(0)).current;
   const tailWag = useRef(new Animated.Value(0)).current;

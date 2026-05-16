@@ -29,7 +29,7 @@ export default function OnboardingSignIn() {
     setError('');
     try {
       await signInWithApple();
-      router.push('/onboarding/challenge-intro');
+      router.push('/onboarding/ai-consent');
     } catch (e: any) {
       if (e?.code === 'ERR_REQUEST_CANCELED') return;
       setError(e?.message?.includes('no session') ? 'Sign in failed. Please check your connection.' : 'Apple sign in failed. Please try again.');
@@ -54,13 +54,13 @@ export default function OnboardingSignIn() {
         const profile = await getUserProfile();
         const result = await signUpWithEmail(trimEmail, trimPass, profile?.displayName || '');
         if (result.session) {
-          router.push('/onboarding/challenge-intro');
+          router.push('/onboarding/ai-consent');
         } else {
           setConfirmEmail(true);
         }
       } else {
         await signInWithEmail(trimEmail, trimPass);
-        router.push('/onboarding/challenge-intro');
+        router.push('/onboarding/ai-consent');
       }
     } catch (e: any) {
       const msg = e?.message || '';
@@ -203,7 +203,7 @@ export default function OnboardingSignIn() {
           </TouchableOpacity>
 
           {/* Skip */}
-          <TouchableOpacity onPress={() => router.push('/onboarding/challenge-intro')} activeOpacity={0.7} style={s.skipRow}>
+          <TouchableOpacity onPress={() => router.push('/onboarding/ai-consent')} activeOpacity={0.7} style={s.skipRow}>
             <Text style={s.skipText}>Skip for now</Text>
           </TouchableOpacity>
         </ScrollView>

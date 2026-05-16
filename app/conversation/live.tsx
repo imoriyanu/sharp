@@ -225,7 +225,7 @@ const s = StyleSheet.create({
   timerLow: { color: colors.error },
   liveDotBig: { width: wp(10), height: wp(10), borderRadius: wp(5), backgroundColor: colors.error },
 
-  // Middle — fox takes remaining space, centered
+  // Middle. Fox takes remaining space, centered
   middle: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   foxOuter: { width: wp(180), height: wp(180), alignItems: 'center', justifyContent: 'center' },
   foxCircle: {
@@ -238,7 +238,7 @@ const s = StyleSheet.create({
   foxSpeaking: { borderColor: colors.accent.primary, backgroundColor: colors.accent.light },
   foxListening: { borderColor: colors.recording, backgroundColor: 'rgba(192,80,80,0.06)' },
 
-  // Bottom — info + end call
+  // Bottom. Info + end call
   bottom: { alignItems: 'center', paddingHorizontal: layout.screenPadding, paddingBottom: wp(20) },
   name: { fontSize: fp(22), fontWeight: typography.weight.black, color: colors.text.primary, textAlign: 'center' },
   scenario: { fontSize: fp(11), color: colors.text.tertiary, textAlign: 'center', lineHeight: fp(17), marginTop: spacing.xs, paddingHorizontal: spacing.sm },

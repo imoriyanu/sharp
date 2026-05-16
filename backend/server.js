@@ -39,14 +39,14 @@ const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_
 
 const app = express();
 
-// Security headers — relaxed for API server (no HTML served)
+// Security headers. Relaxed for API server (no HTML served)
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   crossOriginOpenerPolicy: false,
 }));
 
-// CORS — restrict to known origins in production
+// CORS. Restrict to known origins in production
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : (isProd ? [] : ['http://localhost:8081', 'http://localhost:19006', 'exp://']);
@@ -61,7 +61,7 @@ app.use(cors({
 
 app.use(express.json({ limit: '25mb' }));
 
-// Rate limiting — per IP, with periodic cleanup
+// Rate limiting. Per IP, with periodic cleanup
 const rateLimits = new Map();
 const RATE_WINDOW = 60000;
 
@@ -90,7 +90,7 @@ function rateLimit(maxPerMinute) {
   };
 }
 
-// Apply rate limits — generous for normal use, strict for expensive endpoints
+// Apply rate limits. Generous for normal use, strict for expensive endpoints
 app.use('/api/question', rateLimit(10));   // 10 question generations per minute
 app.use('/api/score', rateLimit(10));       // 10 scorings per minute
 app.use('/api/threaded', rateLimit(15));    // 15 threaded calls per minute
@@ -102,11 +102,11 @@ app.use('/api/conversation', rateLimit(20)); // 20 conversation calls per minute
 app.use('/api/v2/threaded', rateLimit(15)); // mirror v1 limits for the agentic variant
 app.use('/api/v2/score', rateLimit(10));
 
-// JWT verification for v2 endpoints — sets req.userId from a verified Bearer token.
+// JWT verification for v2 endpoints. Sets req.userId from a verified Bearer token.
 // Soft-fails (req.userId = null) so the endpoint can fall back to the v1 prompt.
 app.use('/api/v2', makeVerifyUser(supabase));
 
-// Same middleware on /api/account — but the handler enforces 401 if userId is null
+// Same middleware on /api/account. But the handler enforces 401 if userId is null
 // (deletion is irreversible, must be auth-gated for real).
 app.use('/api/account', makeVerifyUser(supabase));
 
@@ -151,7 +151,7 @@ const groq = new Groq.default({
 });
 
 // ===== Helper: Call Claude =====
-// MODELS — Sonnet for quality-critical paths (scoring, debrief, agent tool
+// MODELS. Sonnet for quality-critical paths (scoring, debrief, agent tool
 // use, document parse). Haiku 4.5 for fast/formulaic paths (question gen,
 // follow-up, quality gate, progress summary, conversation, engagement
 // nudges). Haiku is ~12× cheaper input + output, ~3-5× faster.
@@ -196,7 +196,7 @@ async function callClaude(prompt, maxTokens = 1500, { cacheSystem, model = MODEL
       .map(block => block.text)
       .join('');
 
-    // Parse JSON response — robust extraction. Logs which phase failed so we
+    // Parse JSON response. Robust extraction. Logs which phase failed so we
     // can debug "Invalid JSON" reports in production. Throws a typed error
     // (code: CLAUDE_PARSE_FAILURE) so endpoints can decide whether to retry.
     const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -207,7 +207,7 @@ async function callClaude(prompt, maxTokens = 1500, { cacheSystem, model = MODEL
       if (jsonMatch) {
         try { return JSON.parse(jsonMatch[0]); } catch {}
       }
-      logError(`Claude JSON parse failure — model=${model}, length=${cleaned.length}, first500=${cleaned.slice(0, 500)}`);
+      logError(`Claude JSON parse failure. Model=${model}, length=${cleaned.length}, first500=${cleaned.slice(0, 500)}`);
       const err = new Error('CLAUDE_PARSE_FAILURE');
       err.code = 'CLAUDE_PARSE_FAILURE';
       err.raw = cleaned.slice(0, 1000);
@@ -306,7 +306,7 @@ async function callClaudeWithTools(systemPrompt, userMessage, tools, maxIteratio
       const textBlocks = response.content.filter(b => b.type === 'text');
 
       if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
-        // No more tool calls — extract final text/JSON
+        // No more tool calls. Extract final text/JSON
         const text = textBlocks.map(b => b.text).join('');
         const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         try { return JSON.parse(cleaned); } catch {
@@ -388,7 +388,7 @@ Return ONLY JSON: { "queries": ["query1", "query2", "query3", "query4"] }`;
     const plan = await callClaude(planPrompt, 200, { model: MODELS.HAIKU });
     if (!plan?.queries?.length) return [];
 
-    // Search all 4 in parallel — fast
+    // Search all 4 in parallel. Fast
     const results = await Promise.all(
       plan.queries.slice(0, 4).map(q => searchGoogleNews(q))
     );
@@ -417,7 +417,7 @@ Return ONLY JSON: { "queries": ["query1", "query2", "query3", "query4"] }`;
 // midnight UTC. Cheaper than per-user generation and enables Duels.
 
 let dailyQuestionCache = { date: '', question: null };
-// Promise lock — when the cache is cold, only one request actually calls
+// Promise lock. When the cache is cold, only one request actually calls
 // Claude; concurrent requests await the same promise. Avoids N duplicate
 // generations when N users open the app at the new-day boundary.
 let dailyQuestionPromise = null;
@@ -433,11 +433,11 @@ const DAILY_QUESTION_FALLBACK = {
 };
 
 async function generateDailyQuestion(today) {
-  const prompt = `You are Sharp, a communication coach. Generate ONE universal daily challenge question that ANY professional can answer — regardless of their role, industry, or experience level.
+  const prompt = `You are Sharp, a communication coach. Generate ONE universal daily challenge question that ANY professional can answer. Regardless of their role, industry, or experience level.
 
-The question should test communication skills: clarity, structure, concision, or substance. It should be thought-provoking and require a genuine spoken response — not a yes/no answer.
+The question should test communication skills: clarity, structure, concision, or substance. It should be thought-provoking and require a genuine spoken response. Not a yes/no answer.
 
-VARIETY — rotate between these styles:
+VARIETY. Rotate between these styles:
 - Opinion questions ("What's your take on...?")
 - Experience questions ("Tell me about a time when...")
 - Hypothetical scenarios ("Your CEO just announced... how do you respond?")
@@ -445,7 +445,7 @@ VARIETY — rotate between these styles:
 - Pitch questions ("Convince me that...")
 - Pressure questions ("You have 30 seconds to...")
 
-Today's date: ${today} (use this as a seed for variety — different day = different style)
+Today's date: ${today} (use this as a seed for variety. Different day = different style)
 
 Return ONLY JSON:
 {
@@ -488,7 +488,7 @@ app.get('/api/daily-question', async (req, res) => {
 // Required output fields for a question. Threaded mode breaks silently if any
 // of these are missing (characterBrief drives the character agent in turns 2-4;
 // characterName is the chat bubble label; skillsTested powers debrief tie-back).
-// Haiku occasionally drops these — validate + retry-with-reinforcement (same
+// Haiku occasionally drops these. Validate + retry-with-reinforcement (same
 // pattern as coach-tells regen in /api/threaded/follow-up).
 const REQUIRED_Q_FIELDS = ['question', 'characterBrief', 'skillsTested', 'characterName'];
 
@@ -511,7 +511,7 @@ app.post('/api/question/generate', async (req, res) => {
     if (req.body.forceFormat === 'industry') {
       const research = await agentResearchNews(req.body);
       if (research.length > 0) {
-        req.body.realNewsHeadlines = research.map(r => `${r.title}${r.source ? ` — ${r.source}` : ''}`);
+        req.body.realNewsHeadlines = research.map(r => `${r.title}${r.source ? `, ${r.source}` : ''}`);
         req.body.realNewsArticles = research.map(r => ({ title: r.title, url: r.url, source: r.source, date: r.date }));
         req.body.searchAngles = [...new Set(research.map(r => r.searchAngle))];
       }
@@ -520,14 +520,14 @@ app.post('/api/question/generate', async (req, res) => {
     const prompt = prompts.questionEnginePrompt(req.body);
     const isIndustry = req.body.forceFormat === 'industry';
     const tokens = isIndustry ? 1500 : 1200;
-    // Industry path needs more headroom — news research already ate 5-10s.
+    // Industry path needs more headroom. News research already ate 5-10s.
     const timeoutMs = isIndustry ? 45000 : 30000;
     // Haiku: question generation is formulaic and high-volume. Per-call
     // savings ~12×; quality drop negligible per the audit.
     let result = await callClaude(prompt, tokens, { model: MODELS.HAIKU, timeoutMs });
     let missing = questionMissingFields(result);
     if (missing.length > 0) {
-      logError(`Question response missing fields: ${missing.join(', ')} — retrying with reinforcement`);
+      logError(`Question response missing fields: ${missing.join(', ')}. Retrying with reinforcement`);
       const retryPrompt = `${prompt}\n\nIMPORTANT: Your previous response was missing required fields: ${missing.join(', ')}. Return ONLY valid JSON with ALL required fields populated. Re-read the ALWAYS INCLUDE section.`;
       result = await callClaude(retryPrompt, tokens, { model: MODELS.HAIKU, timeoutMs });
       missing = questionMissingFields(result);
@@ -558,7 +558,7 @@ app.post('/api/score', async (req, res) => {
     req.body.transcript = sanitizeString(req.body.transcript, MAX_TRANSCRIPT);
     req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
     // Onboarding still uses the standalone prompt. For normal scoring, send
-    // the static ~4000-token system instructions as a cached system block —
+    // the static ~4000-token system instructions as a cached system block , 
     // ~90% input cost reduction across all scoring calls.
     let prompt, opts = {};
     if (req.body.isOnboarding) {
@@ -571,7 +571,7 @@ app.post('/api/score', async (req, res) => {
     // Score the answer
     const result = await callClaude(prompt, 2000, opts);
 
-    // Return immediately — quality gate runs in background for future improvement
+    // Return immediately. Quality gate runs in background for future improvement
     res.json(result);
 
     // Background: quality gate evaluation (non-blocking, logs only)
@@ -582,14 +582,14 @@ app.post('/api/score', async (req, res) => {
         transcript: req.body.transcript,
         scoringResult: result,
       });
-      // Haiku: the quality gate is a critic prompt — evaluating, not creating.
+      // Haiku: the quality gate is a critic prompt. Evaluating, not creating.
       const evaluation = await callClaude(evalPrompt, 400, { model: MODELS.HAIKU });
       const quality = evaluation?.qualityScore || 10;
       if (quality < 7) {
-        log(`[Quality Gate] Score ${quality}/10 for question: "${req.body.question.slice(0, 50)}..." — Fixes: ${evaluation.fixes?.slice(0, 100)}`);
+        log(`[Quality Gate] Score ${quality}/10 for question: "${req.body.question.slice(0, 50)}...". Fixes: ${evaluation.fixes?.slice(0, 100)}`);
       }
     } catch {
-      // Non-blocking — silently ignore
+      // Non-blocking. Silently ignore
     }
   } catch (error) {
     sendError(res, 500, error, 'Scoring');
@@ -598,12 +598,12 @@ app.post('/api/score', async (req, res) => {
 
 // ===== Threaded Challenge: Follow-up =====
 // The character agent. Stays in character for turns 2-4 of a thread.
-// Sandboxed — does not see raw user context (CV, notes, role). Reads only
+// Sandboxed. Does not see raw user context (CV, notes, role). Reads only
 // the original scene + conversation history + a translated characterBrief.
 
 // Coach-tells detector: regex pass over generated character line catches
 // the most common drift markers (coach voice, scene self-awareness, AI
-// assistant phrasings). Triggers a single regen on detection — no second
+// assistant phrasings). Triggers a single regen on detection. No second
 // LLM call, zero added cost on the happy path.
 const COACH_TELLS = [
   // Coach-voice patterns
@@ -626,7 +626,7 @@ const COACH_TELLS = [
   // Generic AI-assistant phrasings
   /\bas an AI\b/i,
   /\bI'd be happy to\b/i,
-  // Meta / analytic drift (most common failure mode — model commenting on
+  // Meta / analytic drift (most common failure mode. Model commenting on
   // the conversation instead of being inside it)
   /\bI (don't|do not) have (their|the user's|enough)\b/i,
   /\bI notice (you|that you)\b/i,
@@ -651,7 +651,7 @@ app.post('/api/threaded/follow-up', async (req, res) => {
     req.body.transcript = sanitizeString(req.body.transcript, MAX_TRANSCRIPT);
     req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
     const prompt = prompts.followUpPrompt(req.body);
-    // Haiku for cost/latency — character agent prompt is structured enough
+    // Haiku for cost/latency. Character agent prompt is structured enough
     // that Haiku stays in voice on the happy path; the regex catches the
     // rare drift and re-rolls once. 45s timeout covers the worst case where
     // both the initial call AND the regen call need to fire.
@@ -669,7 +669,7 @@ app.post('/api/threaded/follow-up', async (req, res) => {
         pressure_level: result?.pressureLevel,
         coach_regen: regenFired,
         has_brief: !!req.body?.characterBrief,
-        // Reaction system telemetry — lets us watch escalation patterns,
+        // Reaction system telemetry. Lets us watch escalation patterns,
         // surface-acceptance rate (= lost-user-mid-scene), and which signal
         // reads correlate with which reactions.
         reaction_type: result?.reactionType || null,
@@ -696,10 +696,10 @@ app.post('/api/v2/threaded/follow-up', async (req, res) => {
     req.body.question = sanitizeString(req.body.question, MAX_QUESTION);
 
     // SECURITY: only trust req.userId from the verifyUser middleware.
-    // Ignore any req.body.userId — clients cannot self-attest identity.
+    // Ignore any req.body.userId. Clients cannot self-attest identity.
     const userId = req.userId || null;
     const sessionId = typeof req.body.sessionId === 'string' && req.body.sessionId.length > 0 ? req.body.sessionId : null;
-    // If userId is unverified, fall through to v1 immediately — no agent retrieval.
+    // If userId is unverified, fall through to v1 immediately. No agent retrieval.
     if (!userId) {
       const prompt = prompts.followUpPrompt(req.body);
       const result = await callClaude(prompt, 400, { model: MODELS.HAIKU, timeoutMs: 45000 });
@@ -735,7 +735,7 @@ app.post('/api/threaded/debrief', async (req, res) => {
     if (!Array.isArray(turns) || turns.length === 0) {
       return res.status(400).json({ error: 'turns array is required and non-empty' });
     }
-    // Structural validation — return a clean 400 with a specific message
+    // Structural validation. Return a clean 400 with a specific message
     // rather than crashing inside the prompt builder.
     for (let i = 0; i < turns.length; i++) {
       const t = turns[i];
@@ -744,7 +744,7 @@ app.post('/api/threaded/debrief', async (req, res) => {
       }
     }
     const prompt = prompts.debriefPrompt(req.body);
-    // Sonnet at 2000 tokens — 35s gives a small margin over typical ~20s.
+    // Sonnet at 2000 tokens. 35s gives a small margin over typical ~20s.
     const result = await callClaude(prompt, 2000, { timeoutMs: 35000 });
     res.json(result);
   } catch (error) {
@@ -794,12 +794,12 @@ GENERATE A NATURAL, SPOKEN 30-SECOND SUMMARY. Rules:
 - If they're plateauing, reframe it constructively ("you've built a solid base, now let's push for the next level")
 - If they're new (< 3 sessions), welcome them and set expectations
 - End with ONE specific thing to focus on next
-- Keep it under 100 words — it needs to be speakable in 30 seconds
-- DO NOT use bullet points or formatting — this is pure spoken text
+- Keep it under 100 words. It needs to be speakable in 30 seconds
+- DO NOT use bullet points or formatting. This is pure spoken text
 
 Return ONLY valid JSON (no markdown):
 {
-  "spokenSummary": "<the 30-second spoken summary — conversational, warm, data-driven>",
+  "spokenSummary": "<the 30-second spoken summary. Conversational, warm, data-driven>",
   "highlights": ["<3-4 short highlight bullets for the UI, e.g. 'Structure up 1.5 points', 'Best score: 7.8'>"],
   "focusArea": "<the ONE dimension or skill they should focus on next, with a reason>",
   "encouragement": "<a short motivational line specific to their progress>"
@@ -840,8 +840,11 @@ app.post('/api/analytics/patterns', async (req, res) => {
   try {
     const { sessions, roleText, currentCompany, situationText, dreamRoleAndCompany, notes } = req.body || {};
     const safeSessions = Array.isArray(sessions) ? sessions.slice(0, 20) : [];
-    if (safeSessions.length < 5) {
-      // Not enough data — return empty patterns. Client renders an empty state.
+    // Lowered from 5 → 3 so trial users see pattern insights inside the
+    // 7-day window. The prompt hedges confidence wording based on
+    // session count so 3-session insights read as "directional".
+    if (safeSessions.length < 3) {
+      // Not enough data. Return empty patterns. Client renders an empty state.
       return res.json({ patterns: [], sessionsAnalysed: safeSessions.length, reason: 'not_enough_data' });
     }
 
@@ -901,7 +904,7 @@ app.post('/api/transcribe', async (req, res) => {
 
     fs.writeFileSync(rawPath, buffer);
 
-    // Audio conversion pipeline — works on macOS AND Linux
+    // Audio conversion pipeline. Works on macOS AND Linux
     // Strategy: try multiple approaches, use first that succeeds
     const wavPath = rawPath.replace('_raw.m4a', '.wav');
     files.push(wavPath);
@@ -1034,7 +1037,7 @@ app.post('/api/waitlist', (req, res) => {
     }
     list.push({ email: sanitized, joinedAt: new Date().toISOString() });
     fs.writeFileSync(WAITLIST_FILE, JSON.stringify(list, null, 2));
-    log('Waitlist signup:', sanitized, '— total:', list.length);
+    log('Waitlist signup:', sanitized, ',  total:', list.length);
     res.json({ status: 'joined', count: list.length });
   } catch (error) {
     sendError(res, 500, error, 'Waitlist');
@@ -1065,7 +1068,7 @@ app.post('/api/feature-request', (req, res) => {
     try { list = JSON.parse(fs.readFileSync(FEATURE_REQUESTS_FILE, 'utf8')); } catch {}
     list.push({ request: request.trim().slice(0, 500), userId: userId || 'anonymous', timestamp: timestamp || new Date().toISOString() });
     fs.writeFileSync(FEATURE_REQUESTS_FILE, JSON.stringify(list, null, 2));
-    log('Feature request:', request.trim().slice(0, 100), '— total:', list.length);
+    log('Feature request:', request.trim().slice(0, 100), ',  total:', list.length);
     res.json({ status: 'received', count: list.length });
   } catch (error) {
     sendError(res, 500, error, 'Feature request');
@@ -1107,10 +1110,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 app.post('/api/webhooks/revenuecat', async (req, res) => {
   try {
     // 1. Require the shared secret to be configured. Without this, ANY
-    //    request would be accepted — that's not OK in production.
+    //    request would be accepted. That's not OK in production.
     const expectedToken = process.env.REVENUECAT_WEBHOOK_SECRET;
     if (!expectedToken) {
-      logError('RevenueCat webhook: REVENUECAT_WEBHOOK_SECRET not configured — rejecting');
+      logError('RevenueCat webhook: REVENUECAT_WEBHOOK_SECRET not configured. Rejecting');
       return res.status(503).json({ error: 'Webhook not configured' });
     }
 
@@ -1342,7 +1345,7 @@ const ttsCache = new Map();
 const TTS_CACHE_MAX = 200;
 const TTS_CACHE_TTL = 3600_000; // 1h
 
-// Singleflight — pending TTS generation per cache key. Concurrent requests
+// Singleflight. Pending TTS generation per cache key. Concurrent requests
 // for the same text+mode wait on the same promise instead of all hitting
 // the upstream provider.
 const ttsPending = new Map(); // key -> Promise<Buffer>
@@ -1380,20 +1383,20 @@ setInterval(() => {
 // Kokoro voice mappings.
 // Single coherent identity (American male, clear/articulate) with subtle
 // speed variation per mode. Other voices we've considered:
-//   am_michael — neutral, clear, mid-range (← chosen default)
-//   am_adam    — deeper, more authoritative
-//   am_eric    — articulate, slightly older
-//   am_onyx    — warmer, fuller
+//   am_michael. Neutral, clear, mid-range (← chosen default)
+//   am_adam   . Deeper, more authoritative
+//   am_eric   . Articulate, slightly older
+//   am_onyx   . Warmer, fuller
 // Swap the `voice` field below to change.
 const KOKORO_VOICE_MODES = {
   question:  { voice: 'am_michael', speed: 1.0  },  // baseline
-  coaching:  { voice: 'am_michael', speed: 0.92 }, // slightly slower — warmer for feedback
+  coaching:  { voice: 'am_michael', speed: 0.92 }, // slightly slower. Warmer for feedback
   model:     { voice: 'am_michael', speed: 1.05 }, // crisper for "this is how to say it"
   followup:  { voice: 'am_michael', speed: 1.02 }, // mildly assertive for pressure
   briefing:  { voice: 'am_michael', speed: 0.96 }, // measured for longer setup
 };
 
-// ElevenLabs voice modes — kept for fallback when TTS_PROVIDER=elevenlabs
+// ElevenLabs voice modes. Kept for fallback when TTS_PROVIDER=elevenlabs
 const ELEVENLABS_VOICE_MODES = {
   question:  { stability: 0.6,  similarity_boost: 0.75, style: 0.2,  use_speaker_boost: true },
   coaching:  { stability: 0.75, similarity_boost: 0.8,  style: 0.1,  use_speaker_boost: true },
@@ -1413,7 +1416,7 @@ function sendAudioBuffer(res, buffer, headers) {
 // Originator path: opens the upstream connection, streams chunks to the
 // client AS they arrive (so TTFA stays ~400-700ms), AND accumulates a copy
 // for the cache. If the client disconnects mid-stream we keep draining
-// upstream so the cache still fills — same text will arrive instantly next
+// upstream so the cache still fills. Same text will arrive instantly next
 // time. The only hard stop is the 30s abort timeout on upstream itself.
 async function streamUpstreamAndCacheBuffer(providerResponse, res, headers) {
   res.set(headers);
@@ -1422,7 +1425,7 @@ async function streamUpstreamAndCacheBuffer(providerResponse, res, headers) {
   const reader = providerResponse.body.getReader();
   const chunks = [];
   let clientClosed = false;
-  // Watch for client disconnect — but DON'T abort upstream on it. The
+  // Watch for client disconnect. But DON'T abort upstream on it. The
   // upstream is cheap to drain and the cache benefit is worth it.
   const onClose = () => { clientClosed = true; };
   res.on('close', onClose);
@@ -1440,7 +1443,7 @@ async function streamUpstreamAndCacheBuffer(providerResponse, res, headers) {
           res.write(value);
           if (typeof res.flush === 'function') res.flush();
         } catch {
-          // write() can throw if the underlying socket is gone — treat as
+          // write() can throw if the underlying socket is gone. Treat as
           // client closed and keep draining for the cache.
           clientClosed = true;
         }
@@ -1459,7 +1462,7 @@ async function streamUpstreamAndCacheBuffer(providerResponse, res, headers) {
 // Opens the upstream TTS connection and returns the Response object.
 // Caller is responsible for draining the body.
 async function fetchTtsResponse(text, mode, abortSignal) {
-  apiUsage.elevenlabs.calls++; // legacy field — tracks total TTS calls regardless of provider
+  apiUsage.elevenlabs.calls++; // legacy field. Tracks total TTS calls regardless of provider
   apiUsage.elevenlabs.characters += String(text).length;
 
   let response;
@@ -1468,7 +1471,7 @@ async function fetchTtsResponse(text, mode, abortSignal) {
     const kokoroBaseUrl = process.env.KOKORO_TTS_URL || 'https://api.together.ai';
     // NOTE: stream: false is REQUIRED.
     // With stream: true, Together AI's /v1/audio/speech returns Server-Sent
-    // Events containing base64-encoded audio deltas, NOT raw MP3 bytes —
+    // Events containing base64-encoded audio deltas, NOT raw MP3 bytes , 
     // AVPlayer / MediaPlayer can't parse that. With stream: false we get
     // a single response body of real MP3 bytes (which our server then
     // streams chunk-by-chunk to the client + caches).
@@ -1531,17 +1534,17 @@ app.all('/api/tts', async (req, res) => {
       return res.status(400).json({ error: 'Text too long' });
     }
     if (useKokoro && !process.env.TOGETHER_API_KEY) {
-      return res.status(503).json({ error: 'TTS not configured — TOGETHER_API_KEY missing' });
+      return res.status(503).json({ error: 'TTS not configured. TOGETHER_API_KEY missing' });
     }
     if (!useKokoro && (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_VOICE_ID)) {
-      return res.status(503).json({ error: 'TTS not configured — ElevenLabs keys missing' });
+      return res.status(503).json({ error: 'TTS not configured. ElevenLabs keys missing' });
     }
 
     resetUsageIfNewDay();
     const provider = useKokoro ? 'kokoro' : 'elevenlabs';
     const cacheKey = getTtsCacheKey(String(text), mode);
 
-    // 1. Cache hit — instant, no provider call.
+    // 1. Cache hit. Instant, no provider call.
     const cached = ttsCache.get(cacheKey);
     if (cached) {
       cached.ts = Date.now();
@@ -1554,7 +1557,7 @@ app.all('/api/tts', async (req, res) => {
       return;
     }
 
-    // 2. Singleflight waiter — another request is already generating this
+    // 2. Singleflight waiter. Another request is already generating this
     //    exact text+mode. Wait for its buffer and serve from it.
     const existingPromise = ttsPending.get(cacheKey);
     if (existingPromise) {
@@ -1574,7 +1577,7 @@ app.all('/api/tts', async (req, res) => {
       return;
     }
 
-    // 3. Originator path — stream upstream chunks to this client AS they
+    // 3. Originator path. Stream upstream chunks to this client AS they
     //    arrive (TTFA ~400-700ms) while collecting a copy for the cache
     //    and for any singleflight waiters that race in.
     const upstreamAbort = new AbortController();
@@ -1625,7 +1628,7 @@ app.all('/api/tts', async (req, res) => {
 // ===== Account Deletion =====
 // Apple Guideline 5.1.1(v): in-app account deletion. Calls
 // supabase.auth.admin.deleteUser; all user_id-keyed rows cascade-delete on
-// auth.users. Idempotent — returns 204 on success and on "already deleted"
+// auth.users. Idempotent. Returns 204 on success and on "already deleted"
 // so a double-tap from the client never surfaces an error.
 
 app.post('/api/account/delete', async (req, res) => {
@@ -1635,7 +1638,7 @@ app.post('/api/account/delete', async (req, res) => {
     }
     if (!req.userId) {
       // If a Bearer token was presented but didn't resolve to a user,
-      // the user is already deleted server-side — return 204 so the
+      // the user is already deleted server-side. Return 204 so the
       // client runs local cleanup. Without any token at all, reject.
       const hadToken = (req.headers.authorization || '').toLowerCase().startsWith('bearer ');
       if (hadToken) {
@@ -1725,7 +1728,7 @@ function captureSendEvent({ userId, kind, success }) {
   } catch {}
 }
 
-// List users with push tokens — debug endpoint
+// List users with push tokens. Debug endpoint
 app.get('/api/notifications/debug', async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
@@ -1746,7 +1749,7 @@ app.get('/api/notifications/debug', async (req, res) => {
   }
 });
 
-// Test notification — send a test push to a specific user
+// Test notification. Send a test push to a specific user
 app.post('/api/notifications/test', async (req, res) => {
   try {
     const { userId } = req.body;
@@ -1780,7 +1783,7 @@ app.post('/api/notifications/test', async (req, res) => {
   }
 });
 
-// Activation sequence — targeted pushes based on days since signup.
+// Activation sequence. Targeted pushes based on days since signup.
 // Batches DB queries by user_id IN (...) so 1000 users = ~3 queries total.
 app.post('/api/notifications/activation-check', async (req, res) => {
   try {
@@ -1808,7 +1811,7 @@ app.post('/api/notifications/activation-check', async (req, res) => {
     const day7Ids = buckets.day7.map(p => p.id);
     const day14Ids = buckets.day14.map(p => p.id);
 
-    // Three parallel batched queries — no per-user round-trips.
+    // Three parallel batched queries. No per-user round-trips.
     const [day1Turns, day7Turns, day14Streaks] = await Promise.all([
       day1Ids.length
         ? supabase.from('turns').select('user_id, overall').in('user_id', day1Ids).order('created_at', { ascending: true })
@@ -1856,13 +1859,13 @@ app.post('/api/notifications/activation-check', async (req, res) => {
           'Most people start between 5 and 7. Try a One Shot today and see if you can beat it.');
       } else {
         queueSend(profile, 'Your first score is waiting',
-          `${name}, try a One Shot today — it only takes 90 seconds to see where you stand.`);
+          `${name}, try a One Shot today. It only takes 90 seconds to see where you stand.`);
       }
     }
     for (const profile of buckets.day3) {
       const name = profile.display_name || 'there';
       queueSend(profile, 'Ready for pressure?',
-        `${name}, try a Threaded Challenge — 4 follow-ups that get harder each turn. It's the closest thing to a real interview.`);
+        `${name}, try a Threaded Challenge. 4 follow-ups that get harder each turn. It's the closest thing to a real interview.`);
     }
     for (const profile of buckets.day7) {
       const name = profile.display_name || 'there';
@@ -1871,7 +1874,7 @@ app.post('/api/notifications/activation-check', async (req, res) => {
         const avg = (turns.reduce((s, v) => s + (v || 0), 0) / turns.length).toFixed(1);
         queueSend(profile, 'One week of Sharp', `${turns.length} sessions, avg ${avg}. You're building something. Keep going.`);
       } else {
-        queueSend(profile, 'One week in', `${name}, you've got the app — now build the habit. One session today, 60 seconds.`);
+        queueSend(profile, 'One week in', `${name}, you've got the app. Now build the habit. One session today, 60 seconds.`);
       }
     }
     for (const profile of buckets.day14) {
@@ -1880,12 +1883,12 @@ app.post('/api/notifications/activation-check', async (req, res) => {
         queueSend(profile, `${currentStreak}-day streak. You're building a real skill.`,
           "Most people quit by now. You didn't. That matters more than any score.");
       } else {
-        queueSend(profile, 'Two weeks in — how sharp are you now?',
+        queueSend(profile, 'Two weeks in. How sharp are you now?',
           'Do a One Shot today and compare it to your first. The improvement might surprise you.');
       }
     }
 
-    // Send in parallel — Expo push service handles concurrency fine.
+    // Send in parallel. Expo push service handles concurrency fine.
     await Promise.all(sendPromises);
 
     res.json({ sent, failed, checked: profiles?.length || 0 });
@@ -1894,7 +1897,7 @@ app.post('/api/notifications/activation-check', async (req, res) => {
   }
 });
 
-// Engagement check — called by cron or manually to nudge inactive users.
+// Engagement check. Called by cron or manually to nudge inactive users.
 // Batches DB queries by user_id IN (...) so 1000 users = ~3 queries total
 // instead of 3000 sequential lookups.
 app.post('/api/notifications/engagement-check', async (req, res) => {
@@ -1940,7 +1943,7 @@ app.post('/api/notifications/engagement-check', async (req, res) => {
         if (!bestScoreByUser.has(t.user_id)) bestScoreByUser.set(t.user_id, t.overall || 0);
       }
 
-      // Send loop is mostly compute + HTTP to Expo — push sends are launched
+      // Send loop is mostly compute + HTTP to Expo. Push sends are launched
       // in parallel below via Promise.all.
       const sendPromises = [];
 
@@ -2032,7 +2035,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   });
   console.log('');
 
-  // ===== Cron: Engagement Check — runs daily at 8 PM UTC =====
+  // ===== Cron: Engagement Check. Runs daily at 8 PM UTC =====
   function scheduleEngagementCheck() {
     const now = new Date();
     const target = new Date(now);
@@ -2065,7 +2068,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 // ===== Graceful Shutdown =====
 
 function shutdown(signal) {
-  console.log(`\n  ${signal} received — shutting down gracefully...`);
+  console.log(`\n  ${signal} received. Shutting down gracefully...`);
   // Flush PostHog buffer so the last batch of agent traces isn't lost on redeploy.
   agentTraces.shutdown().catch(() => {});
   server.close(() => {
@@ -2074,7 +2077,7 @@ function shutdown(signal) {
   });
   // Force exit after 10s if connections don't close
   setTimeout(() => {
-    console.error('  Forcing exit — connections did not close in time.');
+    console.error('  Forcing exit. Connections did not close in time.');
     process.exit(1);
   }, 10000);
 }

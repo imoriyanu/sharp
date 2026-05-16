@@ -21,7 +21,7 @@ function hashText(text: string, mode: VoiceMode = 'question'): string {
   return String(Math.abs(h));
 }
 
-// Dev-only log — gated on __DEV__ so production stays silent.
+// Dev-only log. Gated on __DEV__ so production stays silent.
 function devLog(event: string, payload?: Record<string, unknown>): void {
   if (!__DEV__) return;
   // eslint-disable-next-line no-console
@@ -30,7 +30,7 @@ function devLog(event: string, payload?: Record<string, unknown>): void {
 
 // Build the streaming URL the audio player consumes directly on cache miss.
 // Mirrors the truncation downloadToCache uses so both paths produce the same
-// hash key — important so cache fills match what was streamed.
+// hash key. Important so cache fills match what was streamed.
 function buildStreamUrl(text: string, mode: VoiceMode): string {
   const safeText = text.length > 800 ? text.slice(0, 800) : text;
   return getTtsUrl(safeText, mode);
@@ -123,7 +123,7 @@ function playFile(source: string, gen: number): Promise<boolean> {
       const t = setTimeout(() => finish(true), 90_000);
       player.addListener('playbackStatusUpdate', (status: any) => {
         if (gen !== playbackGeneration) { clearTimeout(t); finish(false); return; }
-        // Fail fast on player error — remote streams can fail mid-fetch.
+        // Fail fast on player error. Remote streams can fail mid-fetch.
         if (status?.error || status?.didFailToLoad) {
           devLog('play failed', { error: status?.error || 'didFailToLoad', isRemote });
           clearTimeout(t); finish(false); return;
@@ -143,7 +143,7 @@ function playFile(source: string, gen: number): Promise<boolean> {
   });
 }
 
-// Device speech fallback via expo-speech — used only when both the cache
+// Device speech fallback via expo-speech. Used only when both the cache
 // hit and the streaming URL fail (network outage, provider down). Better
 // than silence; users still hear the question/coaching, just in the OS
 // default voice.
@@ -171,7 +171,7 @@ export async function playQuestionAudio(text: string, signal?: AbortSignal, mode
     await ensureAudioMode();
     if (gen !== playbackGeneration || signal?.aborted) { isPlaying = false; return false; }
 
-    // Fast path: cache hit. Plays from local file URI — instant TTFA.
+    // Fast path: cache hit. Plays from local file URI. Instant TTFA.
     // Any in-flight prefetch that has completed will have populated this.
     const key = hashText(text, mode);
     const cachedFile = audioCache.get(key);
@@ -182,7 +182,7 @@ export async function playQuestionAudio(text: string, signal?: AbortSignal, mode
       return ok;
     }
 
-    // Cache miss. Stream directly from the URL — AVPlayer (iOS) and
+    // Cache miss. Stream directly from the URL. AVPlayer (iOS) and
     // MediaPlayer (Android) handle progressive playback natively, so audio
     // starts in ~400-700ms vs ~1-3s for full download.
     //
@@ -218,13 +218,32 @@ export async function playFollowUpAudio(text: string, signal?: AbortSignal): Pro
 export async function playBriefingAudio(text: string, signal?: AbortSignal): Promise<boolean> {
   return playQuestionAudio(text, signal, 'briefing');
 }
+
+// Play a local recording file (file:// URI). No cache, no TTS. Just plays
+// the user's own audio back. Returns false if URI is empty or playback fails.
+export async function playRecording(uri: string, signal?: AbortSignal): Promise<boolean> {
+  if (!uri) return false;
+  await stopAudio();
+  const gen = playbackGeneration;
+  isPlaying = true;
+  try {
+    await ensureAudioMode();
+    if (gen !== playbackGeneration || signal?.aborted) { isPlaying = false; return false; }
+    return await playFile(uri, gen);
+  } catch (e) {
+    devLog('recording play error', { error: String((e as Error)?.message || e) });
+    isPlaying = false;
+    return false;
+  }
+}
+
 export function isAudioPlaying(): boolean { return isPlaying; }
 
 // ===== Natural Script Builder =====
-// Deterministic — same question always produces same text (critical for cache hits)
+// Deterministic. Same question always produces same text (critical for cache hits)
 
 export function buildNaturalScript(q: GeneratedQuestion): string {
-  // Plain script — no chatty preamble. Saves TTS chars (= cost + speed).
+  // Plain script. No chatty preamble. Saves TTS chars (= cost + speed).
   // The voice and pacing carry the personality; the words don't need to.
   const format = q.format || 'prompt';
   if (format === 'roleplay' || format === 'pressure') {

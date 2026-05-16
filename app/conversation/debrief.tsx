@@ -32,14 +32,14 @@ export default function ConversationDebriefScreen() {
     try {
       const ctx = await getContext();
 
-      // Include turns where at least the agent spoke — user may have short/empty responses
+      // Include turns where at least the agent spoke. User may have short/empty responses
       const turns = loaded.turns.filter(t => t.agentMessage || t.userTranscript);
 
       if (turns.length === 0) {
         throw new Error('No conversation recorded. Try speaking for longer next time.');
       }
 
-      // For the API, include all turns — even ones with only agent messages
+      // For the API, include all turns. Even ones with only agent messages
       const apiTurns = turns.map(t => ({
         ...t,
         userTranscript: t.userTranscript || '(no response)',
@@ -155,7 +155,7 @@ export default function ConversationDebriefScreen() {
           <Text style={s.scenarioText}>{state?.scenarioDescription}</Text>
         </FadeIn>
 
-        {/* Overall Score — big and prominent */}
+        {/* Overall Score. Big and prominent */}
         <FadeIn delay={100}>
           <View style={s.overallCard}>
             <ScoreReveal score={debrief.overall} color={getScoreColor(debrief.overall)} size={fp(56)} />
@@ -166,7 +166,7 @@ export default function ConversationDebriefScreen() {
           </View>
         </FadeIn>
 
-        {/* Dimension Scores — horizontal cards */}
+        {/* Dimension Scores. Horizontal cards */}
         <FadeIn delay={200}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dimRow}>
             {dims.map(d => (
@@ -314,7 +314,7 @@ const s = StyleSheet.create({
   },
   trajectoryText: { fontSize: typography.size.xs, fontWeight: typography.weight.bold },
 
-  // Dimensions — horizontal scroll
+  // Dimensions. Horizontal scroll
   dimRow: { gap: spacing.sm, paddingBottom: spacing.lg },
   dimCard: {
     alignItems: 'center',

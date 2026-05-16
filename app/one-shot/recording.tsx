@@ -9,7 +9,7 @@ import { LoadingScreen, AudioWaveBars, PulseDot, FadeIn } from '../../src/compon
 import { stopAudio, prefetchAudio, resetAudioModeFlag } from '../../src/services/tts';
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer, generateFollowUp, generateDebrief, computeProgressScore } from '../../src/services/scoring';
-import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache, clearIndustryQuestionCache, getThreadState, saveThreadState, clearThreadState, getSessions, getSessionById } from '../../src/services/storage';
+import { getContext, saveSession, generateId, getAverageScores, getRecentInsights, clearOneShotQuestionCache, clearThreadedQuestionCache, clearIndustryQuestionCache, getThreadState, saveThreadState, clearThreadState, getSessions, getSessionById, getActiveUpcomingEvents } from '../../src/services/storage';
 import { trackOneShotUsage, trackThreadedUsage } from '../../src/services/premium';
 import { trackEvent, Events } from '../../src/services/analytics';
 import { captureError } from '../../src/services/errorTracking';
@@ -63,7 +63,7 @@ export default function RecordingScreen() {
         return;
       }
 
-      // Try configuring audio session — fallback through modes if one fails
+      // Try configuring audio session. Fallback through modes if one fails
       let sessionReady = false;
       for (const mode of ['duckOthers', 'mixWithOthers'] as const) {
         try {
@@ -73,7 +73,7 @@ export default function RecordingScreen() {
         } catch { /* try next mode */ }
       }
       if (!sessionReady) {
-        // Last resort — basic config
+        // Last resort. Basic config
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       }
 
@@ -87,7 +87,7 @@ export default function RecordingScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       // Clear any orphan interval from a previous startRecording call
-      // (retry banner taps, double-presses) — without this the timer drops
+      // (retry banner taps, double-presses). Without this the timer drops
       // 2-3 seconds per real second.
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
@@ -104,7 +104,7 @@ export default function RecordingScreen() {
       } else {
         setRetryReason('Could not start recording. Please check your microphone permissions and try again.');
       }
-      // Failure means we never entered the recording state — reset the flag
+      // Failure means we never entered the recording state. Reset the flag
       // so the user can tap Start again.
       setIsRecording(false);
     }
@@ -141,20 +141,24 @@ export default function RecordingScreen() {
       const { transcript } = await transcribeAudio(uri);
       setLiveTranscript(transcript);
 
-      // Validate transcript — catch empty, too short, or nonsensical responses
+      // Validate transcript. Catch empty, too short, or nonsensical responses
       const trimmed = transcript.trim();
       const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
 
       if (!trimmed || wordCount < 5) {
         setRetryReason(wordCount === 0
           ? "I didn't catch anything. Make sure your microphone is working and speak clearly."
-          : "That was too short to analyse properly. Try giving a fuller response — aim for at least a few sentences.");
+          : "That was too short to analyse properly. Try giving a fuller response. Aim for at least a few sentences.");
         setProcessing(false);
         return;
       }
 
       const ctx = await getContext();
       const documentExtractions = (ctx?.documents || []).map(d => d.structuredExtraction).filter(Boolean);
+      // Active "Coming Up" events. Passed into scoring/debrief/follow-up so
+      // the backend can bias scenarios toward the user's real upcoming
+      // conversations. Empty array is harmless on the backend.
+      const upcomingEvents = await getActiveUpcomingEvents();
 
       // ===== THREADED MODE: skip scoring, go directly to follow-up or debrief =====
       if (params.mode === 'threaded') {
@@ -162,7 +166,7 @@ export default function RecordingScreen() {
         if (!thread) {
           // Thread state was lost (app crash, AsyncStorage clear, or user
           // backgrounded the app long enough for state to expire). Don't
-          // silently fail — give the user a friendly path to start over.
+          // silently fail. Give the user a friendly path to start over.
           if (mountedRef.current) {
             setRetryReason("Your threaded session expired. Start a new one?");
             setProcessing(false);
@@ -177,13 +181,13 @@ export default function RecordingScreen() {
         const turnNumber = thread.turns.length + 1;
         const nextThread = {
           ...thread,
-          turns: [...thread.turns, { turnNumber, question: params.question || '', transcript }],
+          turns: [...thread.turns, { turnNumber, question: params.question || '', transcript, recordingUri: uri }],
         };
 
         const MAX_TURNS = 4;
 
         if (turnNumber >= MAX_TURNS) {
-          // Final turn — generate debrief
+          // Final turn. Generate debrief
           if (mountedRef.current) setProcessingMsg('Analysing the full exchange...');
           await trackThreadedUsage();
           await clearThreadedQuestionCache();
@@ -197,6 +201,7 @@ export default function RecordingScreen() {
               dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
               notes: ctx?.notes || '',
               documentExtractions,
+              upcomingEvents,
               scenario: thread.originalQuestion,
               turns: nextThread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
               // Scene-bible context for the coach: tie feedback back to user
@@ -211,7 +216,7 @@ export default function RecordingScreen() {
           } catch (e: any) {
             captureError(e, { where: 'threaded.debrief.generation' });
             if (mountedRef.current) {
-              setRetryReason("Couldn't analyse the conversation. Your recording is safe — try again?");
+              setRetryReason("Couldn't analyse the conversation. Your recording is safe. Try again?");
               setProcessing(false);
               stoppingRef.current = false;
             }
@@ -226,10 +231,12 @@ export default function RecordingScreen() {
               turns: nextThread.turns.map(t => ({
                 id: generateId(), turnNumber: t.turnNumber, question: t.question,
                 questionReasoning: '', questionTargets: 'substance' as const, questionDifficulty: 5,
-                transcript: t.transcript, scores: { structure: 0, concision: 0, substance: 0, fillerWords: 0, awareness: 0 },
+                transcript: t.transcript, recordingUri: t.recordingUri,
+                scores: { structure: 0, concision: 0, substance: 0, fillerWords: 0, awareness: 0 },
                 overall: debrief.overall, summary: '', coachingInsight: debrief.summary,
                 awarenessNote: null, snippet: { original: '', problems: [], rewrite: '', explanation: '' },
               })),
+              characterName: thread.characterName,
               createdAt: thread.startedAt,
             }),
             clearThreadState(),
@@ -253,7 +260,7 @@ export default function RecordingScreen() {
             },
           });
         } else {
-          // Not final — generate follow-up
+          // Not final. Generate follow-up
           if (mountedRef.current) setProcessingMsg('Sharp is thinking about your response...');
 
           let followUp;
@@ -265,11 +272,12 @@ export default function RecordingScreen() {
               dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
               notes: ctx?.notes || '',
               documentExtractions,
+              upcomingEvents,
               originalQuestion: thread.originalQuestion,
               previousTranscripts: nextThread.turns.map(t => ({ turn: t.turnNumber, question: t.question, transcript: t.transcript, scores: {} })),
               turnNumber: turnNumber + 1,
               // Scene-bible direction: passed in from thread state so the
-              // character agent stays consistent across turns. Sandboxed —
+              // character agent stays consistent across turns. Sandboxed , 
               // the character reads this, not the raw user context.
               ...(thread.characterBrief ? { characterBrief: thread.characterBrief } : {}),
               // Reaction memory: lets the character escalate (clarification →
@@ -280,14 +288,14 @@ export default function RecordingScreen() {
           } catch (e: any) {
             captureError(e, { where: 'threaded.followUp.generation' });
             if (mountedRef.current) {
-              setRetryReason("Couldn't generate the next question. Your turn is saved — try again?");
+              setRetryReason("Couldn't generate the next question. Your turn is saved. Try again?");
               setProcessing(false);
               stoppingRef.current = false;
             }
             return;
           }
 
-          // Pre-fetch follow-up audio immediately — kicks off TTS download
+          // Pre-fetch follow-up audio immediately. Kicks off TTS download
           // in parallel with the navigation transition + screen mount so
           // audio is ready (or streaming) by the time the user lands.
           const followUpSpoken = `${followUp.reaction || ''} ${followUp.followUp || ''}`.trim();
@@ -321,7 +329,7 @@ export default function RecordingScreen() {
               },
               reactionHistory: [...(thread.reactionHistory || []), ...newTrailEntry],
             });
-          } catch (_) { /* non-fatal — nav params are a fallback */ }
+          } catch (_) { /* non-fatal. Nav params are a fallback */ }
 
           if (!mountedRef.current) return;
 
@@ -350,6 +358,7 @@ export default function RecordingScreen() {
         dreamRoleAndCompany: ctx?.dreamRoleAndCompany || '',
         notes: ctx?.notes || '',
         documentExtractions,
+        upcomingEvents,
         question: params.question || '',
         transcript,
         previousScores: prevScores || undefined,
@@ -371,7 +380,7 @@ export default function RecordingScreen() {
 
       if (mountedRef.current) setProcessingMsg('Generating coaching...');
 
-      // Pre-fetch results audio — text MUST match exactly what results screen builds
+      // Pre-fetch results audio. Text MUST match exactly what results screen builds
       const pfScoreWord = result.overall >= 7.5 ? 'Really solid work.' : result.overall >= 5.5 ? 'OK, not bad.' : 'Alright, let\'s break this down.';
       const pfPositives = result.positives || 'You made an effort and that counts.';
       const pfImprove = result.improvements ? `Now, ${result.improvements}` : '';
@@ -380,7 +389,7 @@ export default function RecordingScreen() {
 
       trackEvent(Events.SESSION_COMPLETED, { mode: params.mode, score: result.overall });
 
-      // All the post-score writes in parallel — one failure doesn't gate
+      // All the post-score writes in parallel. One failure doesn't gate
       // the others or the navigation to results.
       const oneShotSaves = await Promise.allSettled([
         clearOneShotQuestionCache(),
@@ -540,7 +549,7 @@ export default function RecordingScreen() {
 
         {isRecording && (
           <TouchableOpacity style={s.stopBtn} onPress={stopRecording} activeOpacity={0.8}>
-            <View style={s.stopSq} /><Text style={s.stopText}>Done — score my answer</Text>
+            <View style={s.stopSq} /><Text style={s.stopText}>Done. Score my answer</Text>
           </TouchableOpacity>
         )}
       </View>

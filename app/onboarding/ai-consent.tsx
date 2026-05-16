@@ -3,7 +3,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
-import { setAIConsent } from '../../src/services/storage';
+import { setAIConsent, hasOnboarded } from '../../src/services/storage';
 
 export default function AIConsentScreen() {
   const router = useRouter();
@@ -11,7 +11,18 @@ export default function AIConsentScreen() {
 
   async function handleAllow() {
     await setAIConsent();
-    const next = typeof params.next === 'string' ? params.next : '/onboarding/recording';
+    // Retro-gate guard: existing users who completed onboarding before
+    // consent shipped (or signed in fresh on a new device) land here via
+    // OnboardingGate's redirect. They shouldn't be dragged into the rest
+    // of onboarding. Drop them straight back to Home.
+    const alreadyOnboarded = await hasOnboarded();
+    if (alreadyOnboarded) {
+      router.replace('/(tabs)');
+      return;
+    }
+    // New onboarding flow: consent → upcoming event capture → recording.
+    // `next` override still respected for any explicit nav target.
+    const next = typeof params.next === 'string' ? params.next : '/onboarding/upcoming';
     router.replace(next as any);
   }
 
@@ -45,7 +56,7 @@ export default function AIConsentScreen() {
 
           <View style={s.block}>
             <Text style={s.blockLabel}>How it is protected</Text>
-            <Text style={s.blockBody}>All four providers operate under zero-retention API terms. Your data is processed and discarded — it is not stored on their servers and is not used to train their AI models. Your audio is also deleted from Sharp's servers immediately after transcription.</Text>
+            <Text style={s.blockBody}>All four providers operate under zero-retention API terms. Your data is processed and discarded. It is not stored on their servers and is not used to train their AI models. Your audio is also deleted from Sharp's servers immediately after transcription.</Text>
           </View>
         </FadeIn>
 

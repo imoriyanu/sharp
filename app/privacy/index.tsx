@@ -22,13 +22,13 @@ export default function PrivacyPolicyScreen() {
         </Section>
 
         <Section title="What We Collect">
-          {`• Audio recordings — sent to our servers for transcription, then deleted. We do not store your audio files.
-• Transcripts of your spoken answers — used to generate coaching feedback. Stored locally on your device and optionally synced to your account.
-• Your context (role, company, situation) — stored locally and optionally synced to your account to personalise coaching.
-• Documents you upload (CV, job descriptions) — parsed for coaching context, stored locally and optionally synced.
-• Session scores and coaching history — stored locally and optionally synced.
-• Usage data (session counts, feature usage) — to enforce plan limits.
-• Email address — if you create an account.`}
+          {`• Audio recordings. Sent to our servers for transcription, then deleted. We do not store your audio files.
+• Transcripts of your spoken answers. Used to generate coaching feedback. Stored locally on your device and optionally synced to your account.
+• Your context (role, company, situation). Stored locally and optionally synced to your account to personalise coaching.
+• Documents you upload (CV, job descriptions). Parsed for coaching context, stored locally and optionally synced.
+• Session scores and coaching history. Stored locally and optionally synced.
+• Usage data (session counts, feature usage). To enforce plan limits.
+• Email address. If you create an account.`}
         </Section>
 
         <Section title="How We Use Your Data">
@@ -48,19 +48,19 @@ When you consent, the following data is sent to the providers below for processi
 • Your transcript and context → Anthropic (for scoring + coaching)
 • Generated question text → ElevenLabs or Together AI (for text-to-speech audio)
 
-All four providers operate under zero-retention API terms — they do not store your data after processing and do not use it to train their models. This provides protection equivalent to what is described in this policy.`}
+All four providers operate under zero-retention API terms. They do not store your data after processing and do not use it to train their models. This provides protection equivalent to what is described in this policy.`}
         </Section>
 
         <Section title="Third-Party Services">
           {`We use the following services to process your data:
-• Anthropic (Claude) — AI coaching and scoring
-• Groq (Whisper) — Audio transcription
-• ElevenLabs — Text-to-speech (primary)
-• Together AI (Kokoro) — Text-to-speech (backup)
-• Supabase — Account storage and sync (hosted in the EU)
-• Railway — Backend hosting
-• RevenueCat — Subscription management
-• PostHog — Anonymised product analytics
+• Anthropic (Claude). AI coaching and scoring
+• Groq (Whisper). Audio transcription
+• ElevenLabs. Text-to-speech (primary)
+• Together AI (Kokoro). Text-to-speech (backup)
+• Supabase. Account storage and sync (hosted in the EU)
+• Railway. Backend hosting
+• RevenueCat. Subscription management
+• PostHog. Anonymised product analytics
 
 Your audio is sent to Groq for transcription and deleted after processing. Your transcripts and context are sent to Anthropic for scoring. AI providers operate under zero-retention API terms.`}
         </Section>

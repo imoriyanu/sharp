@@ -82,7 +82,7 @@ export default function InterviewPackScreen() {
 
         <FadeIn delay={600}>
           <TouchableOpacity style={[s.buyBtn, purchasing && s.buyBtnDisabled]} onPress={handlePurchase} disabled={purchasing} activeOpacity={0.8}>
-            <Text style={s.buyText}>{purchasing ? 'Processing...' : 'Buy Interview Pack — £29.99'}</Text>
+            <Text style={s.buyText}>{purchasing ? 'Processing...' : 'Buy Interview Pack, £29.99'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={s.proBtn} onPress={() => router.replace('/premium')} activeOpacity={0.7}>

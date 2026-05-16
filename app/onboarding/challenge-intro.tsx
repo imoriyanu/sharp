@@ -1,12 +1,41 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useEffect, useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
 import { SharpFox, SpeechBubble, ProgressDots } from '../../src/components/Illustrations';
+import { getActiveUpcomingEvents } from '../../src/services/storage';
+import {
+  ONBOARDING_QUESTION_BY_TYPE,
+  ONBOARDING_QUESTION_FALLBACK,
+  ONBOARDING_QUESTION_FRAMING_BY_TYPE,
+  ONBOARDING_QUESTION_FRAMING_FALLBACK,
+} from '../../src/constants/onboarding-questions';
 
 export default function ChallengeIntro() {
   const router = useRouter();
+  // Resolved question + framing. Depend on whether the user picked an
+  // upcoming event in the previous step. Start with fallback so the screen
+  // never renders empty while we resolve from AsyncStorage.
+  const [question, setQuestion] = useState(ONBOARDING_QUESTION_FALLBACK);
+  const [framing, setFraming] = useState(ONBOARDING_QUESTION_FRAMING_FALLBACK);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    getActiveUpcomingEvents().then(events => {
+      if (!mountedRef.current) return;
+      const first = events[0];
+      if (first) {
+        setQuestion(ONBOARDING_QUESTION_BY_TYPE[first.type] || ONBOARDING_QUESTION_FALLBACK);
+        setFraming(ONBOARDING_QUESTION_FRAMING_BY_TYPE[first.type] || ONBOARDING_QUESTION_FRAMING_FALLBACK);
+      }
+    }).catch(() => {
+      // Fall back to generic. Already set as initial state.
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
 
   return (
     <SafeAreaView style={s.safe}>
@@ -25,8 +54,8 @@ export default function ChallengeIntro() {
           <FadeIn delay={900}>
             <View style={s.detailsCard}>
               <Text style={s.detailsLabel}>YOUR FIRST CHALLENGE</Text>
-              <Text style={s.detailsQuestion}>"Tell me about yourself, who you are and what you do."</Text>
-              <Text style={s.detailsContext}>This is the most common question in interviews, meetings, and networking. Most people fumble it.</Text>
+              <Text style={s.detailsQuestion}>"{question}"</Text>
+              <Text style={s.detailsContext}>{framing}</Text>
 
               <View style={s.metaRow}>
                 <View style={s.metaItem}>
@@ -49,7 +78,7 @@ export default function ChallengeIntro() {
         </View>
 
         <FadeIn delay={1300}>
-          <TouchableOpacity style={s.cta} onPress={() => router.push('/onboarding/ai-consent')} activeOpacity={0.8}>
+          <TouchableOpacity style={s.cta} onPress={() => router.push({ pathname: '/onboarding/recording', params: { question } })} activeOpacity={0.8}>
             <Text style={s.ctaText}>Start speaking</Text>
           </TouchableOpacity>
           <Text style={s.hint}>Speak naturally, there are no wrong answers</Text>

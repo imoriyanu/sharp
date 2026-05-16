@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setState({
         user: session?.user ?? null,
-        session: null, // Don't store full session object in state — can cause stack overflow
+        session: null, // Don't store full session object in state. Can cause stack overflow
         isLoading: false,
         isAuthenticated: !!session,
       });

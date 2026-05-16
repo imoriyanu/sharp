@@ -19,7 +19,7 @@ export default function DuelsComingSoon() {
         </Text>
 
         <View style={s.features}>
-          {['Same question, head-to-head', 'Async — record on your own time', 'Side-by-side score comparison', 'Listen to their answer after', 'Share results with friends'].map(f => (
+          {['Same question, head-to-head', 'Async. Record on your own time', 'Side-by-side score comparison', 'Listen to their answer after', 'Share results with friends'].map(f => (
             <View key={f} style={s.feat}>
               <View style={s.featDot} />
               <Text style={s.featText}>{f}</Text>

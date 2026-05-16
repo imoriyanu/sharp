@@ -1,11 +1,11 @@
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp, getScoreColor } from '../../src/constants/theme';
 import { ScoreReveal, FadeIn } from '../../src/components/Animations';
 import { SharpFox, ConfettiBurst, ProgressDots } from '../../src/components/Illustrations';
-import { playCoachingAudio, stopAudio } from '../../src/services/tts';
+import { playCoachingAudio, playModelAudio, stopAudio } from '../../src/services/tts';
 
 export default function OnboardingResult() {
   const router = useRouter();
@@ -15,19 +15,67 @@ export default function OnboardingResult() {
   const positives = (p.positives as string) || '';
   const improvements = (p.improvements as string) || '';
   const coachingInsight = (p.coachingInsight as string) || '';
+  const modelAnswer = (p.modelAnswer as string) || '';
   const mountedRef = useRef(true);
+  // Tracks which audio source is currently playing so the model-answer card
+  // can show the right play/pause state. Only one TTS plays at a time.
+  const [playingKey, setPlayingKey] = useState<'insight' | 'model' | null>(null);
 
   const DIMS = ['structure', 'concision', 'substance', 'fillerWords', 'awareness'] as const;
   const DIM_LABELS: Record<string, string> = { structure: 'Structure', concision: 'Concision', substance: 'Substance', fillerWords: 'Filler Words', awareness: 'Awareness' };
 
   useEffect(() => {
     mountedRef.current = true;
+    // Auto-play sequence: coaching insight first (the surprising critique),
+    // then the model answer (the conversion lever). The model answer is the
+    // strongest argument for upgrading. Hearing a 9/10 in the coach voice
+    // makes the gap visceral. Sequence is fire-and-forget; if either fails,
+    // user can tap to replay.
     if (coachingInsight) {
+      setPlayingKey('insight');
       const spoken = `Nice work on your first try! Here's your coaching insight: ${coachingInsight}`;
-      playCoachingAudio(spoken).catch(() => {});
+      playCoachingAudio(spoken)
+        .then(() => {
+          if (!mountedRef.current) return;
+          setPlayingKey(null);
+          // Chain model answer playback after the insight finishes. Gives
+          // the user a moment to process before the contrast lands.
+          if (modelAnswer) {
+            setPlayingKey('model');
+            const spokenModel = `Here's what a nine point oh sounds like on this question. ${modelAnswer}`;
+            playModelAudio(spokenModel)
+              .catch(() => {})
+              .finally(() => { if (mountedRef.current) setPlayingKey(null); });
+          }
+        })
+        .catch(() => { if (mountedRef.current) setPlayingKey(null); });
+    } else if (modelAnswer) {
+      // No insight (rare). Play model answer first.
+      setPlayingKey('model');
+      const spokenModel = `Here's what a nine point oh sounds like on this question. ${modelAnswer}`;
+      playModelAudio(spokenModel)
+        .catch(() => {})
+        .finally(() => { if (mountedRef.current) setPlayingKey(null); });
     }
     return () => { mountedRef.current = false; stopAudio(); };
   }, []);
+
+  // Replay handler for the model answer card. Toggles play/pause: if model
+  // is currently playing, stop it; otherwise start fresh.
+  async function toggleModelPlayback() {
+    if (!modelAnswer) return;
+    if (playingKey === 'model') {
+      await stopAudio();
+      setPlayingKey(null);
+      return;
+    }
+    await stopAudio();
+    if (!mountedRef.current) return;
+    setPlayingKey('model');
+    const spokenModel = `Here's what a nine point oh sounds like on this question. ${modelAnswer}`;
+    await playModelAudio(spokenModel).catch(() => {});
+    if (mountedRef.current) setPlayingKey(null);
+  }
 
   return (
     <SafeAreaView style={s.safe}>
@@ -93,16 +141,37 @@ export default function OnboardingResult() {
           </FadeIn>
         ) : null}
 
+        {/* Model Answer. The conversion lever. Auto-plays once after the
+            coaching insight finishes. Hearing a 9/10 in the coach voice
+            makes the gap visceral. This is the strongest argument for
+            upgrading; post-onboarding result screens Pro-gate this. */}
+        {modelAnswer ? (
+          <FadeIn delay={2000}>
+            <TouchableOpacity style={s.modelCard} onPress={toggleModelPlayback} activeOpacity={0.85}>
+              <View style={s.modelHeader}>
+                <View>
+                  <Text style={s.modelLabel}>HERE'S WHAT A 9.0 SOUNDS LIKE</Text>
+                  <Text style={s.modelSubLabel}>Built from your response</Text>
+                </View>
+                <View style={[s.modelListenBtn, playingKey === 'model' && s.modelListenBtnActive]}>
+                  <Text style={s.modelListenText}>{playingKey === 'model' ? '⏸ Pause' : '🔊 Replay'}</Text>
+                </View>
+              </View>
+              <Text style={s.modelText}>"{modelAnswer}"</Text>
+            </TouchableOpacity>
+          </FadeIn>
+        ) : null}
+
         {/* Improvement */}
         {improvements ? (
-          <FadeIn delay={2200}>
+          <FadeIn delay={2400}>
             <View style={s.improveCard}>
               <Text style={s.improveText}>{improvements}</Text>
             </View>
           </FadeIn>
         ) : null}
 
-        <FadeIn delay={2600}>
+        <FadeIn delay={2800}>
           <TouchableOpacity style={s.cta} onPress={() => { stopAudio(); router.replace('/onboarding/value'); }} activeOpacity={0.8}>
             <Text style={s.ctaText}>See what's next</Text>
             <Text style={s.ctaArrow}>→</Text>
@@ -139,6 +208,19 @@ const s = StyleSheet.create({
 
   insightCard: { backgroundColor: colors.daily.bg, borderWidth: 1.5, borderColor: colors.daily.border, borderRadius: radius.xl, padding: spacing.xl, alignItems: 'center', marginBottom: spacing.md },
   insightText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22), fontWeight: typography.weight.bold, textAlign: 'center' },
+
+  // Model answer. Strongest conversion lever. Sage-green card with terracotta
+  // CTA chip so the contrast lands. Sits between insight and improvement so
+  // it follows the "here's your gap" beat with "here's what closing it sounds
+  // like".
+  modelCard: { backgroundColor: colors.feedback.positiveBg, borderWidth: 1.5, borderColor: colors.feedback.positiveBorder, borderRadius: radius.xl, padding: spacing.xl, marginBottom: spacing.md, ...shadows.sm },
+  modelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.md, gap: spacing.md },
+  modelLabel: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.success, letterSpacing: 1.2, textTransform: 'uppercase' as const },
+  modelSubLabel: { fontSize: fp(10), color: colors.text.muted, marginTop: 2 },
+  modelListenBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.pill, paddingHorizontal: wp(12), paddingVertical: wp(5), ...shadows.accent },
+  modelListenBtnActive: { backgroundColor: colors.accent.dark },
+  modelListenText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.inverse, letterSpacing: 0.3 },
+  modelText: { fontSize: typography.size.base, color: colors.text.primary, lineHeight: fp(22), fontStyle: 'italic' as const, fontWeight: typography.weight.semibold },
 
   improveCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xxl, ...shadows.sm },
   improveText: { fontSize: typography.size.sm, color: colors.text.secondary, lineHeight: fp(20), textAlign: 'center' },

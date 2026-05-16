@@ -1,4 +1,4 @@
-// Sharp AI — Generic agent runner.
+// Sharp AI. Generic agent runner.
 // Wraps Claude tool-use with tracing and a tool-execution context.
 // Every agent (threaded interrogator, persistent coach, prep agent) calls this.
 
@@ -12,18 +12,18 @@ const MIN_ITERATION_BUDGET   = 8_000;    // need this much budget left to start 
 // ===== Public: runAgent =====
 //
 // opts:
-//   anthropic       — Anthropic SDK client (required)
-//   supabase        — Supabase admin client for tools (required for retrieval tools)
-//   userId          — uuid (required for retrieval tools to scope queries)
-//   sessionId       — optional, attached to traces
-//   agentName       — string, used for tracing
-//   systemPrompt    — string
-//   userMessage     — string (the goal/task for this run)
-//   tools           — array of tool definitions; defaults to TOOL_DEFINITIONS
-//   maxIterations   — default 5
-//   maxTokens       — Claude max_tokens per turn, default 1500
-//   model           — Claude model, default claude-sonnet-4-20250514
-//   totalBudgetMs   — hard upper bound on the whole run; default 25000
+//   anthropic      . Anthropic SDK client (required)
+//   supabase       . Supabase admin client for tools (required for retrieval tools)
+//   userId         . Uuid (required for retrieval tools to scope queries)
+//   sessionId      . Optional, attached to traces
+//   agentName      . String, used for tracing
+//   systemPrompt   . String
+//   userMessage    . String (the goal/task for this run)
+//   tools          . Array of tool definitions; defaults to TOOL_DEFINITIONS
+//   maxIterations  . Default 5
+//   maxTokens      . Claude max_tokens per turn, default 1500
+//   model          . Claude model, default claude-sonnet-4-20250514
+//   totalBudgetMs  . Hard upper bound on the whole run; default 25000
 //
 // returns: { result, requestId }
 // throws on hard failure (incl. budget exhaustion). The v2 endpoint catches
@@ -80,7 +80,7 @@ async function runAgent(opts) {
         return { result: final, requestId: trace.requestId };
       }
 
-      // Execute requested tool calls in parallel — each has its own deadline
+      // Execute requested tool calls in parallel. Each has its own deadline
       // so one slow Supabase query can't eat the whole iteration budget.
       const toolResults = await Promise.all(toolUseBlocks.map(async (block) => {
         const toolStart = Date.now();

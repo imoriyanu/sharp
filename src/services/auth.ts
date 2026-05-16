@@ -22,9 +22,9 @@ export async function signInWithApple() {
   });
   if (error) throw error;
 
-  // Validate that we actually got a session — catches noop client
+  // Validate that we actually got a session. Catches noop client
   if (!data.session || !data.user) {
-    throw new Error('Sign in failed — no session returned. Please check your connection and try again.');
+    throw new Error('Sign in failed. No session returned. Please check your connection and try again.');
   }
 
   // Update display name if Apple provided one (only on first sign-in)
@@ -63,7 +63,7 @@ export async function signInWithEmail(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
   if (!data.session || !data.user) {
-    throw new Error('Sign in failed — no session returned. Please try again.');
+    throw new Error('Sign in failed. No session returned. Please try again.');
   }
   return data;
 }
@@ -103,7 +103,7 @@ export async function deleteAccount(): Promise<void> {
     await apiPost<{}>('/account/delete', {});
   } catch (e: any) {
     // Re-throw only if it looks like a real server failure (preserves the
-    // backend's user-facing message). Otherwise swallow and continue —
+    // backend's user-facing message). Otherwise swallow and continue , 
     // the server likely succeeded; we want local state to follow.
     const msg = (e?.message || '').toLowerCase();
     const realFailure =
@@ -120,6 +120,6 @@ export async function deleteAccount(): Promise<void> {
     await supabase.auth.signOut();
   } catch {
     // If signOut fails after deletion, the session token is already orphaned
-    // server-side — local clearAllUserData() already wiped credentials.
+    // server-side. Local clearAllUserData() already wiped credentials.
   }
 }

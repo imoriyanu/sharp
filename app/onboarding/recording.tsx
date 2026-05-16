@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
@@ -11,12 +11,17 @@ import { stopAudio, prefetchAudio, resetAudioModeFlag } from '../../src/services
 import { transcribeAudio } from '../../src/services/transcription';
 import { scoreAnswer } from '../../src/services/scoring';
 import { saveSession, generateId, setOnboardingStep } from '../../src/services/storage';
+import { ONBOARDING_QUESTION_FALLBACK } from '../../src/constants/onboarding-questions';
 
 const TIMER = 30;
-const QUESTION = 'Tell me about yourself, who you are and what you do.';
 
 export default function OnboardingRecording() {
   const router = useRouter();
+  // Question comes from challenge-intro via router params. Personalised to
+  // the user's upcoming event when one is set, or the generic fallback if
+  // they skipped the event-capture step.
+  const params = useLocalSearchParams<{ question?: string }>();
+  const QUESTION = (typeof params.question === 'string' && params.question.trim()) || ONBOARDING_QUESTION_FALLBACK;
   const [state, setState] = useState<'ready' | 'recording' | 'processing'>('ready');
   const [timeLeft, setTimeLeft] = useState(TIMER);
   const [retryMsg, setRetryMsg] = useState('');
@@ -30,7 +35,7 @@ export default function OnboardingRecording() {
   }, []);
 
   async function startRecording() {
-    // Double-start guard — a fast double-tap on Start would otherwise spawn
+    // Double-start guard. A fast double-tap on Start would otherwise spawn
     // two recorders and two timers. state === 'recording' is the synchronous
     // signal we check.
     if (state === 'recording' || recorderRef.current) return;

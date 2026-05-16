@@ -20,12 +20,12 @@ function AudioGuard() {
 
 // Sync premium status from RevenueCat:
 // - Once shortly after mount (initPremium intentionally doesn't await this
-//   to keep cold start fast — the local cache is trusted for the first
+//   to keep cold start fast. The local cache is trusted for the first
 //   ~2 seconds of session).
 // - Whenever the app returns to foreground (catches subscription changes
 //   that happened in the App Store while the app was backgrounded).
 // Active mid-session subscription changes are caught by the entitlement
-// listener registered in initPremium — no foreground transition needed.
+// listener registered in initPremium. No foreground transition needed.
 function PremiumSync() {
   const appState = useRef(AppState.currentState);
   useEffect(() => {
@@ -114,6 +114,7 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding/recording" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="onboarding/result" options={{ animation: 'fade' }} />
           <Stack.Screen name="onboarding/value" />
+          <Stack.Screen name="onboarding/upcoming" />
           <Stack.Screen name="onboarding/paywall" options={{ presentation: 'modal' }} />
           <Stack.Screen name="onboarding/welcome" options={{ animation: 'fade' }} />
           <Stack.Screen name="daily/challenge" options={{ animation: 'slide_from_bottom' }} />
@@ -133,6 +134,8 @@ export default function RootLayout() {
           <Stack.Screen name="duel/waiting" options={{ presentation: 'modal' }} />
           <Stack.Screen name="duel/results" options={{ presentation: 'modal' }} />
           <Stack.Screen name="analytics/index" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="upcoming/new" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="upcoming/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="premium/index" options={{ presentation: 'formSheet', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="premium/interview-pack" options={{ presentation: 'formSheet', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="streak/index" options={{ animation: 'slide_from_bottom' }} />

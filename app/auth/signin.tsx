@@ -36,7 +36,7 @@ export default function AuthSignIn() {
     setError('');
     try {
       await signInWithApple();
-      // Sign-in succeeded at Supabase level — now wait for AuthContext to pick it up
+      // Sign-in succeeded at Supabase level. Now wait for AuthContext to pick it up
       setWaitingForAuth(true);
     } catch (e: any) {
       if (e?.code === 'ERR_REQUEST_CANCELED') return;
@@ -89,7 +89,7 @@ export default function AuthSignIn() {
     }
   }
 
-  // Success state — only trust AuthContext, not local state
+  // Success state. Only trust AuthContext, not local state
   if (isAuthenticated) {
     return (
       <SafeAreaView style={s.safe}>
@@ -133,7 +133,7 @@ export default function AuthSignIn() {
           </View>
           <FadeIn delay={300}>
             <TouchableOpacity style={s.primaryBtn} onPress={() => { setConfirmEmail(false); setMode('signin'); }} activeOpacity={0.85}>
-              <Text style={s.primaryBtnText}>I've confirmed — sign in</Text>
+              <Text style={s.primaryBtnText}>I've confirmed. Sign in</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setConfirmEmail(false)} activeOpacity={0.7} style={s.ghostLink}>
               <Text style={s.ghostLinkText}>Go back</Text>
