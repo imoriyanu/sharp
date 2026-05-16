@@ -8,13 +8,13 @@ import { PLANS, setPremiumStatus } from '../../src/services/premium';
 import { setOnboarded } from '../../src/services/storage';
 import { getOfferings, purchasePackage, restorePurchases, isRevenueCatConfigured } from '../../src/services/revenuecat';
 
-const COMPARE = [
-  { feature: 'Daily Challenge', free: 'No scoring', pro: 'Full coaching' },
-  { feature: 'One Shot sessions', free: '3/week', pro: '3/day' },
-  { feature: 'Threaded practice', free: 'Pro only', pro: '2/day' },
-  { feature: 'Industry questions', free: 'Pro only', pro: '2/day' },
-  { feature: 'Context & documents', free: 'Pro only', pro: '✓' },
-  { feature: 'Model answers', free: 'Pro only', pro: '✓' },
+// Tight 3-line summary of what Pro unlocks. Replaces a 6-row comparison
+// table that read as dense and feature-listy. Each line is benefit-led, not
+// quota-led, so the user reads it as a promise instead of a price tag.
+const BENEFITS = [
+  'Coaching on every session',
+  'Daily practice, no weekly cap',
+  'Briefings tailored to your role',
 ];
 
 export default function OnboardingPaywall() {
@@ -124,7 +124,6 @@ export default function OnboardingPaywall() {
 
         <FadeIn>
           <View style={s.hero}>
-            <Text style={s.heroEmoji}>👑</Text>
             <Text style={s.heroTitle}>Sharp Pro</Text>
             <Text style={s.heroSub}>Get sharper, faster.</Text>
             <View style={s.trialPill}>
@@ -133,19 +132,13 @@ export default function OnboardingPaywall() {
           </View>
         </FadeIn>
 
-        {/* Comparison table */}
+        {/* What Pro unlocks. Three benefit lines, not a feature matrix. */}
         <FadeIn delay={200}>
-          <View style={s.compareCard}>
-            <View style={s.compareHeader}>
-              <Text style={s.compareLabel}>Feature</Text>
-              <Text style={s.compareFree}>Free</Text>
-              <Text style={s.comparePro}>Pro</Text>
-            </View>
-            {COMPARE.map((row, i) => (
-              <View key={i} style={[s.compareRow, i < COMPARE.length - 1 && s.compareBorder]}>
-                <Text style={s.compareFeature}>{row.feature}</Text>
-                <Text style={s.compareFreeVal}>{row.free}</Text>
-                <Text style={s.compareProVal}>{row.pro}</Text>
+          <View style={s.benefitsBlock}>
+            {BENEFITS.map((b, i) => (
+              <View key={i} style={s.benefitRow}>
+                <Text style={s.benefitTick}>✓</Text>
+                <Text style={s.benefitText}>{b}</Text>
               </View>
             ))}
           </View>
@@ -228,24 +221,17 @@ const s = StyleSheet.create({
   closeBtn: { alignSelf: 'flex-end', padding: spacing.sm },
   close: { fontSize: fp(22), color: colors.text.muted },
 
-  hero: { alignItems: 'center', marginBottom: spacing.xxl },
-  heroEmoji: { fontSize: fp(40), marginBottom: spacing.sm },
+  hero: { alignItems: 'center', marginBottom: spacing.xl },
   heroTitle: { fontSize: fp(28), fontWeight: typography.weight.black, color: colors.text.primary },
   heroSub: { fontSize: typography.size.sm, color: colors.text.tertiary, marginTop: wp(3) },
   trialPill: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.pill, paddingHorizontal: wp(12), paddingVertical: wp(5), marginTop: spacing.md, borderWidth: 1, borderColor: colors.success },
   trialPillText: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.success, letterSpacing: 1.2 },
 
-  // Comparison
-  compareCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, overflow: 'hidden', marginBottom: spacing.xxl, ...shadows.md },
-  compareHeader: { flexDirection: 'row', padding: spacing.md, paddingHorizontal: spacing.lg, backgroundColor: colors.bg.tertiary },
-  compareLabel: { flex: 2, fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted },
-  compareFree: { flex: 1, fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.muted, textAlign: 'center' },
-  comparePro: { flex: 1, fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.accent.primary, textAlign: 'center' },
-  compareRow: { flexDirection: 'row', padding: spacing.md, paddingHorizontal: spacing.lg, alignItems: 'center' },
-  compareBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
-  compareFeature: { flex: 2, fontSize: typography.size.xs, color: colors.text.primary, fontWeight: typography.weight.semibold },
-  compareFreeVal: { flex: 1, fontSize: typography.size.xs, color: colors.text.muted, textAlign: 'center' },
-  compareProVal: { flex: 1, fontSize: typography.size.xs, color: colors.accent.primary, fontWeight: typography.weight.bold, textAlign: 'center' },
+  // Benefits (replaces the dense comparison table)
+  benefitsBlock: { marginBottom: spacing.xxl, paddingHorizontal: spacing.sm, gap: spacing.sm },
+  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  benefitTick: { fontSize: fp(16), fontWeight: typography.weight.black, color: colors.success, width: wp(20), textAlign: 'center' },
+  benefitText: { flex: 1, fontSize: typography.size.base, fontWeight: typography.weight.semibold, color: colors.text.primary },
 
   // Plans
   planCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, marginBottom: spacing.md, borderWidth: 1.5, borderColor: colors.borderLight, ...shadows.sm },

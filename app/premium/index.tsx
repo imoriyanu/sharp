@@ -4,21 +4,17 @@ import { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
-import { PLANS, setPremiumStatus, isPremium } from '../../src/services/premium';
+import { PLANS, setPremiumStatus } from '../../src/services/premium';
 import { getOfferings, purchasePackage, restorePurchases, isRevenueCatConfigured } from '../../src/services/revenuecat';
 import { getContext } from '../../src/services/storage';
 import { trackEvent, Events } from '../../src/services/analytics';
-import type { PlanId } from '../../src/types';
 
-const FEATURES = [
-  { icon: '⚡', title: 'Nail your next interview', desc: 'Unlimited practice with AI scoring on every answer' },
-  { icon: '⚓', title: 'Stay sharp under pressure', desc: '4-round follow-ups that get harder. Just like real life' },
-  { icon: '🎧', title: 'Hear the perfect answer', desc: 'Model answers show exactly how a 9/10 response sounds' },
-  { icon: '📰', title: 'Sound informed at work', desc: 'Practise speaking about real news in your industry' },
-  { icon: '📄', title: 'Coaching that knows you', desc: 'Upload your CV and get questions tailored to your goals' },
-  { icon: '💡', title: 'Know exactly what to fix', desc: 'Before/after rewrites that quote your actual words' },
-  { icon: '📊', title: 'Track your progress', desc: 'Watch your scores climb and see patterns over time' },
-  { icon: '❄️', title: 'Protect your streak', desc: '1 free freeze per week so one busy day doesn\'t reset you' },
+// Tight 3-line summary of what Pro unlocks. Mirrors the onboarding paywall
+// so the in-app upsell reads the same as the first impression.
+const BENEFITS = [
+  'Coaching on every session',
+  'Daily practice, no weekly cap',
+  'Briefings tailored to your role',
 ];
 
 export default function PremiumScreen() {
@@ -27,7 +23,6 @@ export default function PremiumScreen() {
   const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [packages, setPackages] = useState<{ monthly?: any; annual?: any }>({});
-  const [loadingOfferings, setLoadingOfferings] = useState(true);
   const rcEnabled = isRevenueCatConfigured();
 
   useEffect(() => {
@@ -36,7 +31,7 @@ export default function PremiumScreen() {
   }, []);
 
   async function loadOfferings() {
-    if (!rcEnabled) { setLoadingOfferings(false); return; }
+    if (!rcEnabled) return;
     try {
       const offering = await getOfferings();
       if (offering) {
@@ -49,32 +44,42 @@ export default function PremiumScreen() {
       }
     } catch (e) {
       __DEV__ && console.warn('Failed to load offerings:', e);
-    } finally {
-      setLoadingOfferings(false);
     }
   }
 
-  // Build display plans. Use real prices from RevenueCat when available, fall back to hardcoded
-  const displayPlans = PLANS.map(plan => {
-    const pkg = plan.id === 'monthly' ? packages.monthly : packages.annual;
-    if (pkg) {
-      const priceStr = pkg.product.priceString;
-      const monthlyPrice = plan.id === 'annual' && pkg.product.price
-        ? `${pkg.product.currencyCode} ${(pkg.product.price / 12).toFixed(2)}/mo`
-        : `${priceStr}/mo`;
-      return { ...plan, price: priceStr, perMonth: plan.id === 'annual' ? monthlyPrice : `${priceStr}/mo` };
-    }
-    return plan;
-  });
+  const annualPlan = PLANS.find(p => p.id === 'annual') || PLANS[0];
+  const monthlyPlan = PLANS.find(p => p.id === 'monthly') || PLANS[1] || PLANS[0];
 
-  const selectedPlan = displayPlans.find(p => p.id === selected) || displayPlans[0];
+  // Live prices. Fall back to static when RC has not loaded yet.
+  const annualPrice = packages.annual ? packages.annual.product.priceString : annualPlan.price;
+  const annualPerMonth = packages.annual ? `${packages.annual.product.currencyCode} ${(packages.annual.product.price / 12).toFixed(2)}/mo` : annualPlan.perMonth;
+  const monthlyPrice = packages.monthly ? `${packages.monthly.product.priceString}/mo` : monthlyPlan.perMonth;
+
+  // Live annual savings derived from the user's actual RC-localized prices so
+  // the chip currency matches the price currency (avoids "Save £90" next to a
+  // USD price). Hidden until both packages have loaded.
+  let annualSavings: string | null = null;
+  if (packages.annual && packages.monthly) {
+    const saved = (packages.monthly.product.price * 12) - packages.annual.product.price;
+    if (saved > 0) {
+      try {
+        const formatted = new Intl.NumberFormat('en', {
+          style: 'currency',
+          currency: packages.annual.product.currencyCode,
+          maximumFractionDigits: 0,
+        }).format(saved);
+        annualSavings = `Save ${formatted}`;
+      } catch {
+        annualSavings = null;
+      }
+    }
+  }
 
   async function handlePurchase() {
     const pkg = selected === 'monthly' ? packages.monthly : packages.annual;
 
     if (!rcEnabled || !pkg) {
       if (__DEV__) {
-        // Dev only: mock purchase for testing
         setPurchasing(true);
         try {
           await setPremiumStatus(selected, new Date(Date.now() + 31 * 86400000).toISOString());
@@ -86,7 +91,6 @@ export default function PremiumScreen() {
       return;
     }
 
-    // Real purchase via RevenueCat
     setPurchasing(true);
     try {
       const { success } = await purchasePackage(pkg);
@@ -95,7 +99,6 @@ export default function PremiumScreen() {
         trackEvent(Events.PURCHASE_COMPLETED || Events.PAYWALL_VIEWED, { plan: selected, price: pkg.product?.priceString });
         navigateAfterPurchase();
       } else {
-        // User cancelled. Not an error
         setPurchasing(false);
       }
     } catch (e: any) {
@@ -140,122 +143,86 @@ export default function PremiumScreen() {
           <Text style={s.close}>×</Text>
         </TouchableOpacity>
 
-        {/* Hero */}
         <FadeIn>
           <View style={s.hero}>
-            <View style={s.mascotWrap}>
-              <Image source={require('../../assets/icon.png')} style={s.mascot} />
-              <View style={s.speechBubble}>
-                <Text style={s.speechText}>Ready to get sharper?</Text>
-                <View style={s.speechTail} />
-              </View>
-            </View>
+            <Image source={require('../../assets/icon.png')} style={s.mascot} />
             <Text style={s.heroTitle}>Sharp Pro</Text>
-            <Text style={s.heroHeadline}>
-              Speak clearly when it counts.{'\n'}Every time.
-            </Text>
-            <Text style={s.heroSocial}>Join thousands of professionals already practising</Text>
+            <Text style={s.heroSub}>Get sharper, faster.</Text>
+            <View style={s.trialPill}>
+              <Text style={s.trialPillText}>7 DAYS FREE · CANCEL ANYTIME</Text>
+            </View>
           </View>
         </FadeIn>
 
-        {/* Anchor */}
-        <FadeIn delay={100}>
-          <View style={s.anchorCard}>
-            <Text style={s.anchorIcon}>💡</Text>
-            <Text style={s.anchorText}>A communication coach charges £150–500 per session. Sharp Pro gives you unlimited AI coaching that quotes your exact words, shows you the fix, and tracks your progress. For less than a coffee a day.</Text>
-          </View>
-        </FadeIn>
-
-        {/* Social proof */}
-        <FadeIn delay={120}>
-          <View style={s.proofCard}>
-            <Text style={s.proofQuote}>"Sharp told me to cut my intro from 45 words to 12. I used that in my interview the next day. And got the offer."</Text>
-            <Text style={s.proofAuthor}>,  Early access user</Text>
-          </View>
-        </FadeIn>
-
-        {/* Features */}
-        <FadeIn delay={150}>
-          <Text style={s.sectionLabel}>Everything in Pro</Text>
-          <View style={s.featureList}>
-            {FEATURES.map(f => (
-              <View key={f.title} style={s.featureRow}>
-                <Text style={s.featureIcon}>{f.icon}</Text>
-                <View style={s.featureInfo}>
-                  <Text style={s.featureTitle}>{f.title}</Text>
-                  <Text style={s.featureDesc}>{f.desc}</Text>
-                </View>
+        {/* What Pro unlocks. Three benefit lines, not a feature matrix. */}
+        <FadeIn delay={200}>
+          <View style={s.benefitsBlock}>
+            {BENEFITS.map((b, i) => (
+              <View key={i} style={s.benefitRow}>
+                <Text style={s.benefitTick}>✓</Text>
+                <Text style={s.benefitText}>{b}</Text>
               </View>
             ))}
           </View>
         </FadeIn>
 
-        {/* Plans */}
-        <FadeIn delay={200}>
-          <Text style={s.sectionLabel}>Choose your plan</Text>
-          <View style={s.planGroup}>
-            {displayPlans.map((plan) => {
-              const active = selected === plan.id;
-              return (
-                <TouchableOpacity key={plan.id} style={[s.planCard, active && s.planActive]} onPress={() => plan.id !== 'free' && setSelected(plan.id as 'monthly' | 'annual')} activeOpacity={0.7}>
-                  <View style={[s.radio, active && s.radioOn]}>{active && <View style={s.radioDot} />}</View>
-                  <View style={s.planInfo}>
-                    <Text style={[s.planName, active && s.planNameActive]}>{plan.name}</Text>
-                    <Text style={s.planPrice}>{plan.period === '/year' ? `${plan.price}/year` : plan.perMonth}</Text>
-                    {plan.period === '/year' && <Text style={s.planPerMonth}>{plan.perMonth} equivalent</Text>}
-                  </View>
-                  {plan.savings && <View style={s.savingsBadge}><Text style={s.savingsText}>{plan.savings}</Text></View>}
-                  {plan.badge && <View style={[s.badge, plan.recommended ? s.badgeAccent : s.badgeGhost]}><Text style={[s.badgeText, plan.recommended && s.badgeTextAccent]}>{plan.badge}</Text></View>}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+        {/* Annual plan */}
+        <FadeIn delay={400}>
+          <TouchableOpacity style={[s.planCard, selected === 'annual' && s.planRecommended]} onPress={() => setSelected('annual')} activeOpacity={0.7} disabled={purchasing}>
+            {!!annualPlan.badge && <View style={s.recBadge}><Text style={s.recBadgeText}>{annualPlan.badge}</Text></View>}
+            <View style={s.planTop}>
+              <Text style={s.planName}>{annualPlan.name}</Text>
+              {!!annualSavings && <Text style={s.planSavings}>{annualSavings}</Text>}
+            </View>
+            <Text style={s.planPrice}>{annualPrice}/yr</Text>
+            <Text style={s.planPerMonth}>{annualPerMonth} equivalent · billed yearly after trial</Text>
+          </TouchableOpacity>
         </FadeIn>
 
-        {/* Free comparison */}
-        <FadeIn delay={250}>
-          <View style={s.freeCompare}>
-            <Text style={s.freeTitle}>Free plan includes</Text>
-            <Text style={s.freeItem}>Daily Challenge (no scoring)</Text>
-            <Text style={s.freeItem}>3 One Shots per week</Text>
-            <Text style={s.freeItem}>Sharp Duels (compete with friends)</Text>
-          </View>
+        {/* Monthly plan */}
+        <FadeIn delay={500}>
+          <TouchableOpacity style={[s.planCard, selected === 'monthly' && s.planRecommended]} onPress={() => setSelected('monthly')} activeOpacity={0.7} disabled={purchasing}>
+            <Text style={s.planName}>{monthlyPlan.name}</Text>
+            <Text style={s.planPrice}>{monthlyPrice}</Text>
+            <Text style={s.planPerMonth}>billed monthly after trial</Text>
+          </TouchableOpacity>
         </FadeIn>
 
         {/* CTA. Trial-first */}
-        <FadeIn delay={300}>
-          <TouchableOpacity style={[s.ctaBtn, purchasing && s.ctaBtnDisabled]} onPress={handlePurchase} activeOpacity={0.8} disabled={purchasing}>
-            <Text style={s.ctaText}>{purchasing ? 'Processing...' : 'Start 7-Day Free Trial'}</Text>
-            <Text style={s.ctaSub}>
-              Then {selectedPlan.price}{selectedPlan.period} · Cancel anytime
-            </Text>
+        <FadeIn delay={600}>
+          <TouchableOpacity style={[s.trialBtn, purchasing && { opacity: 0.6 }]} onPress={handlePurchase} activeOpacity={0.8} disabled={purchasing}>
+            {purchasing
+              ? <ActivityIndicator color={colors.text.inverse} />
+              : (
+                <View>
+                  <Text style={s.trialText}>Start 7-Day Free Trial</Text>
+                  <Text style={s.trialSub}>
+                    Then {selected === 'annual' ? `${annualPrice}/yr` : monthlyPrice} · Cancel anytime
+                  </Text>
+                </View>
+              )
+            }
           </TouchableOpacity>
         </FadeIn>
 
-        {/* Restore */}
-        <FadeIn delay={350}>
-          <TouchableOpacity style={s.restoreBtn} onPress={handleRestore} activeOpacity={0.7} disabled={restoring || purchasing}>
-            {restoring ? <ActivityIndicator size="small" color={colors.accent.primary} /> : <Text style={s.restoreText}>Restore purchases</Text>}
+        <TouchableOpacity onPress={handleRestore} disabled={purchasing || restoring}>
+          {restoring
+            ? <ActivityIndicator size="small" color={colors.accent.primary} style={{ paddingVertical: spacing.md }} />
+            : <Text style={s.restoreText}>Restore purchases</Text>
+          }
+        </TouchableOpacity>
+
+        <View style={s.legalLinksRow}>
+          <TouchableOpacity onPress={() => router.push('/privacy')} hitSlop={6}>
+            <Text style={s.legalLink}>Privacy Policy</Text>
           </TouchableOpacity>
-        </FadeIn>
+          <Text style={s.legalDot}>·</Text>
+          <TouchableOpacity onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')} hitSlop={6}>
+            <Text style={s.legalLink}>Terms of Use</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Bottom */}
-        <FadeIn delay={400}>
-          <View style={s.legalLinksRow}>
-            <TouchableOpacity onPress={() => router.push('/privacy')} hitSlop={6}>
-              <Text style={s.legalLink}>Privacy Policy</Text>
-            </TouchableOpacity>
-            <Text style={s.legalDot}>·</Text>
-            <TouchableOpacity onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')} hitSlop={6}>
-              <Text style={s.legalLink}>Terms of Use</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={s.legal}>
-            Payment will be charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.
-          </Text>
-        </FadeIn>
-
-        <View style={s.bottomSpacer} />
+        <Text style={s.legal}>Free for 7 days, then your selected plan auto-renews unless cancelled at least 24 hours before the trial ends. Manage anytime in Settings. Payment charged to your Apple ID at the end of the trial.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -263,79 +230,42 @@ export default function PremiumScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.primary },
-  content: { padding: layout.screenPadding },
+  content: { padding: layout.screenPadding, paddingBottom: wp(40) },
   closeBtn: { alignSelf: 'flex-end', padding: spacing.sm },
   close: { fontSize: fp(22), color: colors.text.muted },
 
-  // Hero
-  hero: { alignItems: 'center', marginBottom: spacing.xl, marginTop: spacing.sm },
-  mascotWrap: { alignItems: 'center', marginBottom: spacing.md },
-  mascot: { width: wp(100), height: wp(100), borderRadius: wp(28), marginBottom: spacing.sm },
-  speechBubble: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, ...shadows.md, position: 'relative' },
-  speechText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.primary },
-  speechTail: { position: 'absolute', top: -wp(6), left: '50%' as any, marginLeft: -wp(6), width: 0, height: 0, borderLeftWidth: wp(6), borderRightWidth: wp(6), borderBottomWidth: wp(6), borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: colors.bg.secondary },
-  heroTitle: { fontSize: fp(34), fontWeight: typography.weight.black, color: colors.text.primary, letterSpacing: -1, marginTop: spacing.md },
-  heroHeadline: { fontSize: typography.size.base, color: colors.text.secondary, textAlign: 'center', lineHeight: fp(22), marginTop: spacing.sm },
+  hero: { alignItems: 'center', marginBottom: spacing.xl },
+  mascot: { width: wp(72), height: wp(72), borderRadius: wp(20), marginBottom: spacing.md },
+  heroTitle: { fontSize: fp(28), fontWeight: typography.weight.black, color: colors.text.primary },
+  heroSub: { fontSize: typography.size.sm, color: colors.text.tertiary, marginTop: wp(3) },
+  trialPill: { backgroundColor: colors.feedback.positiveBg, borderRadius: radius.pill, paddingHorizontal: wp(12), paddingVertical: wp(5), marginTop: spacing.md, borderWidth: 1, borderColor: colors.success },
+  trialPillText: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.success, letterSpacing: 1.2 },
 
-  // Anchor
-  anchorCard: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, backgroundColor: colors.accent.light, borderWidth: 1.5, borderColor: colors.accent.border, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xl },
-  anchorIcon: { fontSize: fp(18), marginTop: wp(2) },
-  anchorText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.dark, flex: 1, lineHeight: fp(20) },
+  // Benefits (replaces 8-card feature list)
+  benefitsBlock: { marginBottom: spacing.xxl, paddingHorizontal: spacing.sm, gap: spacing.sm },
+  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  benefitTick: { fontSize: fp(16), fontWeight: typography.weight.black, color: colors.success, width: wp(20), textAlign: 'center' },
+  benefitText: { flex: 1, fontSize: typography.size.base, fontWeight: typography.weight.semibold, color: colors.text.primary },
 
-  heroSocial: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: spacing.sm },
+  // Plans
+  planCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.xl, marginBottom: spacing.md, borderWidth: 1.5, borderColor: colors.borderLight, ...shadows.sm },
+  planRecommended: { borderColor: colors.accent.primary, borderWidth: 2, ...shadows.accent },
+  recBadge: { position: 'absolute', top: -wp(10), right: wp(16), backgroundColor: colors.accent.primary, borderRadius: radius.pill, paddingHorizontal: wp(12), paddingVertical: wp(3) },
+  recBadgeText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.inverse },
+  planTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  planName: { fontSize: typography.size.md, fontWeight: typography.weight.black, color: colors.text.primary },
+  planSavings: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.success, backgroundColor: colors.feedback.positiveBg, borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(2) },
+  planPrice: { fontSize: fp(28), fontWeight: typography.weight.black, color: colors.accent.primary, letterSpacing: -0.5 },
+  planPerMonth: { fontSize: typography.size.xs, color: colors.text.muted, marginTop: wp(3) },
 
-  proofCard: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xl, ...shadows.sm },
-  proofQuote: { fontSize: typography.size.sm, fontStyle: 'italic' as const, color: colors.text.secondary, lineHeight: fp(20), marginBottom: spacing.sm },
-  proofAuthor: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.text.muted },
+  trialBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.lg, paddingVertical: wp(14), alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.lg, ...shadows.accent },
+  trialText: { fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.text.inverse, textAlign: 'center' },
+  trialSub: { fontSize: typography.size.xs, color: colors.text.inverse, opacity: 0.85, textAlign: 'center', marginTop: 3 },
 
-  // Section
-  sectionLabel: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1.5, marginBottom: spacing.md, marginTop: spacing.md },
+  restoreText: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.accent.primary, textAlign: 'center', paddingVertical: spacing.md },
 
-  // Features
-  featureList: { gap: spacing.sm, marginBottom: spacing.xl },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.md, ...shadows.sm },
-  featureIcon: { fontSize: fp(18), width: wp(32), textAlign: 'center' },
-  featureInfo: { flex: 1 },
-  featureTitle: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.text.primary },
-  featureDesc: { fontSize: typography.size.xs, color: colors.text.tertiary, marginTop: wp(1) },
-
-  // Plan cards
-  planGroup: { gap: spacing.sm, marginBottom: spacing.lg },
-  planCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg.secondary, borderRadius: radius.xl, padding: spacing.lg, borderWidth: 2, borderColor: colors.borderLight },
-  planActive: { borderColor: colors.accent.primary, backgroundColor: colors.accent.light },
-  radio: { width: wp(20), height: wp(20), borderRadius: wp(10), borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginRight: spacing.md },
-  radioOn: { borderColor: colors.accent.primary },
-  radioDot: { width: wp(10), height: wp(10), borderRadius: wp(5), backgroundColor: colors.accent.primary },
-  planInfo: { flex: 1 },
-  planName: { fontSize: typography.size.sm, fontWeight: typography.weight.black, color: colors.text.primary },
-  planNameActive: { color: colors.accent.primary },
-  planPrice: { fontSize: fp(22), fontWeight: typography.weight.black, color: colors.text.primary, marginTop: wp(2), letterSpacing: -0.3 },
-  planPerMonth: { fontSize: fp(10), color: colors.text.muted, marginTop: wp(2) },
-  savingsBadge: { backgroundColor: colors.success, borderRadius: radius.pill, paddingHorizontal: wp(8), paddingVertical: wp(3) },
-  savingsText: { fontSize: fp(10), fontWeight: typography.weight.black, color: colors.text.inverse, letterSpacing: 0.5 },
-  badge: { position: 'absolute', top: -wp(10), right: wp(16), borderRadius: radius.pill, paddingHorizontal: wp(10), paddingVertical: wp(3) },
-  badgeAccent: { backgroundColor: colors.accent.primary },
-  badgeGhost: { backgroundColor: colors.bg.tertiary, borderWidth: 1, borderColor: colors.border },
-  badgeText: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.tertiary },
-  badgeTextAccent: { fontSize: fp(10), fontWeight: typography.weight.bold, color: colors.text.inverse },
-
-  // Free comparison
-  freeCompare: { backgroundColor: colors.bg.secondary, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.xl, borderWidth: 1, borderColor: colors.borderLight },
-  freeTitle: { fontSize: fp(11), fontWeight: typography.weight.black, color: colors.text.muted, textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: spacing.sm },
-  freeItem: { fontSize: typography.size.sm, color: colors.text.tertiary, paddingVertical: wp(4), borderBottomWidth: 1, borderBottomColor: colors.borderLight },
-
-  // CTA
-  ctaBtn: { backgroundColor: colors.accent.primary, borderRadius: radius.xl, paddingVertical: wp(18), alignItems: 'center', marginBottom: spacing.lg, ...shadows.accent },
-  ctaBtnDisabled: { opacity: 0.6 },
-  ctaText: { fontSize: fp(16), fontWeight: typography.weight.black, color: colors.text.inverse },
-  ctaSub: { fontSize: fp(10), color: 'rgba(255,255,255,0.8)', marginTop: wp(3) },
-
-  // Bottom
-  restoreBtn: { alignItems: 'center', padding: spacing.lg },
-  restoreText: { fontSize: typography.size.sm, color: colors.accent.primary, fontWeight: typography.weight.semibold },
-  legalLinksRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
+  legalLinksRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.xs, marginTop: spacing.lg },
   legalLink: { fontSize: fp(11), fontWeight: typography.weight.semibold, color: colors.accent.primary, textDecorationLine: 'underline' },
   legalDot: { fontSize: fp(11), color: colors.text.muted, paddingHorizontal: spacing.xs },
-  legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', paddingHorizontal: spacing.lg },
-  bottomSpacer: { height: wp(40) },
+  legal: { fontSize: fp(11), color: colors.text.muted, lineHeight: fp(16), textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
 });
