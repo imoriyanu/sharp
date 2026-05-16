@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
 import { PLANS, setPremiumStatus } from '../../src/services/premium';
-import { setOnboarded } from '../../src/services/storage';
+import { setOnboarded, getActiveUpcomingEvents, deleteUpcomingEvent } from '../../src/services/storage';
 import { getOfferings, purchasePackage, restorePurchases, isRevenueCatConfigured } from '../../src/services/revenuecat';
 
 // Tight 3-line summary of what Pro unlocks. Replaces a 6-row comparison
@@ -30,6 +30,22 @@ export default function OnboardingPaywall() {
     // routes to /(tabs) next launch instead of re-running the AI-priced
     // onboarding recording.
     setOnboarded().catch(() => {});
+
+    // Belt-and-braces dedupe of any active onboarding events. The
+    // upcoming.tsx screen already deduplicates on focus, but a user who
+    // breezes through onboarding without going back (or who came from an
+    // older build that never reached the focus-effect fix) could still land
+    // on Home with multiple "Coming up" cards. Keep the most recent by
+    // createdAt and delete the rest. Onboarding should always produce
+    // exactly 0 or 1 active events.
+    getActiveUpcomingEvents().then(events => {
+      if (events.length > 1) {
+        const sorted = [...events].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        for (const stale of sorted.slice(1)) {
+          deleteUpcomingEvent(stale.id).catch(() => {});
+        }
+      }
+    }).catch(() => {});
 
     if (rcEnabled) {
       getOfferings().then(offering => {

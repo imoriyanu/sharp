@@ -1,10 +1,10 @@
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useState, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
-import { saveUpcomingEvent } from '../../src/services/storage';
+import { saveUpcomingEvent, getActiveUpcomingEvents, deleteUpcomingEvent } from '../../src/services/storage';
 import { trackEvent } from '../../src/services/analytics';
 import type { UpcomingEventType } from '../../src/types';
 
@@ -41,13 +41,68 @@ function dateFromOffsetDays(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Reverse: given an ISO date, compute days from today (local midnight). Used
+// to reconstruct the matching WHEN chip when prefilling from an existing
+// saved event. Timezone-safe via local-midnight regex (matches storage.ts
+// daysUntilEvent convention).
+function daysFromEventDate(dateStr: string): number | null {
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const target = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export default function OnboardingUpcoming() {
   const router = useRouter();
   const [selectedType, setSelectedType] = useState<UpcomingEventType | null>(null);
   const [selectedWhen, setSelectedWhen] = useState<typeof WHEN_OPTIONS[number]['id'] | null>(null);
   const [saving, setSaving] = useState(false);
+  // If the user already saved an event on a previous pass through this
+  // screen, hold its id so the next save goes down the update path in
+  // storage.ts instead of creating a duplicate active event.
+  const [existingEventId, setExistingEventId] = useState<string | null>(null);
 
   const canSave = selectedType !== null && selectedWhen !== null && !saving;
+
+  // Runs on every screen focus, not just mount. Two jobs:
+  //  1. Recover stuck UI state: if the user navigated back mid-save, the
+  //     `saving` flag would have stayed true and the CTA would be locked
+  //     showing "Saving…". Reset it so the button is usable again.
+  //  2. Prefill from any existing active event so the user sees their
+  //     previous selection (not a blank form) and so handleSave can route
+  //     to the update path.
+  useFocusEffect(useCallback(() => {
+    let cancelled = false;
+    setSaving(false);
+    getActiveUpcomingEvents().then(events => {
+      if (cancelled || events.length === 0) return;
+      // Dedupe legacy duplicates. Onboarding should produce exactly one event;
+      // if we see more, the user came through an older build that created a
+      // new event on every save instead of updating the existing one. Keep
+      // the most recently created (by createdAt) and delete the rest. Safe
+      // here because OnboardingGate guarantees the user is mid-onboarding,
+      // and /upcoming/new (the only other event-creation path) is not
+      // reachable until onboarding completes.
+      let keeper = events[0];
+      if (events.length > 1) {
+        const sorted = [...events].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        keeper = sorted[0];
+        for (const stale of sorted.slice(1)) {
+          deleteUpcomingEvent(stale.id).catch(() => {});
+        }
+      }
+      setExistingEventId(keeper.id);
+      setSelectedType(keeper.type);
+      const dayDiff = daysFromEventDate(keeper.eventDate);
+      if (dayDiff !== null) {
+        const when = WHEN_OPTIONS.find(w => w.days === dayDiff);
+        if (when) setSelectedWhen(when.id);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []));
 
   async function handleSave() {
     if (!canSave || !selectedType || !selectedWhen) return;
@@ -56,22 +111,34 @@ export default function OnboardingUpcoming() {
     const whenOpt = WHEN_OPTIONS.find(w => w.id === selectedWhen)!;
     try {
       const saved = await saveUpcomingEvent({
+        // Pass id when we already have one so storage.ts updates the existing
+        // event rather than creating a duplicate. Fixes the bug where editing
+        // type/when and re-saving produced a second active event that
+        // getActiveUpcomingEvents would return stale-first.
+        ...(existingEventId ? { id: existingEventId } : {}),
         type: selectedType,
         title: typeOpt.defaultTitle,
         eventDate: dateFromOffsetDays(whenOpt.days),
       });
       if (saved) {
-        trackEvent('upcoming_event_created', { source: 'onboarding', type: selectedType, when: selectedWhen });
+        setExistingEventId(saved.id);
+        trackEvent(existingEventId ? 'upcoming_event_updated' : 'upcoming_event_created', { source: 'onboarding', type: selectedType, when: selectedWhen });
       } else {
         // Cap-hit shouldn't happen during onboarding (no prior events) but
         // guard for restored backups. Track for visibility.
         trackEvent('upcoming_event_save_skipped', { source: 'onboarding', reason: 'cap_or_corrupt' });
       }
     } catch (e: any) {
-      // Storage write failed. Don't block onboarding (event is recoverable , 
+      // Storage write failed. Don't block onboarding (event is recoverable ,
       // user can re-add from Home later) but log so we can spot a pattern.
       __DEV__ && console.warn('onboarding/upcoming: save failed', e?.message || e);
       trackEvent('upcoming_event_save_failed', { source: 'onboarding', error: String(e?.message || e).slice(0, 200) });
+    } finally {
+      // Belt-and-braces. Even though useFocusEffect would reset this on the
+      // next focus, clearing here means the CTA reverts to "Save & continue"
+      // before navigation animates, avoiding a flash of "Saving…" on the way
+      // out.
+      setSaving(false);
     }
     // Always advance to the challenge intro. The next step uses the event
     // we just saved to personalise the first recording. If save failed, the

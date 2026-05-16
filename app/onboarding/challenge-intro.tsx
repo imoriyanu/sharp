@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useEffect, useState, useRef } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useState, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius, shadows, layout, wp, fp } from '../../src/constants/theme';
 import { FadeIn } from '../../src/components/Animations';
@@ -20,22 +20,30 @@ export default function ChallengeIntro() {
   // never renders empty while we resolve from AsyncStorage.
   const [question, setQuestion] = useState(ONBOARDING_QUESTION_FALLBACK);
   const [framing, setFraming] = useState(ONBOARDING_QUESTION_FRAMING_FALLBACK);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
+  // useFocusEffect (not useEffect) so the question re-reads from storage
+  // every time the user lands on this screen. Critical when the user goes
+  // back to /onboarding/upcoming, changes their event type, and returns:
+  // useEffect would only fire on the first mount and leave the stale
+  // question; useFocusEffect picks up the new selection.
+  useFocusEffect(useCallback(() => {
+    let cancelled = false;
     getActiveUpcomingEvents().then(events => {
-      if (!mountedRef.current) return;
+      if (cancelled) return;
       const first = events[0];
       if (first) {
         setQuestion(ONBOARDING_QUESTION_BY_TYPE[first.type] || ONBOARDING_QUESTION_FALLBACK);
         setFraming(ONBOARDING_QUESTION_FRAMING_BY_TYPE[first.type] || ONBOARDING_QUESTION_FRAMING_FALLBACK);
+      } else {
+        // No active event (user skipped or cleared). Fall back to generic.
+        setQuestion(ONBOARDING_QUESTION_FALLBACK);
+        setFraming(ONBOARDING_QUESTION_FRAMING_FALLBACK);
       }
     }).catch(() => {
       // Fall back to generic. Already set as initial state.
     });
-    return () => { mountedRef.current = false; };
-  }, []);
+    return () => { cancelled = true; };
+  }, []));
 
   return (
     <SafeAreaView style={s.safe}>
